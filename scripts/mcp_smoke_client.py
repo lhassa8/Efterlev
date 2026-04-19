@@ -33,24 +33,23 @@ async def main() -> int:
         command=sys.executable,
         args=[str(SERVER_PATH)],
     )
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            init = await session.initialize()
-            print(f"server name:     {init.serverInfo.name}")
-            print(f"server version:  {init.serverInfo.version}")
-            print(f"protocol:        {init.protocolVersion}")
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        init = await session.initialize()
+        print(f"server name:     {init.serverInfo.name}")
+        print(f"server version:  {init.serverInfo.version}")
+        print(f"protocol:        {init.protocolVersion}")
 
-            tools = await session.list_tools()
-            print(f"tools exposed:   {[t.name for t in tools.tools]}")
-            for tool in tools.tools:
-                desc = (tool.description or "").splitlines()[0]
-                print(f"  - {tool.name}: {desc}")
+        tools = await session.list_tools()
+        print(f"tools exposed:   {[t.name for t in tools.tools]}")
+        for tool in tools.tools:
+            desc = (tool.description or "").splitlines()[0]
+            print(f"  - {tool.name}: {desc}")
 
-            echo_result = await session.call_tool("echo", {"message": "smoke ok"})
-            print(f"echo('smoke ok')         -> {unwrap_text(echo_result)}")
+        echo_result = await session.call_tool("echo", {"message": "smoke ok"})
+        print(f"echo('smoke ok')         -> {unwrap_text(echo_result)}")
 
-            add_result = await session.call_tool("add_two_numbers", {"a": 2, "b": 3})
-            print(f"add_two_numbers(2, 3)    -> {unwrap_text(add_result)}")
+        add_result = await session.call_tool("add_two_numbers", {"a": 2, "b": 3})
+        print(f"add_two_numbers(2, 3)    -> {unwrap_text(add_result)}")
 
     return 0
 

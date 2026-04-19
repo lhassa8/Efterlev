@@ -13,7 +13,9 @@ from pathlib import Path
 
 from trestle.oscal.catalog import Catalog, Control
 
-CATALOG_PATH = Path(__file__).resolve().parents[1] / "catalogs" / "nist" / "NIST_SP-800-53_rev5_catalog.json"
+CATALOG_PATH = (
+    Path(__file__).resolve().parents[1] / "catalogs" / "nist" / "NIST_SP-800-53_rev5_catalog.json"
+)
 
 
 def count_controls(controls: list[Control] | None) -> tuple[int, int]:
