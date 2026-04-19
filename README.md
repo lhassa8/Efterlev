@@ -58,6 +58,8 @@ What they actually need is something that reads their Terraform and tells them, 
 
 Efterlev is that tool. It runs where the engineer already is (the repo, the CLI, the CI pipeline). It produces FRMR from day one — the machine-readable format FedRAMP 20x is standardizing on, and the format most new SaaS authorizations in 2026 will target — with OSCAL support on the v1 roadmap for users carrying Rev5 transition submissions. It refuses to overclaim because 3PAOs don't trust tools that do.
 
+As of April 2026, FedRAMP 20x Phase 2 Moderate pilot is still active past its original March 31, 2026 end date, with authorizations like Aeroplicity's landing as recently as April 13, and wider public rollout targeted for later in 2026 — the trajectory Efterlev's KSI-native posture is aligned with.
+
 It's also deliberately deep rather than broad. FedRAMP 20x Moderate first; DoD IL and CMMC 2.0 on the v1 roadmap. Not SOC 2, not ISO 27001, not HIPAA — there are tools that serve those well, and our value is depth in gov-grade frameworks, not breadth across every compliance acronym.
 
 Add [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) to see where Efterlev fits among existing tools.
