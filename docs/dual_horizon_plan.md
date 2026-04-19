@@ -6,6 +6,8 @@
 **Governance:** BDFL-style during v0–v1; explicit invitation to co-maintainers at 10 active contributors
 **Commercial posture:** Pure OSS. Paid support and enterprise-specific features possible later; core library remains Apache 2.0 forever.
 
+**Timing context (April 2026):** FedRAMP 20x Phase 2 Moderate is still an active pilot, extended past its original March 31, 2026 end date with authorizations like Aeroplicity's landing as recently as April 13, and wider public rollout is targeted for later in 2026.
+
 This plan covers two horizons on a shared architecture:
 
 - **Layer 1 — Hackathon MVP (4 days):** Tight vertical slice; demo-optimized; proves the architecture.
