@@ -266,6 +266,50 @@ Rendered output (HTML, OSCAL, CLI) always visually distinguishes them.
 
 ---
 
+## 2026-04-19 — Pre-hackathon stack verification on Python 3.12 `[process]` `[tool-choice]`
+
+**Decision:** Dep versions resolved by `uv sync` against the current `pyproject.toml` are the pre-hackathon baseline. `uv.lock` is committed.
+
+**Verified today (Python 3.12.3, uv 0.8.17):**
+
+- `uv sync` resolves cleanly. Key runtime versions: compliance-trestle 3.12.0, mcp 1.27.0, anthropic 0.96.0, pydantic 2.13.2, typer 0.24.1, python-hcl2 5.1.1, jinja2 3.1.6. All import without error.
+- `scripts/trestle_smoke.py` loads the vendored NIST SP 800-53 Rev 5.2.0 catalog via `trestle.oscal.catalog.Catalog.oscal_read`. Walks the group tree correctly: 20 families, 324 top-level controls, 1,196 including enhancements. Each of the six hackathon target families (SC, IA, AU, CP, and the ones SC-8/SC-13 sit under) resolves.
+- anthropic SDK 0.96.0 imports and instantiates. Model string `claude-opus-4-7` is structurally accepted by the SDK (no model-ID validation error).
+- Minor observation for the hackathon loader primitive: trestle exposes `metadata.oscal_version` as a Pydantic `RootModel`, so a naive `print(md.oscal_version)` yields `__root__='1.1.3'` rather than the string. The internal `Control` / `Profile` mapper should unwrap via `.root`.
+
+**Not verified today (requires user's terminal):**
+
+- Live authenticated call to the Anthropic API with `claude-opus-4-7`. The sandbox session that ran the other smoke tests does not expose an `ANTHROPIC_API_KEY` to subprocesses. The smoke script completed the SDK wiring and failed cleanly on missing credentials, which is the correct behavior but does not confirm the hackathon API key works or that `claude-opus-4-7` is available on that key's plan.
+
+**Action for the user before Day 1:** run the one-liner below on a shell that has `ANTHROPIC_API_KEY` set. Expected output is a short response containing "smoke ok" and no error. If `claude-opus-4-7` is rejected by the API (e.g. the key lacks plan access), fall back per the existing DECISIONS entry on model selection and note it here.
+
+```bash
+uv run python -c "from anthropic import Anthropic; r = Anthropic().messages.create(model='claude-opus-4-7', max_tokens=32, messages=[{'role':'user','content':'Reply with exactly: smoke ok'}]); print(r.model, '|', r.content[0].text)"
+```
+
+**Rationale for recording this rather than skipping:** honesty about what was verified and what wasn't keeps the pre-hackathon checklist credible. A green check we didn't actually earn would be worse than an open item.
+
+---
+
+## 2026-04-19 — FedRAMP Moderate OSCAL baseline source is blocked; options under review `[scope]` `[architecture]`
+
+**Decision:** No decision yet. Logging the block so the next session's first action is settling this.
+
+**Situation:** `CLAUDE.md`, `README.md`, `docs/dual_horizon_plan.md`, and `CONTRIBUTING.md` all reference `GSA/fedramp-automation` (path `dist/content/rev5/baselines/json/FedRAMP_rev5_MODERATE-baseline_profile.json`) as the source for the FedRAMP Moderate OSCAL profile. Pre-hackathon verification today found that URL returns 404 from both `github.com` and `raw.githubusercontent.com`. Public reporting indicates the repo was archived in mid-2025 and a subsequent release removed the OSCAL baseline content as FedRAMP transitioned toward the FedRAMP Machine-Readable (FRMR) format under the FedRAMP 20x initiative. `FedRAMP/docs` (live) now hosts FRMR documentation; it does not contain OSCAL baselines. `usnistgov/oscal-content` has the 800-53 catalog but no FedRAMP-specific profile at any path probed.
+
+**What we did land today:** vendored the NIST SP 800-53 Rev 5 catalog into `catalogs/nist/`. A FedRAMP Moderate profile, however we obtain it, must resolve against this catalog, so vendoring it does not prejudice the choice below.
+
+**Options under consideration (not ranked yet; needs human call):**
+
+- **A. Pin to the last good pre-archive commit of `GSA/fedramp-automation`.** Recover the baseline from a historical tag or Wayback Machine, record the deprecation context in `catalogs/README.md`, and vendor that. Pros: minimal change to plan; one-time effort. Cons: we ship stale content relative to FedRAMP's current direction; updates are manual.
+- **B. Construct the FedRAMP Moderate profile ourselves from published control lists.** The control selections are public. A hand-rolled OSCAL profile referencing the vendored 800-53 catalog is straightforward. Pros: full control over provenance; no dependency on a vanishing upstream. Cons: we take ownership of a thing FedRAMP used to publish; maintenance burden.
+- **C. Treat FRMR as the primary FedRAMP-source input and emit OSCAL only at the output boundary.** Bigger architectural shift. Pros: aligns with where FedRAMP is actually going; differentiated positioning. Cons: out of scope for the hackathon; FRMR is a moving target and tool support is thin.
+- **D. Defer the FedRAMP-specific profile; ship v0 against the NIST 800-53 baseline directly, profile-less.** Pros: unblocks the hackathon immediately; every detector already declares the controls it evidences. Cons: loses the "FedRAMP Moderate" framing of the demo.
+
+**Pointers for whoever decides:** `COMPETITIVE_LANDSCAPE.md` still positions Efterlev as FedRAMP-focused, so option D weakens the pitch. `README.md`'s coverage table is per-control, not per-profile, so it doesn't need to change under any option. `LIMITATIONS.md` does not mention the profile source and so is unaffected.
+
+---
+
 
 
 ```
