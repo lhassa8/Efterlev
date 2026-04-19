@@ -332,6 +332,51 @@ uv run python -c "from anthropic import Anthropic; r = Anthropic().messages.crea
 
 ---
 
+## 2026-04-19 — Pivot to KSI-native, FRMR-first; OSCAL demoted to v1 output `[architecture]` `[scope]` `[positioning]`
+
+**Decision:** Efterlev's primary internal abstraction is the FedRAMP 20x **Key Security Indicator (KSI)**, not the 800-53 control. Its primary output format is **FRMR-compatible JSON** (from `FedRAMP/docs`), not OSCAL. NIST 800-53 Rev 5 remains the underlying catalog — each KSI references 800-53 controls, and detectors still evidence those controls — but the user-facing surface and the primary output both speak KSIs and FRMR. OSCAL output generation is demoted to a v1 secondary format for users transitioning Rev5 submissions and for downstream OSCAL-Hub-style consumers.
+
+**This entry explicitly reverses the 2026-04-18 decision "OSCAL as output, not internal model."** The OSCAL-as-first-class-output framing no longer matches where FedRAMP is going or where our ICP is landing. The internal-model-vs-output-boundary discipline from that earlier entry is preserved and stays correct; what changes is *which* output format is primary.
+
+**Rationale:**
+
+1. **FedRAMP itself is moving.** Phase 1 of FedRAMP 20x completed in late 2025 with 13 Low authorizations; Phase 2 Moderate pilot is underway and Phase 2 entered pilot in November 2025 with an initial end date of 2026-03-31. In 2025 FedRAMP processed 100+ Rev5 authorizations with zero OSCAL-structured submissions, and no 20x Phase 1 participant used OSCAL to structure required machine-readable materials. FRMR (FedRAMP Machine-Readable) is the format FedRAMP 20x is shipping, and it is actively maintained at `FedRAMP/docs`. Betting the internal model and primary output on OSCAL was betting on a pace of adoption that the field has not produced. Betting on KSIs + FRMR aligns with what FedRAMP's own authorization pipeline now accepts.
+
+2. **Architectural alignment.** Our thesis — "evidence over narrative, outcomes over process, deterministic scanner output primary, LLM reasoning secondary" — maps to KSIs directly. KSIs are explicitly outcome-based measurable indicators ("Encrypt or otherwise secure network traffic"; "Enforce multi-factor authentication using methods that are difficult to intercept or impersonate"). OSCAL's SSP narrative model asks for process and implementation descriptions, which are a less-good fit for what a code scanner can honestly produce. FRMR attestations ("here is the evidence that this outcome is achieved, citing Terraform line X") are exactly what we generate; SSP narratives ("here is how we implement the control") are not.
+
+3. **ICP alignment.** Our ICP is a SaaS company (50–200 engineers) starting its first FedRAMP effort in 2026 with a committed federal deal on the line. A new-in-2026 authorization targets 20x, which is KSI-native. Serving this user well means speaking KSIs in the CLI, the agent output, and the report — not speaking 800-53 control numbers and OSCAL. The primary ICP entry at `docs/icp.md` supports this directly: their day-one experience improves when it lands in the language FedRAMP 20x is actually asking them for.
+
+4. **Market positioning.** No OSS tool is KSI-native today. Comp AI is not; their FedRAMP coverage (41% in their own demo) is Rev5-era, not 20x. RegScale OSCAL Hub is deep-OSCAL and has real architectural debt to work through on FRMR. Being KSI-native from day one is a differentiator that is currently unclaimed. The "dev-tool-shaped positioning nobody else is occupying" argument in `COMPETITIVE_LANDSCAPE.md` is now sharpened by "KSI-native positioning nobody else is occupying *yet*."
+
+5. **Engineering simplicity.** FRMR is a single JSON file with a published JSON Schema (`FedRAMP.schema.json`, draft 2020-12). Pydantic reads it directly — no specialized library needed, no complex profile/catalog/SSP model hierarchy to wrestle with. The hackathon saves engineering effort that would otherwise have gone into OSCAL generator-primitive plumbing and spends it on the detector library instead, which is the moat. Adding OSCAL generators in v1 is additive (one more generator primitive) rather than rearchitectural (the internal model is format-agnostic by design).
+
+6. **Honest claims.** "We evidence KSI-SVC-SNT via Terraform detection of TLS configuration on ALB listeners" is a more honest claim than "we evidence SC-8, whose full implementation includes procedural aspects we cannot see from code." KSIs are designed around outcomes we can actually detect. This tightens the evidence-vs-claim discipline at the contract level rather than only in documentation.
+
+**Alternatives considered:**
+
+- **Stay OSCAL-primary and attempt to recover the archived FedRAMP OSCAL profile.** Rejected. `GSA/fedramp-automation` was archived mid-2025 and its OSCAL baselines removed as FedRAMP transitioned to FRMR. Recovering from Wayback Machine or a pre-archive tag is possible but ships stale content that FedRAMP no longer maintains, and the positioning ("we produce OSCAL primarily") bets against where FedRAMP is going. The previous DECISIONS entry ("FedRAMP Moderate OSCAL baseline source is blocked; options under review") listed this as option A; we are rejecting it here.
+- **Drop OSCAL entirely.** Rejected. RFC-0024 establishes a September 2026 machine-readable compliance floor for Rev5 submissions, and tools like OSCAL Hub (donated to the OSCAL Foundation in late 2025) exist and serve a real constituency. Users mid-Rev5-transition need OSCAL output; cutting it entirely forecloses that user. OSCAL lands in v1 as a secondary output for those users.
+- **Support both FRMR and OSCAL equally at v0.** Rejected. "Primary format" is a strategy choice, not a feature list. Supporting both equally produces a tool with no clear positioning, double the Day 2–3 generator engineering, and muddled messaging. Primary means primary; we pick.
+- **Treat FRMR as input only (consume KSI definitions) and keep OSCAL as primary output.** Considered briefly. Rejected because it inverts the positioning mismatch: we would produce OSCAL artifacts that map back to KSIs we derived from FRMR — which is more work than generating FRMR directly and lands in a format FedRAMP 20x reviewers are not asking for.
+
+**Known open item (flagged on the pivot, not resolved by it):** FRMR 0.9.43-beta does not list SC-28 (encryption at rest) in any KSI's `controls` array, and no indicator `statement` references "at rest." Our encryption-at-rest detector area therefore has `[TBD]` in the KSI column of `CLAUDE.md` and `README.md` with KSI-SVC-VRI (Validating Resource Integrity, SVC theme) marked as the nearest thematic fit. Day 1 resolves this: either accept KSI-SVC-VRI with an honest docstring caveat, reframe the detector around integrity, or open an issue on `FedRAMP/docs` for a missing KSI. Do not invent a KSI.
+
+**What did not change (so this entry's scope is clear):**
+- Primitive / detector / agent three-way architecture separation
+- Evidence-vs-Claim discipline in the data model
+- Provenance model (append-only, content-addressed, versioned)
+- MCP as the agent-exposed interface; FastMCP as the server shape
+- Claude Code / Anthropic direct API at v0; AWS Bedrock as v1 second backend
+- Apache 2.0 license, governance model, contribution posture
+- Primary ICP (first-FedRAMP SaaS, 50–200 engineers); ICPs B and C as secondary
+- Six hackathon detection areas (their KSI mappings are added; the detection areas themselves are the same six)
+- Terraform/OpenTofu as v0 input source; AWS as v0 cloud
+- 4-day demo flow structure and the meta-loop demo moment
+- govnotes as the demo target
+- CMMC 2.0 as v1 second framework; DoD IL as v1.5+
+
+---
+
 
 
 ```
