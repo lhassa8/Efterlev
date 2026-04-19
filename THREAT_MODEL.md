@@ -12,7 +12,7 @@ Efterlev operates across three trust boundaries:
 
 1. **User's local environment ↔ Efterlev** — the user runs Efterlev locally against their own source. Full trust; Efterlev is executing on the user's machine.
 2. **Efterlev ↔ LLM provider (Anthropic API)** — content Efterlev sends to the LLM provider leaves the user's machine. This is the only external network call Efterlev makes in normal operation.
-3. **Efterlev ↔ downstream consumers of OSCAL output** — generated artifacts (OSCAL, HTML, Markdown) are stored locally and shared by the user through their own channels. Efterlev does not publish or transmit these.
+3. **Efterlev ↔ downstream consumers of generated output** — generated artifacts (FRMR JSON, HTML, Markdown; OSCAL added in v1) are stored locally and shared by the user through their own channels. Efterlev does not publish or transmit these.
 
 ---
 
@@ -24,7 +24,7 @@ Efterlev does not collect usage analytics, crash reports, or any other telemetry
 
 The only outbound network calls Efterlev makes are:
 - Anthropic API calls for LLM inference (configurable endpoint)
-- Optional, explicit fetches of OSCAL catalogs from NIST/FedRAMP URLs when the user runs `efterlev catalog update`
+- Optional, explicit fetches of vendored catalog content (FRMR from `FedRAMP/docs`, NIST 800-53 from `usnistgov/oscal-content`) when the user runs `efterlev catalog update` — a v1 command; v0 ships a pinned set
 
 No other network calls. Period.
 
@@ -33,7 +33,7 @@ No other network calls. Period.
 All Efterlev state lives under `.efterlev/` in the user's working directory:
 - `.efterlev/store/` — content-addressed blob store for evidence and claims
 - `.efterlev/db.sqlite` — provenance graph and metadata
-- `.efterlev/cache/` — cached OSCAL catalogs and schema
+- `.efterlev/cache/` — cached catalog content (FRMR, NIST 800-53) and schema
 
 These directories are user-readable only (permissions 0700 / 0600). They are gitignored by default in the initialized working directory.
 

@@ -14,10 +14,11 @@ Efterlev is **not** trying to be:
 - A dashboard-driven compliance tool for GRC teams. That market is well-served.
 
 Efterlev **is** trying to be:
-- The repo-native, agent-first compliance scanner for FedRAMP and DoD Impact Levels.
+- **The KSI-native compliance scanner aligned with FedRAMP 20x.** Primary abstraction is the Key Security Indicator; primary output is FRMR-compatible JSON. No other OSS tool is KSI-native today.
+- The repo-native, agent-first scanner for FedRAMP and DoD Impact Levels.
 - The tool that lives in the developer's codebase and CI pipeline rather than in a SaaS dashboard.
-- The tool that produces code-level findings, remediation diffs, and standards-compliant OSCAL output for downstream consumption.
-- Deep, not broad — FedRAMP + DoD IL done well rather than five frameworks at 40–60% coverage each.
+- The tool that produces code-level findings, remediation diffs, FRMR-compatible validation data (v0), and standards-compliant OSCAL output for downstream consumption (v1).
+- Deep, not broad — FedRAMP 20x + DoD IL done well rather than five frameworks at 40–60% coverage each.
 - Deployable inside FedRAMP-authorized boundaries via AWS Bedrock in GovCloud (v1) — a path SaaS-first competitors cannot match without their own FedRAMP authorization.
 
 ---
@@ -32,10 +33,10 @@ Open-source, AI-agent-driven, SaaS-first compliance platform. Covers SOC 2, ISO 
 
 **Where they don't overlap:**
 - Comp AI is SaaS-first with OSS components. Efterlev is local-first with no SaaS at all.
-- Comp AI covers FedRAMP at ~41% in their own demo screenshots (listed as one framework among many). Efterlev's v1 goal is 80%+ of FedRAMP Moderate specifically.
+- Comp AI covers FedRAMP at ~41% in their own demo screenshots (listed as one framework among many) and frames it in Rev5 terms. Efterlev's v1 goal is 80%+ of **FRMR-Moderate KSI coverage** — the 20x surface FedRAMP is actually evaluating against today. No major OSS compliance platform is KSI-native yet; Comp AI is not.
 - Comp AI does not scan Terraform source. Efterlev does.
 - Comp AI does not produce code-level remediation diffs. Efterlev does.
-- Comp AI does not emit standards-compliant OSCAL artifacts as a primary output. Efterlev does.
+- Comp AI does not emit FRMR-compatible validation data or OSCAL artifacts as primary outputs. Efterlev produces FRMR in v0 and OSCAL in v1.
 - Comp AI does not address DoD Impact Levels. Efterlev's v1 roadmap includes IL4/5/6.
 - Comp AI's extension model is SaaS integrations. Efterlev's extension model is a community-contributable detector library.
 
@@ -45,16 +46,17 @@ Open-source, AI-agent-driven, SaaS-first compliance platform. Covers SOC 2, ISO 
 
 Donated by RegScale to the OSCAL Foundation in late 2025. Positioned as "the industry's first comprehensive, open-source platform purpose-built for working with OSCAL documents." Document processing, review workflows, and authorization-package tooling aimed at Authorizing Officials, the FedRAMP PMO, ISSOs, and 3PAOs.
 
-**Relationship to Efterlev:** complementary, not competitive. Efterlev produces OSCAL artifacts; OSCAL Hub consumes and processes them. A user could run Efterlev against their repo, export the OSCAL output, and submit it through OSCAL Hub's review flow.
+**Relationship to Efterlev:** complementary, not competitive. In v1, Efterlev will produce OSCAL artifacts that OSCAL Hub can consume and process for users carrying Rev5 transition submissions. A user could run Efterlev against their repo, export the OSCAL output, and submit it through OSCAL Hub's review flow.
 
-**Where they overlap:** both are OSS, both treat OSCAL seriously.
+**Where they overlap:** both are OSS.
 
 **Where they don't overlap:**
-- OSCAL Hub is a platform for *reviewing* OSCAL packages. Efterlev is a tool for *producing* them from source code.
+- OSCAL Hub's center of gravity is deep-OSCAL and Rev5-native. Efterlev's center of gravity is KSI-native and FRMR-first — we are where FedRAMP 20x is going, they are where FedRAMP has been. The transition from one to the other is multi-year, so both lanes matter.
+- OSCAL Hub is a platform for *reviewing* OSCAL packages. Efterlev is a tool for *producing* validation data (FRMR at v0, OSCAL at v1) from source code.
 - OSCAL Hub serves Authorizing Officials and compliance reviewers. Efterlev serves DevSecOps engineers and the compliance team preparing submissions.
 - OSCAL Hub does not scan code. Efterlev does not handle authorization workflows.
 
-**Integration possibility:** a supported output path where `efterlev` directly posts to an OSCAL Hub instance is a plausible v1 feature if demand warrants.
+**Integration possibility:** a supported output path where `efterlev` directly posts OSCAL (once the v1 generator lands) to an OSCAL Hub instance is a plausible v1 feature if demand warrants.
 
 ### Dormant or narrow OSS prior art
 
@@ -85,8 +87,8 @@ The answer is yes, and the user is specific. Efterlev's primary ICP is a **SaaS 
 
 For this user:
 
-- **Comp AI is the wrong depth.** Their FedRAMP coverage (41% in their own demo) reflects their broader SOC 2–first positioning. An ICP A user needs FedRAMP Moderate specifically, deeply.
-- **RegScale is the wrong tier.** Built for Authorizing Officials, ISSOs, and mature compliance organizations. An ICP A SaaS company doesn't have that team yet.
+- **Comp AI is the wrong depth and the wrong era.** Their FedRAMP coverage (41% in their own demo) reflects their broader SOC 2–first positioning and maps to legacy Rev5 controls. An ICP A user starting FedRAMP in 2026 is heading into 20x, where the KSIs are what matter. Efterlev is KSI-native; Comp AI is not.
+- **RegScale is the wrong tier.** Built for Authorizing Officials, ISSOs, and mature compliance organizations, with deep OSCAL infrastructure. An ICP A SaaS company doesn't have that team yet, and is better served by FRMR than by OSCAL for 20x work.
 - **Vanta/Drata are the wrong shape.** SaaS dashboards optimized for SOC 2 / ISO 27001; their FedRAMP modules are thinner and their locus is wrong for a single-engineer DevSecOps lead.
 
 Secondary ICPs (defense contractors pursuing CMMC 2.0 / DoD IL; platform teams at larger gov-contractor orgs) are named in `docs/icp.md` as v1.5+ and v2+ expansions. They are well-served by the architecture we're building but are not the v0 focus.

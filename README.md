@@ -1,8 +1,8 @@
 # Efterlev
 
-**Open-source compliance automation for SaaS companies pursuing their first FedRAMP Moderate authorization.**
+**Open-source compliance automation for SaaS companies pursuing their first FedRAMP Moderate authorization via the FedRAMP 20x pilot.**
 
-Scans your Terraform and application code for compliance-relevant evidence. Drafts OSCAL artifacts for your 3PAO. Proposes code-level remediations you can apply today. Runs locally — no SaaS, no telemetry, no procurement cycle.
+Scans your Terraform for KSI-level evidence. Drafts FRMR-compatible validation data for your 3PAO. Proposes code-level remediations you can apply today. Runs locally — no SaaS, no telemetry, no procurement cycle.
 
 Built for the VP Eng or DevSecOps lead whose CEO just told them "we need FedRAMP" and who needs to know, by Monday, where they actually stand.
 
@@ -11,9 +11,11 @@ Pronounced "EF-ter-lev." From Swedish *efterlevnad* (compliance).
 ```bash
 pipx install efterlev
 cd your-repo
-efterlev init --profile fedramp-moderate
+efterlev init --baseline fedramp-20x-moderate
 efterlev scan
 ```
+
+Efterlev is **KSI-native**: its primary abstraction is the Key Security Indicator from FedRAMP 20x, with 800-53 Rev 5 controls as the underlying reference. Its primary output is **FRMR-compatible JSON** (the format FedRAMP 20x is standardizing on). OSCAL output for users transitioning Rev5 submissions is on the v1 roadmap.
 
 Efterlev's current focus is SaaS companies pursuing their first FedRAMP Moderate authorization. Defense contractors pursuing CMMC 2.0 or DoD IL are a v1.5+ expansion; platform teams at larger gov-contractors are v2+. See [docs/icp.md](./docs/icp.md) for the full user profile and what that means for what Efterlev does and doesn't do.
 
@@ -21,10 +23,10 @@ Efterlev's current focus is SaaS companies pursuing their first FedRAMP Moderate
 
 ## What it does
 
-- **Scans** Terraform and application source for evidence of FedRAMP controls
-- **Drafts** OSCAL System Security Plan narratives grounded in that evidence
+- **Scans** Terraform source for evidence of FedRAMP 20x Key Security Indicators (KSIs), backed by the underlying NIST 800-53 Rev 5 controls those KSIs reference
+- **Drafts** FRMR-compatible attestation JSON grounded in that evidence, with every assertion citing its source line
 - **Proposes** code-level remediation diffs for detected gaps
-- **Emits** standards-compliant OSCAL artifacts consumable by tools like RegScale's OSCAL Hub
+- **Emits** machine-readable validation data ready for 3PAO review and the FedRAMP 20x automated validation pipeline
 - **Traces** every generated claim back to the source line that produced it
 
 Everything runs locally. The only outbound network call is to your configured LLM endpoint for reasoning tasks (narrative drafting, remediation proposals). Scanner output is deterministic and offline.
@@ -54,9 +56,9 @@ The team looks at each other. Nobody has done this before. They google it and fi
 
 What they actually need is something that reads their Terraform and tells them, in their own language, what's wrong and how to fix it. Something a single engineer can install on a Tuesday and show results at Wednesday's standup. Something whose output is concrete enough that their 3PAO can use it — and whose claims are honest enough that the 3PAO won't throw it out.
 
-Efterlev is that tool. It runs where the engineer already is (the repo, the CLI, the CI pipeline). It produces OSCAL because the FedRAMP PMO's RFC-0024 mandates machine-readable packages by September 2026. It refuses to overclaim because 3PAOs don't trust tools that do.
+Efterlev is that tool. It runs where the engineer already is (the repo, the CLI, the CI pipeline). It produces FRMR from day one — the machine-readable format FedRAMP 20x is standardizing on, and the format most new SaaS authorizations in 2026 will target — with OSCAL support on the v1 roadmap for users carrying Rev5 transition submissions. It refuses to overclaim because 3PAOs don't trust tools that do.
 
-It's also deliberately deep rather than broad. FedRAMP Moderate first; DoD IL and CMMC 2.0 on the v1 roadmap. Not SOC 2, not ISO 27001, not HIPAA — there are tools that serve those well, and our value is depth in gov-grade frameworks, not breadth across every compliance acronym.
+It's also deliberately deep rather than broad. FedRAMP 20x Moderate first; DoD IL and CMMC 2.0 on the v1 roadmap. Not SOC 2, not ISO 27001, not HIPAA — there are tools that serve those well, and our value is depth in gov-grade frameworks, not breadth across every compliance acronym.
 
 Add [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) to see where Efterlev fits among existing tools.
 
@@ -76,10 +78,10 @@ Requires Python 3.12+. `uv` is used internally but not required for end users.
 
 ```bash
 cd path/to/your-repo
-efterlev init --profile fedramp-moderate
+efterlev init --baseline fedramp-20x-moderate
 ```
 
-This creates a `.efterlev/` directory for the local provenance store, downloads the FedRAMP Moderate OSCAL baseline, and writes a config file.
+This creates a `.efterlev/` directory for the local provenance store and writes a config file. The FedRAMP FRMR KSI baseline and the NIST 800-53 Rev 5 catalog are shipped with Efterlev (vendored under `catalogs/`); no network fetch is required at init time.
 
 You'll need an Anthropic API key for the generative agents (narrative drafting, remediation). Set `ANTHROPIC_API_KEY` in your environment or configure it in `.efterlev/config.toml`.
 
@@ -89,7 +91,7 @@ You'll need an Anthropic API key for the generative agents (narrative drafting, 
 efterlev scan
 ```
 
-Runs all applicable detectors against your Terraform and source. Produces findings with full provenance. Scanner-only — no LLM calls, no network except to load local OSCAL catalogs.
+Runs all applicable detectors against your Terraform and source. Produces findings with full provenance. Scanner-only — no LLM calls, no network; FRMR and 800-53 catalogs are loaded from the local `catalogs/` directory.
 
 ### Analyze
 
@@ -97,20 +99,20 @@ Runs all applicable detectors against your Terraform and source. Produces findin
 efterlev agent gap
 ```
 
-The Gap Agent classifies each control as implemented, partially implemented, not implemented, or not applicable, given the evidence collected. Writes a human-readable HTML report to `out/gap_report.html`.
+The Gap Agent classifies each KSI as implemented, partially implemented, not implemented, or not applicable, given the evidence collected. Underlying 800-53 control status is shown alongside. Writes a human-readable HTML report to `out/gap_report.html`.
 
-### Draft SSP narrative
+### Draft FRMR attestation
 
 ```bash
-efterlev agent document --control SC-28
+efterlev agent document --ksi KSI-SVC-VRI
 ```
 
-The Documentation Agent drafts System Security Plan narrative for a control, grounded in its evidence. Output is an OSCAL-aligned draft; every sentence cites the evidence that supports it.
+The Documentation Agent drafts FRMR-compatible attestation JSON for a KSI, grounded in its evidence. Every assertion cites the evidence that supports it. Output is an HTML rendering alongside the FRMR JSON. OSCAL SSP narrative generation is a v1 roadmap item for users carrying Rev5 transition submissions.
 
 ### Propose remediation
 
 ```bash
-efterlev agent remediate --control SC-28
+efterlev agent remediate --ksi KSI-SVC-VRI
 ```
 
 The Remediation Agent proposes a code-level diff to address a gap. Review the diff, then apply it yourself or hand it to Claude Code.
@@ -133,30 +135,36 @@ Efterlev v0 scans **Terraform and OpenTofu** source files (`.tf`). It does not s
 
 If your FedRAMP boundary is Terraform-primary, Efterlev works for you today. If you're deep in CloudFormation or CDK, hold off — v1 is not far.
 
-### FedRAMP Moderate controls (v0)
+### FedRAMP 20x KSIs and underlying 800-53 controls (v0)
 
-| Control | Name | Source |
-|---|---|---|
-| SC-28 | Protection of Information at Rest | Terraform/OpenTofu (S3, RDS, EBS) |
-| SC-8 | Transmission Confidentiality | Terraform/OpenTofu (ALB, TLS) |
-| SC-13 | Cryptographic Protection | Terraform/OpenTofu, source |
-| IA-2 | Identification & Authentication | Terraform/OpenTofu (IAM, MFA) |
-| AU-2 + AU-12 | Event Logging & Audit Generation | Terraform/OpenTofu (CloudTrail) |
-| CP-9 | System Backup | Terraform/OpenTofu (RDS, S3 versioning) |
+KSIs below are from FRMR 0.9.43-beta (vendored at `catalogs/frmr/`). Each detection area evidences the listed KSI(s) and the 800-53 controls the KSI references.
+
+| Detection area | KSI (FRMR 0.9.43-beta) | 800-53 | Source |
+|---|---|---|---|
+| Encryption at rest | `[TBD]` — see note below; closest fit is **KSI-SVC-VRI** (Validating Resource Integrity) | SC-28, SC-28(1) | Terraform/OpenTofu (S3, RDS, EBS) |
+| Transmission confidentiality | **KSI-SVC-SNT** (Securing Network Traffic) | SC-8 | Terraform/OpenTofu (ALB, TLS) |
+| Cryptographic protection | **KSI-SVC-VRI** (Validating Resource Integrity); reinforces KSI-SVC-SNT | SC-13 | Terraform/OpenTofu, source |
+| MFA enforcement | **KSI-IAM-MFA** (Enforcing Phishing-Resistant MFA) | IA-2 | Terraform/OpenTofu (IAM policy conditions) |
+| Event logging & audit generation | **KSI-MLA-LET** (Logging Event Types), **KSI-MLA-OSM** (Operating SIEM Capability) | AU-2, AU-12 | Terraform/OpenTofu (CloudTrail) |
+| System backup | **KSI-RPL-ABO** (Aligning Backups with Objectives) | CP-9 | Terraform/OpenTofu (RDS, S3 versioning) |
+
+> **Note on SC-28.** FRMR 0.9.43-beta does not list SC-28 in any KSI's `controls` array, so no KSI cleanly maps to "encryption of data at rest." KSI-SVC-VRI (integrity via cryptography) is the nearest fit in the Service Configuration theme, whose description references "FedRAMP encryption policies." We treat this as a known mapping gap: the detector will be honest in its README that it evidences the infrastructure layer of at-rest encryption but cannot claim full alignment with a KSI that does not explicitly cover confidentiality-at-rest. This is the kind of gap we expect to see resolved as FRMR moves from beta toward GA.
+
+> **Note on KSI-IAM-MFA.** The indicator requires *phishing-resistant* MFA. Our detector evidences that MFA is enforced via IAM policy condition keys, which is MFA presence but not phishing resistance. The detector README calls this out explicitly.
 
 Every detector's `README.md` inside `src/efterlev/detectors/` names what it proves and what it does not prove. Read those before trusting a finding.
 
 ### On the roadmap
 
-Expansion happens along two axes in parallel: **input sources** (what Efterlev can scan) and **control coverage** (what it can find). Source-type expansion matters more for adoption; control-count expansion matters more for depth.
+Expansion happens along two axes in parallel: **input sources** (what Efterlev can scan) and **KSI / control coverage** (what it can find). Source-type expansion matters more for adoption; coverage expansion matters more for depth.
 
-- **Month 1:** Terraform Plan JSON support (scans resolved plans including computed values); OpenTofu declared as first-class alongside Terraform
-- **Month 1–2:** +15 detectors for Terraform (AC-*, AU-3, CM-2/6, SI-*, SC-7); AWS Bedrock as a second LLM backend for FedRAMP-authorized deployments (GovCloud)
+- **Month 1:** Terraform Plan JSON support (scans resolved plans including computed values); OpenTofu declared as first-class alongside Terraform; **OSCAL output generators** for users transitioning Rev5 submissions (Assessment Results, partial SSP, POA&M) — this is the primary deliverable beyond the KSI-native v0
+- **Month 1–2:** +15 detectors for Terraform covering additional KSIs in the IAM, CMT, MLA, and SVC themes; AWS Bedrock as a second LLM backend for FedRAMP-authorized deployments (GovCloud)
 - **Month 2:** CloudFormation and AWS CDK support (CDK compiles to CloudFormation; one parser covers both)
 - **Month 3:** First external contributor detector merged; Kubernetes manifests + Helm (network policies, pod security, RBAC — different control set, high value)
 - **Month 4:** GitHub Action for PR-level compliance checks; Pulumi support
 - **Month 5:** CMMC 2.0 overlay
-- **Month 6:** Drift Agent — watches a repo over time, flags regressions in evidenced controls
+- **Month 6:** Drift Agent — watches a repo over time, flags regressions in evidenced KSIs
 - **v1.5+:** Runtime cloud API scanning (different threat model, needs its own design pass)
 
 See [docs/dual_horizon_plan.md](./docs/dual_horizon_plan.md) for the full roadmap.
@@ -171,11 +179,11 @@ Three concepts. Everything else is implementation detail.
 
 **Primitives** are typed, MCP-exposed functions that represent agent-legible capabilities — scan, map, generate, validate. ~15–25 of them, small and stable. Both our own agents and external agents (your own Claude Code session, for instance) can call them.
 
-**Agents** compose primitives to accomplish a reasoning task: classifying gap status, drafting SSP narrative, proposing remediation. Each agent has a system prompt you can read in the repo and a typed output artifact you can audit.
+**Agents** compose primitives to accomplish a reasoning task: classifying KSI gap status, drafting FRMR attestations, proposing remediation. Each agent has a system prompt you can read in the repo and a typed output artifact you can audit.
 
 Every step emits a provenance record. The provenance store is a content-addressed, append-only graph — scanner output is evidence, agent output is a claim derived from that evidence, and you can walk the chain from any generated sentence back to the Terraform line that produced it.
 
-The architectural bet: evidence before claims, provenance always, OSCAL as output not internal model. See [docs/architecture.md](./docs/architecture.md) for details.
+The architectural bet: evidence before claims, provenance always, KSIs as the user-facing surface, FRMR as primary output (OSCAL in v1 for users who need it). See [docs/architecture.md](./docs/architecture.md) for details.
 
 ---
 
@@ -195,21 +203,21 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 ## Project status
 
-**v0.1** — hackathon release. Six detectors, three agents, FedRAMP Moderate only, AWS + Terraform only. Usable for gap analysis and draft SSP generation; not yet a production workflow.
+**v0.1** — hackathon release. Six detectors, three agents, FedRAMP 20x Moderate only (KSI-native), AWS + Terraform only. Usable for KSI gap analysis and draft FRMR attestation generation; not yet a production workflow.
 
-**Stable surface:** primitive interface, detector contract, provenance model, OSCAL output formats. These are designed to not break.
+**Stable surface:** primitive interface, detector contract, provenance model, FRMR output shape. These are designed to not break.
 
-**Changing surface:** detector content (as we add more), agent system prompts (as we tune them), CLI ergonomics (as we hear from users).
+**Changing surface:** detector content (as we add more), agent system prompts (as we tune them), CLI ergonomics (as we hear from users), OSCAL output generators (arriving in v1).
 
 ---
 
 ## Contributing
 
-We want contributors. The detector library is designed to make the common contribution — "here's a new control I can detect" — a self-contained folder that doesn't touch the rest of the codebase.
+We want contributors. The detector library is designed to make the common contribution — "here's a new KSI indicator I can evidence from Terraform" — a self-contained folder that doesn't touch the rest of the codebase.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the five-minute path from `git clone` to running tests, and the hour path from idea to open PR.
 
-Good first issues are labeled `good first issue` on GitHub. The most valuable contributions right now are new detectors for controls on the roadmap.
+Good first issues are labeled `good first issue` on GitHub. The most valuable contributions right now are new detectors covering KSIs on the roadmap.
 
 ---
 
@@ -235,7 +243,7 @@ Threat model for Efterlev itself: [THREAT_MODEL.md](./THREAT_MODEL.md).
 
 Efterlev was bootstrapped in a 4-day hackathon using [Claude Code](https://claude.com/claude-code). The architecture commits to keeping Claude Code (and other MCP-capable agents) as first-class integration partners — that's what "agent-first" means here, structurally, not as marketing.
 
-Built on [compliance-trestle](https://github.com/IBM/compliance-trestle) for OSCAL processing, and on the OSCAL baselines published by [FedRAMP Automation](https://github.com/GSA/fedramp-automation) and [NIST](https://github.com/usnistgov/OSCAL). Those projects make this one possible.
+Built on [compliance-trestle](https://github.com/IBM/compliance-trestle) for OSCAL catalog loading, on the FedRAMP Machine-Readable (FRMR) content published at [FedRAMP/docs](https://github.com/FedRAMP/docs), and on the NIST SP 800-53 Rev 5 catalog published at [usnistgov/oscal-content](https://github.com/usnistgov/oscal-content). Those projects make this one possible.
 
 ---
 

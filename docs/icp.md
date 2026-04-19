@@ -37,11 +37,11 @@ They have:
 
 They need to produce:
 
-- A gap analysis against FedRAMP Moderate Rev 5 (~323 controls + enhancements)
-- An SSP that passes initial 3PAO review
+- A gap analysis against FedRAMP 20x Moderate, organized around the 60 Key Security Indicators (KSIs) — which is the surface a 20x pilot participant is actually evaluated against, backed by the underlying 800-53 Rev 5 controls that each KSI references
+- FRMR-compatible validation data for each KSI (attestations grounded in measurable evidence)
 - A POA&M for known gaps
-- Evidence packages for each implemented control
-- And — increasingly, given RFC-0024's September 2026 mandate — all of the above in machine-readable OSCAL format
+- Evidence packages for each KSI
+- **Optional, increasingly secondary:** an OSCAL-formatted SSP / Assessment Results for Rev5 transition submissions or for downstream OSCAL-Hub-style tooling. FedRAMP processed 100+ Rev5 authorizations in 2025 with no OSCAL submissions; a new-in-2026 authorization heading into 20x does not lead with OSCAL.
 
 ### Implications for what Efterlev accepts as input
 
@@ -63,16 +63,16 @@ The architectural commitment that makes this expansion cheap: the detector contr
 
 1. They hear about Efterlev from a blog post, a Hacker News thread, a recommendation in a DevSecOps Slack, or a FedRAMP consultant who tried it.
 2. They clone the demo or point Efterlev at their own repo. `pipx install efterlev` takes 90 seconds.
-3. `efterlev scan` produces findings within 30 seconds. The findings are concrete: "S3 bucket `production-data` lacks server_side_encryption_configuration at `main.tf:142`."
-4. `efterlev agent gap` classifies their posture across the six (v0) controls with confidence and evidence. They see, for the first time, a machine-generated sketch of where they stand.
-5. `efterlev agent document --control SC-28` produces an OSCAL-aligned draft SSP narrative for one control, citing their actual Terraform lines. They forward this to their FedRAMP consultant, who says "this is 70% of what I'd write myself."
-6. Within their first session, they have: a concrete gap list, a draft SSP section, a remediation diff for at least one finding, and a clear sense that *more detectors would produce more of the same*.
-7. Within week one, they have added Efterlev to their CI pipeline. PRs now carry a compliance delta. The tool is now part of their workflow, not an occasional scan.
+3. `efterlev scan` produces findings within 30 seconds. The findings are concrete: "S3 bucket `production-data` lacks server_side_encryption_configuration at `main.tf:142`, relevant to KSI-SVC-VRI (800-53: SC-28)."
+4. `efterlev agent gap` classifies their posture across the six (v0) KSIs with confidence and evidence, with the underlying 800-53 controls shown alongside. They see, for the first time, a machine-generated sketch of where they stand in 20x terms.
+5. `efterlev agent document --ksi KSI-SVC-SNT` produces an FRMR-compatible draft attestation for one KSI, citing their actual Terraform lines. They forward this to their FedRAMP consultant, who says "this is 70% of what I'd write myself for the 20x pilot package."
+6. Within their first session, they have: a concrete gap list, a draft FRMR attestation for a KSI, a remediation diff for at least one finding, and a clear sense that *more detectors would produce more of the same*.
+7. Within week one, they have added Efterlev to their CI pipeline. PRs now carry a KSI-status delta. The tool is now part of their workflow, not an occasional scan.
 
 ### What makes them keep using Efterlev after week one
 
-- Every new detector we ship extends their coverage without any work on their part. Breadth compounds.
-- The OSCAL output works with their 3PAO's tooling. They don't have to explain or translate.
+- Every new detector we ship extends their KSI coverage without any work on their part. Breadth compounds.
+- The FRMR output maps directly onto what FedRAMP 20x is asking for, and v1's OSCAL output covers Rev5 transition edge cases. They don't have to explain or translate their pipeline.
 - The provenance chain makes the tool defensible in 3PAO conversations: "here's where each claim in our draft came from."
 - CI integration catches regressions before they become audit findings.
 - The Remediation Agent produces diffs their team can review and apply, shrinking the time from finding to fix.
@@ -81,7 +81,7 @@ The architectural commitment that makes this expansion cheap: the detector contr
 
 - Force them into a SaaS dashboard. They live in the repo.
 - Require cloud API access. Many ICP A users don't want a tool with IAM read access to their production account; Terraform source is the right abstraction.
-- Overclaim. If Efterlev's output says "SC-28 is implemented" when we've only evidenced the infrastructure layer, their 3PAO will catch the overclaim and we will lose their trust permanently.
+- Overclaim. If Efterlev's output says "KSI-SVC-VRI is implemented" when we've only evidenced the infrastructure layer of the underlying 800-53 control, their 3PAO will catch the overclaim and we will lose their trust permanently.
 - Add features that serve compliance teams instead of engineers. ICP A *does not have* a dedicated compliance team; features designed for one are dead weight.
 
 ---

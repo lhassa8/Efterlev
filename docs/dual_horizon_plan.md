@@ -1,6 +1,6 @@
 # Efterlev: Dual-Horizon Build Plan
 
-**Project:** Efterlev — a repo-native, agent-first compliance scanner for FedRAMP and DoD Impact Levels; OSCAL as a first-class output format
+**Project:** Efterlev — a repo-native, agent-first compliance scanner for FedRAMP 20x and DoD Impact Levels; KSI-native internal model; FRMR-compatible JSON as primary output; OSCAL output generators as a v1 secondary format
 **Builder:** solo + Claude Code (Opus 4.7) for hackathon; growing contributor base thereafter
 **License:** Apache 2.0
 **Governance:** BDFL-style during v0–v1; explicit invitation to co-maintainers at 10 active contributors
@@ -22,21 +22,23 @@ These hold across both horizons. They are the load-bearing decisions.
 
 ### 1.1 The detection library is a first-class concept
 
-Not a folder of scanners inside `primitives/`. A self-contained, contribution-friendly library where each control detector is an independent artifact with a defined shape: rule logic, control mapping, evidence template, test fixtures. A contributor can add a new detector without touching the rest of the codebase.
+Not a folder of scanners inside `primitives/`. A self-contained, contribution-friendly library where each detector is an independent artifact with a defined shape: rule logic, KSI-and-control mapping, evidence template, test fixtures. A contributor can add a new detector without touching the rest of the codebase.
+
+Detectors are capability-shaped, not control-shaped. KSIs think in capabilities (e.g., "securing network traffic"), and capability-shaped detector IDs age better than control-numbered ones as FRMR's KSI ↔ 800-53 mapping evolves.
 
 ```
 detectors/
 ├── aws/
-│   ├── sc_28_s3_encryption/
+│   ├── encryption_s3_at_rest/
 │   │   ├── detector.py         # the rule logic
-│   │   ├── mapping.yaml        # control mapping(s), including enhancements
-│   │   ├── evidence.yaml       # evidence template (our internal schema, not OSCAL)
+│   │   ├── mapping.yaml        # KSI + 800-53 control mapping(s)
+│   │   ├── evidence.yaml       # evidence template (our internal schema)
 │   │   ├── fixtures/           # IaC samples that should match / should not
 │   │   └── README.md           # human-readable explanation
 │   └── ...
 ├── k8s/                        # v1 expansion
-├── github_actions/             # v1 expansion (for CI-based controls)
-└── universal/                  # controls that span sources
+├── github_actions/             # v1 expansion (for CI-based KSIs)
+└── universal/                  # KSIs that span sources
 ```
 
 This structure ships in the hackathon build with six detectors. In v1, it grows via community PRs. In v2, it becomes the moat.
@@ -46,30 +48,33 @@ This structure ships in the hackathon build with six detectors. In v1, it grows 
 Three distinct concepts with different contracts:
 
 - **Detectors:** Rule-like artifacts that read source material and emit evidence candidates. Narrow, deterministic, independently testable. The community contributes these.
-- **Primitives:** Typed Python functions exposed via MCP that represent agent-legible capabilities — scan an artifact using the detector library, map a control, resolve a profile, generate a narrative, validate OSCAL. ~15–25 in total. Stable surface area.
+- **Primitives:** Typed Python functions exposed via MCP that represent agent-legible capabilities — scan an artifact using the detector library, map a KSI to its underlying controls, resolve a baseline, generate a draft attestation, validate FRMR (and in v1, OSCAL). ~15–25 in total. Stable surface area.
 - **Agents:** Reasoning loops that compose primitives to accomplish a goal. Small number — Gap, Documentation, Remediation for v0; Drift, Auditor, Mapper for v1.
 
 Detectors feed primitives. Primitives feed agents. Agents produce artifacts. Everything is provenance-tracked.
 
-### 1.3 OSCAL as a first-class output format, not the core internal model
+### 1.3 FRMR as primary output; OSCAL as secondary v1 output. Internal model is KSI-shaped.
 
-The core internal data model is our own — a set of domain-shaped Pydantic types for Controls, Evidence, Findings, Claims, Mappings, and Provenance that are designed around the tool's actual job. OSCAL is not the internal representation. This is a deliberate reversal of the earlier position.
+The core internal data model is our own — a set of domain-shaped Pydantic types for Indicators (KSIs), Themes, Baselines, Controls (800-53), Evidence, Findings, Claims, Mappings, and Provenance that are designed around the tool's actual job. Neither FRMR nor OSCAL is the internal representation; both are produced at the output boundary.
+
+The primary output at v0 is **FRMR-compatible JSON** — the machine-readable format FedRAMP 20x is standardizing on, vendored from `FedRAMP/docs`. OSCAL generation is a v1 secondary output format for users transitioning Rev5 submissions and for downstream consumers like RegScale's OSCAL Hub.
 
 The reasoning:
 
-- The compliance knowledge that matters — which controls mean what, which IaC patterns evidence which controls, how frameworks map — lives in our detector library and our mapping library. OSCAL is a way of *expressing* that knowledge to other systems; it is not where the knowledge lives.
-- OSCAL's SSP model is complex and opinionated in ways that don't help the core value. Forcing the internal model through OSCAL types adds engineering overhead that doesn't improve detection quality, narrative quality, or agent reasoning.
-- OSCAL adoption at 3PAOs and agencies today is thinner than the pitch implies. Most still consume FedRAMP Word/Excel templates. The machine-readable future is real but gradual (3–5 year transition). Building OSCAL-native *internally* today bets too hard on a pace that isn't here yet.
-- Users don't ask for OSCAL. They ask for findings, drafts, and reports. OSCAL matters to the downstream compliance team and to government systems, and it matters only at the output boundary.
+- **Architectural alignment.** KSIs are explicitly outcome-based, measurable indicators. Our scanner model — "evidence that a capability is present, not narrative asserting that a control is implemented" — maps to KSIs natively. OSCAL's SSP narrative model was a less-good fit for what we actually produce.
+- **Where FedRAMP is going.** In 2025, FedRAMP processed 100+ Rev5 authorizations with no OSCAL-structured submissions. The 20x Phase 1 Low pilot authorized 13 providers with KSIs and FRMR, not OSCAL. Our ICP is a first-FedRAMP SaaS in 2026 targeting 20x Moderate; that user is better served by KSI-native tooling than by OSCAL-native tooling.
+- **Engineering simplicity.** FRMR is a single JSON file with a published JSON Schema — substantially simpler than OSCAL's nested profile/catalog/SSP model hierarchy. Less trestle wrestling; more detector library work.
+- **Honest claims.** "We evidence KSI-SVC-SNT via Terraform detection" is a more honest claim than "we evidence SC-8 (whose full implementation includes procedural aspects we can't see from code)." KSIs are designed around outcomes we can genuinely detect.
+- **Market positioning.** No OSS tool is KSI-native today. Comp AI is not. RegScale's depth is in OSCAL; they have architectural debt to work through on FRMR. Being early here is a real advantage.
 
 What this looks like in practice:
 
-- **Internal model:** Owned Pydantic types, simple, fast to iterate on. Agents reason over these types, not over OSCAL types.
-- **Input side:** `compliance-trestle` used to load OSCAL catalogs and profiles published by NIST and FedRAMP, immediately translated into our internal model. We don't keep OSCAL objects in memory as our working representation.
-- **Output side:** OSCAL generators are dedicated primitives that serialize our internal model to OSCAL artifacts (Assessment Results, partial SSP, POA&M). Alongside other generators as we add them — FedRAMP Word template, HTML report, markdown summary, GRC-tool JSON.
-- **Validation:** OSCAL output is validated against the schema before return. An invalid OSCAL artifact is never returned.
+- **Internal model:** Owned Pydantic types shaped around Indicators (KSIs) and Themes, with 800-53 Controls as the underlying layer that KSIs reference. Agents reason over these types, not over FRMR or OSCAL types.
+- **Input side:** FRMR loaded with Pydantic directly from `catalogs/frmr/FRMR.documentation.json`; NIST 800-53 Rev 5 catalog loaded via `compliance-trestle` from `catalogs/nist/`. Both translated into the internal model at startup.
+- **Output side (v0):** FRMR-compatible attestation JSON generators in `primitives/generate/`, alongside HTML and markdown. Validation against `catalogs/frmr/FedRAMP.schema.json` inside the generator.
+- **Output side (v1):** OSCAL generators (Assessment Results, partial SSP, POA&M) added for Rev5 transition users and OSCAL-Hub-style consumers. Validation against NIST OSCAL schemas inside the generator.
 
-OSCAL stays a first-class *commitment* — we produce standards-compliant output, we ship with OSCAL generators from day one, and the tool is legitimately useful to anyone consuming OSCAL. It just isn't the language the rest of the system speaks to itself.
+Neither format is the internal working representation. The internal model is stable across format additions; adding a new output format is adding a generator primitive, not a rearchitecture.
 
 ### 1.4 Provenance as a queryable graph, not a log
 
@@ -77,7 +82,7 @@ Every claim (evidence, finding, narrative, mapping, remediation) is a node in a 
 
 This design serves both horizons:
 - **v0:** Enables the "walk the chain from this SSP sentence back to the Terraform line" demo moment.
-- **v1:** Enables "show me every control whose evidence has changed in the last 30 days" — the continuous monitoring story.
+- **v1:** Enables "show me every KSI whose evidence has changed in the last 30 days" — the continuous monitoring story.
 
 Storage: SQLite for the graph structure and metadata, content-addressed blob store on disk for claim content. Simple, portable, air-gap-friendly.
 
@@ -88,7 +93,7 @@ Two classes of information, treated differently throughout the system:
 - **Evidence** is deterministic, scanner-derived, and high-trust. Produced by detectors. Every piece of evidence carries a raw source reference (file + line + hash).
 - **Claims** are reasoned output — LLM-generated narratives, mappings, rankings, remediation proposals. Every claim carries a confidence indicator and an explicit "requires human review" flag.
 
-The distinction is visible in the data model, the UI (when it exists), the OSCAL output, and the provenance store. This is the defensible answer to "how does a 3PAO trust this?" The answer is: they don't trust the claims, they trust the evidence — and the claims are drafts that accelerate the human workflow.
+The distinction is visible in the data model, the UI (when it exists), the FRMR output (and, in v1, the OSCAL output), and the provenance store. This is the defensible answer to "how does a 3PAO trust this?" The answer is: they don't trust the claims, they trust the evidence — and the claims are drafts that accelerate the human workflow.
 
 ### 1.6 Pluggable LLM backend
 
@@ -121,7 +126,7 @@ A compliance tool that reads IaC encounters secrets, private topologies, sensiti
 Enforced in the code and the docs:
 
 - The tool never claims to produce an authorization, a pass, or a guarantee of compliance. It produces drafts and findings.
-- Every LLM-generated narrative carries an explicit "DRAFT — requires human review" marker in OSCAL metadata and in rendered output.
+- Every LLM-generated narrative carries an explicit "DRAFT — requires human review" marker in FRMR metadata (and, in v1, OSCAL metadata) and in rendered output.
 - Confidence levels on generated mappings and narratives are visible, not buried.
 - `LIMITATIONS.md` is a first-class document and is updated alongside feature work, not at release time.
 
@@ -133,7 +138,7 @@ The market moved fast during planning. As of April 2026, the relevant landscape:
 
 **Closest overlapping player — Comp AI (trycompai).** Open-source, AI-agent-driven, covers SOC 2 + ISO 27001 + HIPAA + GDPR + FedRAMP across one SaaS-first platform. 600+ customers. Their model: continuous evidence collection from 500+ SaaS integrations, AI-generated policies, OSS device agent, cloud monitoring. Their FedRAMP coverage score in their own demo is ~41% — they cover it as one framework among many, not as a focus. They do not scan Terraform source code. They do not run as a CLI in the developer's repo. They do not produce code-level remediation diffs.
 
-**OSS OSCAL platform tier — RegScale OSCAL Hub.** Donated to the OSCAL Foundation in late 2025. Positioned as "the industry's first comprehensive, open-source platform purpose-built for working with OSCAL documents." Document-processing and review-workflow tooling for Authorizing Officials, the FedRAMP PMO, and ISSOs. This tier is taken. We are not competing with it — we are a potential *producer* of OSCAL that Hub consumers can review.
+**OSS OSCAL platform tier — RegScale OSCAL Hub.** Donated to the OSCAL Foundation in late 2025. Positioned as "the industry's first comprehensive, open-source platform purpose-built for working with OSCAL documents." Document-processing and review-workflow tooling for Authorizing Officials, the FedRAMP PMO, and ISSOs. This tier is taken. We are not competing with it — we are a potential *producer* of OSCAL (v1 output) that Hub consumers can review. Their architectural center of gravity is deep-OSCAL; they have real work to do to adopt FRMR and the KSI model, while we are KSI-native from day one.
 
 **Adjacent OSS, dormant or narrow:** StrongDM Comply (SOC 2-focused policy site generator, largely dormant), 18F compliance-toolkit (OpenControl Masonry era, inactive), GoComply/fedramp (OSCAL-to-Word converter, narrow scope), mrice/complykit (2013-era license-check Maven plugin, dormant).
 
@@ -141,7 +146,7 @@ The market moved fast during planning. As of April 2026, the relevant landscape:
 
 - We are **not** "the open-source AI compliance platform." That space has a player with real traction.
 - We are **not** "the OSS OSCAL platform." That position was taken in late 2025.
-- We **are** the **repo-native, agent-first, FedRAMP-and-DoD-IL-focused scanner** that lives in the developer's codebase and CI pipeline, scans IaC and application source at PR-time, produces code-level findings and remediation diffs, and emits standards-compliant OSCAL for downstream consumption by tools like OSCAL Hub.
+- We **are** the **repo-native, agent-first, KSI-native scanner for FedRAMP 20x and DoD Impact Levels** that lives in the developer's codebase and CI pipeline, scans IaC and application source at PR-time, produces code-level findings and remediation diffs, and emits FRMR-compatible validation data for direct use with FedRAMP 20x and OSCAL (v1) for users transitioning Rev5 submissions.
 
 The distinctions that matter:
 
@@ -153,14 +158,15 @@ The distinctions that matter:
 
 What we retire from the pitch:
 - Any framing that positions incumbents as "dashboards with workflow automation" without acknowledging Comp AI. That was the 2024 landscape.
-- "OSS OSCAL-native platform" language. Use "emits standards-compliant OSCAL output" instead.
+- "OSCAL-native" as primary framing. Efterlev is KSI-native; OSCAL is a v1 secondary output for users who need it.
 - Market-size claims that conflate gov-software-TAM with compliance-tooling-TAM.
 
 What we keep:
 - The thesis that compliance is an agentic workload.
-- The regulatory tailwinds (FedRAMP 20x, OMB M-24-15, RFC-0024's September 2026 OSCAL deadline, CMMC 2.0).
+- The regulatory tailwinds (FedRAMP 20x as active trajectory, OMB M-24-15, CMMC 2.0). RFC-0024's September 2026 OSCAL compliance floor is real for Rev5 transition submissions and motivates the v1 OSCAL generators; it is not the organizing principle of the project.
 - The open-source commitment.
 - The dev-tool-shaped positioning that nobody else is occupying.
+- The KSI-native positioning that nobody else is occupying *yet*.
 
 This section ships in the repo as `COMPETITIVE_LANDSCAPE.md` — first-class, not hidden. Judges and contributors both respect honest positioning.
 
@@ -168,25 +174,27 @@ This section ships in the repo as `COMPETITIVE_LANDSCAPE.md` — first-class, no
 
 ## 2. Hackathon MVP (Layer 1) — the 4-day build
 
-The discipline: **one vertical slice first, then replicate.** Day 1 produces a working end-to-end path for one control. Days 2–4 replicate for five more, add agents, add polish.
+The discipline: **one vertical slice first, then replicate.** Day 1 produces a working end-to-end path for one detector. Days 2–4 replicate for five more, add agents, add polish.
 
 ### 2.1 Scope
 
-**Six controls, chosen for clean IaC-detectability:**
+**Six detection areas, chosen for clean IaC-detectability.** KSIs are from FRMR 0.9.43-beta (`catalogs/frmr/`):
 
-| Control | Name | Detection signal |
-|---|---|---|
-| SC-28 | Protection of Information at Rest | S3/RDS/EBS encryption settings |
-| SC-8  | Transmission Confidentiality      | TLS configuration, ALB listener protocol |
-| SC-13 | Cryptographic Protection          | Algorithms in use; FIPS mode |
-| IA-2  | Identification & Authentication   | MFA enforcement on IAM |
-| AU-2 + AU-12 | Event Logging & Audit Generation | CloudTrail scope |
-| CP-9  | System Backup                     | RDS automated backups; S3 versioning |
+| Detection area | KSI | 800-53 | Detection signal |
+|---|---|---|---|
+| Encryption at rest | `[TBD]` — closest KSI-SVC-VRI; see note | SC-28, SC-28(1) | S3/RDS/EBS encryption settings |
+| Transmission confidentiality | KSI-SVC-SNT (Securing Network Traffic) | SC-8 | TLS configuration, ALB listener protocol |
+| Cryptographic protection | KSI-SVC-VRI (Validating Resource Integrity) | SC-13 | Algorithms in use; FIPS mode |
+| MFA enforcement | KSI-IAM-MFA (Enforcing Phishing-Resistant MFA) | IA-2 | MFA condition keys in IAM policies |
+| Event logging & audit generation | KSI-MLA-LET, KSI-MLA-OSM | AU-2, AU-12 | CloudTrail scope |
+| System backup | KSI-RPL-ABO (Aligning Backups with Objectives) | CP-9 | RDS automated backups; S3 versioning |
+
+> **Note on encryption at rest:** FRMR 0.9.43-beta does not list SC-28 in any KSI's `controls` array. KSI-SVC-VRI (integrity via cryptography, nominally SC-13) is the nearest thematic fit inside the Service Configuration theme. Day 1 resolves this: either accept KSI-SVC-VRI with an honest docstring caveat, reframe the detector around integrity, or open an issue on `FedRAMP/docs` for a missing KSI. Do not invent a KSI.
 
 **Three agents, each with a distinct reasoning task:**
 
-- **Gap Agent:** Classifies each control as `implemented` / `partially implemented` / `not implemented` / `compensating control` / `not applicable`, given evidence. Reasoning task: distinguishing partial from full implementation from compensating controls requires nuance a deterministic function can't handle.
-- **Documentation Agent:** Drafts SSP narrative for each implemented or partially-implemented control, with every sentence carrying an evidence-ID citation. Output is OSCAL-aligned implemented-requirements.
+- **Gap Agent:** Classifies each KSI as `implemented` / `partially implemented` / `not implemented` / `compensating` / `not applicable`, given evidence. Reasoning task: distinguishing partial from full implementation from compensating controls requires nuance a deterministic function can't handle.
+- **Documentation Agent:** Drafts FRMR-compatible attestation data for each implemented or partially-implemented KSI, with every assertion carrying an evidence-ID citation. Output is KSI-structured JSON validated against `FedRAMP.schema.json`.
 - **Remediation Agent:** Given a single finding (e.g., unencrypted S3 bucket), proposes a concrete code change as a diff. The Claude Code hero moment.
 
 **One cloud, one IaC tool:** AWS + Terraform. Nothing else. Azure, GCP, Pulumi, CloudFormation, Kubernetes manifests all deferred.
@@ -206,35 +214,37 @@ The deliberate gaps are what the Gap Agent flags and the Remediation Agent fixes
 **Day 0 (pre-hackathon):**
 - Demo repo built and pushed
 - `CLAUDE.md`, `DECISIONS.md`, `LIMITATIONS.md`, `THREAT_MODEL.md`, `CONTRIBUTING.md` drafted
-- FedRAMP Moderate OSCAL baseline downloaded to `catalogs/`
+- FRMR (`FRMR.documentation.json`, `FedRAMP.schema.json`) and NIST 800-53 Rev 5 catalog vendored into `catalogs/`
 - License committed, GitHub org named, repo skeleton pushed
 - MkDocs Material set up for docs (empty shell is fine)
 
-**Day 1 — one vertical slice, SC-28 only, on our own model:**
-- Internal Pydantic models: Control, Evidence, Finding, Claim, Mapping, ProvenanceRecord. Clean, small, owned.
-- Detector library structure in place; one detector (`detectors/aws/sc_28_s3_encryption/`) complete with fixtures
+**Day 1 — one vertical slice, `aws.encryption_s3_at_rest` only, on our own model:**
+- Internal Pydantic models: Indicator, Theme, Baseline, Control, Evidence, Finding, Claim, Mapping, ProvenanceRecord. Clean, small, owned.
+- Detector library structure in place; one detector (`detectors/aws/encryption_s3_at_rest/`) complete with fixtures; its KSI mapping resolved (pick KSI-SVC-VRI with caveat, or raise the `[TBD]` via an issue/DECISIONS entry)
 - One scan primitive (`scan_terraform`) that loads detectors and runs them
 - Provenance store writing and reading claims against the internal model
 - Content-addressed blob store working
 - CLI: `efterlev init` and `efterlev scan`
-- **End-of-day demo:** `efterlev scan ./demo/govnotes` produces findings for SC-28 with provenance hashes walkable back to source. One control, working end-to-end, on the internal model.
+- **End-of-day demo:** `efterlev scan ./demo/govnotes` produces findings for the one detector with provenance hashes walkable back to source. One detector, working end-to-end, on the internal model.
 
-**Day 2 — replicate detectors; OSCAL loading; MCP; Gap Agent:**
-- Five more detectors (SC-8, SC-13, IA-2, AU-2+AU-12, CP-9) using the pattern from day 1
-- OSCAL loader: trestle-based, translates FedRAMP Moderate OSCAL baseline into our internal Control + Profile model. One-way for now; we load OSCAL, we don't round-trip.
+**Day 2 — replicate detectors; FRMR + 800-53 loading; MCP; Gap Agent:**
+- Five more detectors using the pattern from day 1
+- FRMR loader: Pydantic-based, reads `catalogs/frmr/FRMR.documentation.json` into our internal Indicator/Theme/Baseline model, validating against `FedRAMP.schema.json`
+- 800-53 catalog loader: trestle-based, reads `catalogs/nist/NIST_SP-800-53_rev5_catalog.json` into our internal Control model. KSIs reference controls by ID; the two loaders produce a linked graph. One-way for now.
 - MCP server exposing the primitive set
 - External Claude Code connection tested
-- Gap Agent built, invokable via CLI, producing internal GapReport objects
+- Gap Agent built, invokable via CLI, producing internal GapReport objects organized by KSI
 - HTML report generator for the gap report (Jinja template)
-- **End-of-day demo:** `efterlev agent gap` produces a readable report across all six controls, with provenance. FedRAMP Moderate baseline loaded from official OSCAL.
+- **End-of-day demo:** `efterlev agent gap` produces a readable report across all six detection areas organized by KSI, with underlying 800-53 shown alongside, with provenance. FRMR baseline and 800-53 catalog both loaded.
 
-**Day 3 — Documentation Agent; Remediation Agent; OSCAL output generators:**
-- Documentation Agent producing internal SSPDraft objects with evidence citations in every sentence
-- OSCAL SSP generator: serializes internal SSPDraft to a partial OSCAL SSP (implemented-requirements section). If trestle's SSP generation is clean, use it; if not, hand-roll the serialization. Decision logged in `DECISIONS.md`.
-- `validate_oscal` primitive, passing validation on generated output
-- HTML SSP generator alongside OSCAL — demo-friendly, human-readable
-- Remediation Agent working for SC-28 specifically — produces a diff fixing the unencrypted bucket
-- **End-of-day demo:** full end-to-end flow. SSP draft generated in both OSCAL and HTML, with citations. Remediation diff shown.
+**Day 3 — Documentation Agent; Remediation Agent; FRMR output generator:**
+- Documentation Agent producing internal `AttestationDraft` objects with evidence citations on every assertion
+- FRMR output generator: serializes `AttestationDraft` to FRMR-compatible JSON validated against `catalogs/frmr/FedRAMP.schema.json`. Validation inside the generator; no invalid FRMR ever leaves the function.
+- `validate_frmr` primitive
+- HTML attestation renderer alongside FRMR JSON — demo-friendly, human-readable
+- Remediation Agent working for one KSI specifically — produces a diff fixing the target gap
+- **End-of-day demo:** full end-to-end flow. Attestation draft generated in both FRMR JSON and HTML, with citations. Remediation diff shown.
+- **Note:** OSCAL output generation is explicitly v1, not Day 3. The hackathon demo is KSI-native; OSCAL generators are a post-hackathon deliverable for Rev5 transition users.
 
 **Day 4 — polish, docs, demo recording:**
 - README written for new users (not investors)
@@ -245,17 +255,20 @@ The deliberate gaps are what the Gap Agent flags and the Remediation Agent fixes
 
 ### 2.4 Risks and mitigations
 
-**Risk:** Trestle's SSP generation produces artifacts that fail FedRAMP's stricter validation.
-**Mitigation:** Fall back to hand-rolled Pydantic for SSP serialization. Pre-decide at end of day 2 so day 3 isn't lost debugging.
+**Risk:** FRMR validation surfaces unexpected constraints once we start generating output.
+**Mitigation:** Vendored `FedRAMP.schema.json` is exercised against `FRMR.documentation.json` as part of the Day 2 loader smoke. If the schema is strict about things we haven't accounted for, we learn on Day 2, not Day 3.
 
 **Risk:** MCP stdio transport flakes during live demo.
 **Mitigation:** Pre-record the external-Claude-Code-connects-to-Efterlev moment as a fallback clip. Use it if live fails.
 
 **Risk:** Remediation Agent produces plausible-looking but broken diffs.
-**Mitigation:** Scope the demo to SC-28 specifically. Test the remediation path on day 3. If it's flaky, cut from demo video and keep in the codebase as a "coming soon" feature.
+**Mitigation:** Scope the demo to one target KSI/detector. Test the remediation path on day 3. If it's flaky, cut from demo video and keep in the codebase as a "coming soon" feature.
 
-**Risk:** Scope creep during build — temptation to add the seventh control.
-**Mitigation:** CLAUDE.md states the six-control limit explicitly. New controls require a scope-change decision logged in `DECISIONS.md`.
+**Risk:** Scope creep during build — temptation to add the seventh detector, or to build an OSCAL generator "because it's close."
+**Mitigation:** CLAUDE.md states both limits explicitly: six detection areas at v0; OSCAL generators are v1. New items require a scope-change decision logged in `DECISIONS.md`.
+
+**Risk:** The `[TBD]` KSI mapping for encryption-at-rest produces a demo moment where we can't cleanly say which KSI is being evidenced.
+**Mitigation:** Resolve on Day 1 via DECISIONS.md entry — pick KSI-SVC-VRI with honest docstring caveat, or reframe the detector around integrity. Either path is demoable; an unresolved `[TBD]` in the gap report is not.
 
 ### 2.5 Demo video structure (5–7 minutes)
 
@@ -263,8 +276,8 @@ The deliberate gaps are what the Gap Agent flags and the Remediation Agent fixes
 2. **0:45–1:45 — The meta-loop.** "I built this with Claude Code. It uses Claude for reasoning. And external Claude Code sessions can drive it via MCP. Three layers of the same capability." Show a brief slide + opening clip.
 3. **1:45–2:45 — Live run.** `efterlev scan` streaming findings. Click into one, walk the provenance chain to the Terraform line.
 4. **2:45–3:45 — Gap report.** `efterlev agent gap`. HTML report. Highlight the evidence-vs-claims distinction.
-5. **3:45–4:45 — SSP draft.** `efterlev agent document`. Show narrative with citations. Note the "DRAFT — requires human review" marker. Brief glimpse of the OSCAL output alongside.
-6. **4:45–5:30 — Remediation.** `efterlev agent remediate --control SC-28`. Show the PR diff.
+5. **3:45–4:45 — FRMR attestation draft.** `efterlev agent document`. Show the HTML rendering of the KSI attestation with citations. Note the "DRAFT — requires human review" marker. Brief glimpse of the validated FRMR JSON alongside.
+6. **4:45–5:30 — Remediation.** `efterlev agent remediate --ksi <target>`. Show the PR diff.
 7. **5:30–6:15 — External Claude Code.** Separate window, Claude Code connects to Efterlev's MCP server, calls a primitive. *The architectural proof.*
 8. **6:15–7:00 — The arc.** "This is week one. Here's where it goes." Brief post-hackathon roadmap slide. Thank you.
 
@@ -276,50 +289,51 @@ This is where Efterlev stops being a hackathon demo and becomes a useful tool th
 
 ### 3.1 The coverage roadmap
 
-Expansion happens along two axes in parallel: **input sources** (what Efterlev can scan) and **control coverage** (what it can find). Source-type expansion matters more for adoption — it's what moves an ICP A user from "this isn't for me yet" to "this is for me now." Control-count expansion matters more for depth and trust. Both grow in parallel; neither takes a back seat.
+Expansion happens along three axes in parallel: **input sources** (what Efterlev can scan), **KSI coverage** (what it can find at the user-facing layer), and **output formats** (how it speaks to downstream tooling). Source-type expansion matters more for adoption; KSI/control depth matters more for trust; the OSCAL output generator is the major v1 format expansion for users carrying Rev5 transition submissions.
 
 Public milestone targets, tracked in GitHub:
 
 - **Month 1:**
   - Full audit of v0 code; refactor hackathon shortcuts
-  - Control coverage stays at 6, but quality per detector improves
-  - OSCAL SSP output passes FedRAMP validator
-  - **Source expansion:** Terraform Plan JSON support (scans resolved plans including computed values, higher-fidelity than raw HCL); OpenTofu declared first-class alongside Terraform
+  - KSI/control coverage stays at 6 detectors, but quality per detector improves
+  - **FRMR output** passes FedRAMP schema validation end-to-end (continuation of Day 3 work)
+  - **OSCAL output generators land** (Assessment Results, partial SSP, POA&M). Internal `AttestationDraft` + Evidence + Claim objects serialize to OSCAL alongside FRMR. Validates against NIST OSCAL schemas before return. This is the v1 priority for users transitioning Rev5 submissions.
+  - **Source expansion:** Terraform Plan JSON support (scans resolved plans including computed values); OpenTofu declared first-class alongside Terraform
 - **Month 2:**
-  - **+15 detectors** for Terraform/OpenTofu (total 21): AC-3, AC-6, CM-2, CM-6, SI-2, SI-4, SC-7, IA-5, plus additional technical controls. "Proves / does not prove" documentation for each.
+  - **+15 detectors** for Terraform/OpenTofu (total 21), prioritized by KSI coverage: additional indicators across the IAM, CMT, MLA, and SVC themes. "Proves / does not prove" documentation for each.
   - **Source expansion:** CloudFormation and AWS CDK support (CDK compiles to CloudFormation; one parser covers both). First round of detectors ported to the new source type.
   - AWS Bedrock as a second LLM backend for FedRAMP-authorized deployments (GovCloud)
 - **Month 3:**
   - **+15 detectors** (total 36)
-  - **Source expansion:** Kubernetes manifests + Helm charts. New control family (network policies, pod security standards, RBAC — high value, different from cloud-resource controls).
+  - **Source expansion:** Kubernetes manifests + Helm charts. New KSI coverage (network policies, pod security standards, RBAC under the CNA and IAM themes).
   - Community contribution goal: first external detector PR merged
   - Tutorial on "write your own detector" published
 - **Month 4:**
   - CI integration as a first-class mode. GitHub Action published. Findings-as-PR-comments working.
   - **Source expansion:** Pulumi (code-first IaC; trickier parsing, lower priority than Terraform/CloudFormation/K8s but real user demand)
 - **Month 5:**
-  - CMMC 2.0 overlay. Same 800-171 base as FedRAMP; CMMC-specific profile loaded and detections mapped. Second framework shipped.
-  - Control coverage targeting ~60% of FedRAMP Moderate across supported source types
+  - CMMC 2.0 overlay. Same 800-171 base as FedRAMP; CMMC-specific baseline loaded and detections mapped. Second framework shipped.
+  - KSI coverage targeting ~60% of FRMR-Moderate across supported source types
 - **Month 6:**
-  - Drift Agent: watches a repo over time, flags when a change breaks a previously-attested control. Continuous monitoring delivered in a developer-facing shape.
-  - Control coverage targeting 80% of FedRAMP Moderate
+  - Drift Agent: watches a repo over time, flags when a change breaks a previously-attested KSI. Continuous monitoring delivered in a developer-facing shape.
+  - KSI coverage targeting 80% of FRMR-Moderate
 
 **v1.5 and beyond:** Runtime cloud API scanning (different threat model, needs its own design pass); ICP B becomes primary (defense contractors on CMMC 2.0 / DoD IL) with CUI handling and air-gap mode.
 
 ### 3.2 v1 agent roster
 
-- **Drift Agent:** Monitors the provenance graph over time. Flags when evidence for a previously-implemented control has changed or disappeared. Emits a POA&M candidate.
+- **Drift Agent:** Monitors the provenance graph over time. Flags when evidence for a previously-implemented KSI has changed or disappeared. Emits a POA&M candidate.
 - **Auditor Agent (adversarial):** Red-teams the system's own conclusions. Given a Gap Agent output, tries to find the holes — evidence that shouldn't count, narratives that overreach, mappings that are stretches. Output is a critique report.
-- **Mapping Agent:** Given two profiles (e.g., FedRAMP Moderate and CMMC Level 2), produces a mapping with confidence levels. Uses the 800-53 / 800-171 control graph as ground truth. Human-reviewable; a mapping accepted by a human becomes part of the shared knowledge base.
+- **Mapping Agent:** Given two baselines (e.g., FRMR Moderate and CMMC Level 2), produces a mapping with confidence levels. Uses the KSI ↔ 800-53 ↔ 800-171 graph as ground truth. Human-reviewable; a mapping accepted by a human becomes part of the shared knowledge base.
 
 ### 3.3 The knowledge base as accumulating moat
 
 Every component contributes to a growing shared asset:
 
-- **Detection library:** Community-contributed control detectors, each with fixtures and tests.
-- **Mapping library:** Human-reviewed control mappings across frameworks.
-- **Narrative library:** De-identified, reviewed SSP narrative templates contributed by users who want to give back.
-- **Pattern library:** IaC anti-patterns and their compliance implications.
+- **Detection library:** Community-contributed KSI-evidencing detectors, each with fixtures and tests.
+- **Mapping library:** Human-reviewed KSI ↔ control mappings across frameworks, capturing the `[TBD]`s and the evolving relationship as FRMR matures.
+- **Attestation library:** De-identified, reviewed FRMR attestation templates contributed by users who want to give back.
+- **Pattern library:** IaC anti-patterns and their KSI implications.
 
 These live in the repo (or a companion repo) under a permissive license. Over 12–18 months, this asset is worth more than the code.
 
@@ -352,8 +366,8 @@ In place by month 2:
 By month 3:
 
 - Quickstart: install to first finding in 5 minutes
-- Conceptual guide: "OSCAL for engineers" — explains the data model to non-compliance folks
-- Tutorial: "Add your first control detector"
+- Conceptual guide: "KSIs for engineers" — explains the FedRAMP 20x model to non-compliance folks; pair with "OSCAL for engineers" for users who also need the legacy model
+- Tutorial: "Add your first KSI detector"
 - Tutorial: "Integrate Efterlev into your CI pipeline"
 - Tutorial: "Write a custom agent on top of Efterlev primitives"
 - API reference: auto-generated from primitive decorators
@@ -372,10 +386,12 @@ By month 3:
 
 If traction materializes — meaningful external contributor base, production users at gov-contracting companies, citations in FedRAMP 20x working group discussions — the long-term positioning is:
 
-- **The open reference implementation for agent-assisted compliance work.** Not the only tool; the one the community trusts because its source is readable, its outputs are auditable, and it produces standards-compliant OSCAL alongside the formats the rest of the compliance world actually uses.
-- **A standards participant.** Contribute OSCAL extensions upstream (e.g., for confidence levels on generated content). Participate in FedRAMP 20x working groups.
+- **The open reference implementation for KSI-native, agent-assisted compliance work.** Not the only tool; the one the community trusts because its source is readable, its outputs are auditable, and it produces FRMR alongside OSCAL alongside the formats the rest of the compliance world actually uses.
+- **A standards participant.** Contribute to FRMR extensions upstream (e.g., for confidence levels on generated content) via `FedRAMP/docs`. Participate in FedRAMP 20x working groups. Contribute OSCAL extensions where the v1 generators surface real gaps.
 - **An expansion surface for adjacent frameworks.** HIPAA, PCI-DSS, ISO 27001, SOC 2. Each is an overlay on the same base architecture.
 - **A possible foundation home.** By month 18, donating the project to a neutral foundation (OpenSSF, Linux Foundation, CNCF) is worth considering if contributor diversity warrants it.
+
+The positioning bet is explicit: Efterlev aligns with FedRAMP 20x (KSI-native) as the current trajectory, rather than trying to be the best tool for legacy Rev5 (OSCAL-native). The v1 OSCAL generators serve users bridging the transition, but the organizing principle of the project is the direction FedRAMP is actually heading.
 
 This layer is not planned against. It's directional. Decisions in Layers 1 and 2 keep it possible; they don't commit to it.
 
@@ -385,7 +401,7 @@ This layer is not planned against. It's directional. Decisions in Layers 1 and 2
 
 **Hackathon (Layer 1):** A compelling 5–7 minute demo that proves the architecture. Judges remembering Efterlev the next day. A repo that looks credible to a skimmer.
 
-**Post-hackathon (Layer 2):** First 100 GitHub stars. First external contributor PR merged. First production user citing Efterlev in a FedRAMP Moderate submission. Detection library at 80% of FedRAMP Moderate coverage. CI integration in the top 3 downloads.
+**Post-hackathon (Layer 2):** First 100 GitHub stars. First external contributor PR merged. First production user citing Efterlev in a FedRAMP 20x Moderate authorization submission. Detection library covering 80% of FRMR-Moderate KSIs. OSCAL generators shipped and validated. CI integration in the top 3 downloads.
 
 **Long bet (Layer 3):** Contributor base >25 active. Used by at least three gov-contracting companies publicly. FedRAMP PMO or a 3PAO organization engaging with the tool. Cited in a government working group document.
 
@@ -397,7 +413,7 @@ These survive scope pressure at every horizon:
 
 1. **Evidence before claims.** Deterministic scanner output is primary; LLM reasoning is secondary and flagged.
 2. **Provenance always.** Nothing generated without a traceable chain to source.
-3. **OSCAL as first-class output.** Internal model is our own; OSCAL is generated at the boundary for systems that consume it.
+3. **FRMR as primary output; OSCAL as secondary v1 output.** Internal model is KSI-shaped and our own; FRMR is generated at the boundary from day one, OSCAL in v1 for systems that consume it.
 4. **Drafts, not authorizations.** The tool never claims to produce compliance.
 5. **Local-first.** No telemetry, no phone-home, air-gap-viable.
 6. **Extensible over monolithic.** The detector library grows via PRs; the primitive set stays small and stable.
@@ -413,8 +429,9 @@ Before day 1 of the hackathon:
 - [ ] Verify `efterlev` / `efterlev` availability on GitHub, PyPI, and npm, then create the GitHub org
 - [ ] Push the repo skeleton per the directory structure in §1.1 and §2.3
 - [ ] Build `demo/govnotes`
-- [ ] Draft `CLAUDE.md` (done — needs update for name + OSCAL reframing + competitive landscape), `DECISIONS.md`, `LIMITATIONS.md`, `THREAT_MODEL.md`, `CONTRIBUTING.md`, `COMPETITIVE_LANDSCAPE.md`
-- [ ] Download FedRAMP Moderate OSCAL baseline
+- [ ] Draft `CLAUDE.md`, `DECISIONS.md`, `LIMITATIONS.md`, `THREAT_MODEL.md`, `CONTRIBUTING.md`, `COMPETITIVE_LANDSCAPE.md`
+- [ ] Vendor FedRAMP FRMR content from `FedRAMP/docs` into `catalogs/frmr/`
+- [ ] Vendor NIST SP 800-53 Rev 5 catalog from `usnistgov/oscal-content` into `catalogs/nist/`
 - [ ] Set up MkDocs Material scaffold
 - [ ] Confirm MCP server stdio setup works against an external Claude Code session
 

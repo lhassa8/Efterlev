@@ -27,7 +27,7 @@ uv sync
 uv run pytest
 
 # Run the CLI against the demo repo
-uv run efterlev init --target demo/govnotes --profile fedramp-moderate
+uv run efterlev init --target demo/govnotes --baseline fedramp-20x-moderate
 uv run efterlev scan
 ```
 
@@ -50,7 +50,7 @@ The project has a layered architecture. Most contributions land in one of these 
 
 **Agents** — reasoning loops that compose primitives. Adding a new agent is a substantial contribution that benefits from a design issue first.
 
-**Output generators** — serializers from our internal model to OSCAL, HTML, Word templates, etc. Adding a new output format is welcome; see existing generators as templates.
+**Output generators** — serializers from our internal model to FRMR (primary, v0), HTML, and (in v1) OSCAL and Word templates. Adding a new output format is welcome; see existing generators as templates.
 
 **Documentation** — always welcome. If something in the docs was confusing or wrong, fix it. If something isn't documented, document it.
 
@@ -60,7 +60,9 @@ The project has a layered architecture. Most contributions land in one of these 
 
 ## The one-hour path: adding a detector
 
-This is the contribution shape most likely to get merged same-day. Detectors are self-contained folders at `src/efterlev/detectors/<source>/<control_id>_<short_name>/`. Each folder contains five files. Here's what goes in each.
+This is the contribution shape most likely to get merged same-day. Detectors are self-contained folders at `src/efterlev/detectors/<source>/<capability_name>/`. Each folder contains five files. Here's what goes in each.
+
+Detector IDs are capability-shaped (what the detector checks), not control-numbered. KSIs think in capabilities (e.g., "securing network traffic," "validating resource integrity"), and capability-shaped IDs age better as the KSI ↔ 800-53 mapping in FRMR evolves. Good: `encryption_s3_at_rest`, `tls_alb_listener`, `mfa_iam_policy_condition`. Avoid: `sc_28_s3_encryption`, `ia_2_mfa`.
 
 ### 1. `detector.py` — the rule
 
@@ -70,18 +72,25 @@ from efterlev.models.evidence import Evidence
 from efterlev.models.source import TerraformResource
 
 @detector(
-    id="aws.sc_28_s3_encryption",
-    controls=["SC-28", "SC-28(1)"],
+    id="aws.encryption_s3_at_rest",
+    ksis=["KSI-SVC-VRI"],             # Validating Resource Integrity; see README for caveat
+    controls=["SC-28", "SC-28(1)"],   # underlying 800-53 controls
     source="terraform",
     version="0.1.0",
 )
 def detect(tf_resources: list[TerraformResource]) -> list[Evidence]:
     """
-    Detect S3 bucket encryption configuration.
+    Detect S3 bucket encryption configuration at rest.
 
-    Evidences: SC-28 (Protection at Rest), SC-28(1) (Cryptographic Protection).
-    Does NOT prove: key management practices, rotation, BYOK. Those belong to
-    SC-12/SC-13 and require procedural evidence beyond the infrastructure layer.
+    Evidences (800-53):  SC-28 (Protection at Rest), SC-28(1) (Cryptographic Protection).
+    Evidences (KSI):     KSI-SVC-VRI (Validating Resource Integrity) — partial.
+    Does NOT prove:      key management practices, rotation, BYOK. Those belong to
+                         SC-12/SC-13 / KSI-SVC-ASM (Automating Secret Management) and
+                         require procedural evidence beyond the infrastructure layer.
+
+    Note: FRMR 0.9.43-beta does not list SC-28 in any KSI's `controls` array, so
+    KSI-SVC-VRI is the nearest thematic fit rather than a literal mapping. See
+    this detector's README.md for the full provenance of the mapping decision.
     """
     evidences = []
     for resource in tf_resources:
@@ -89,7 +98,8 @@ def detect(tf_resources: list[TerraformResource]) -> list[Evidence]:
             encryption = resource.get_nested("server_side_encryption_configuration")
             if encryption:
                 evidences.append(Evidence(
-                    detector_id="aws.sc_28_s3_encryption",
+                    detector_id="aws.encryption_s3_at_rest",
+                    ksis_evidenced=["KSI-SVC-VRI"],
                     controls_evidenced=["SC-28", "SC-28(1)"],
                     source_ref=resource.source_ref,
                     content={"resource": resource.name, "encryption": encryption},
@@ -97,7 +107,8 @@ def detect(tf_resources: list[TerraformResource]) -> list[Evidence]:
             else:
                 # Negative evidence — bucket exists without encryption
                 evidences.append(Evidence(
-                    detector_id="aws.sc_28_s3_encryption",
+                    detector_id="aws.encryption_s3_at_rest",
+                    ksis_evidenced=["KSI-SVC-VRI"],
                     controls_evidenced=["SC-28"],
                     source_ref=resource.source_ref,
                     content={"resource": resource.name, "encryption": None,
@@ -106,17 +117,26 @@ def detect(tf_resources: list[TerraformResource]) -> list[Evidence]:
     return evidences
 ```
 
-The "does NOT prove" section of the docstring is **required**. This is how we enforce the evidence-vs-claims discipline at the detector level.
+The "does NOT prove" section of the docstring is **required**. This is how we enforce the evidence-vs-claims discipline at the detector level. When a KSI mapping is uncertain (as with SC-28 under FRMR 0.9.43-beta), name the uncertainty in the docstring and in the detector's README; do not invent a KSI that does not exist in the vendored FRMR.
 
-### 2. `mapping.yaml` — which controls
+### 2. `mapping.yaml` — which KSIs and controls
 
 ```yaml
-detector_id: aws.sc_28_s3_encryption
+detector_id: aws.encryption_s3_at_rest
+ksis:
+  - id: KSI-SVC-VRI
+    theme: KSI-SVC
+    evidence_type: infrastructure  # one of: infrastructure, procedural, hybrid
+    coverage: partial              # what this detector proves of the KSI
+    notes: >
+      Nearest thematic fit rather than literal mapping. FRMR 0.9.43-beta does
+      not list SC-28 under any KSI's `controls` array; KSI-SVC-VRI is the
+      nearest Service-Configuration-theme indicator. Re-evaluate on FRMR GA.
 controls:
   - id: SC-28
     enhancements: [SC-28(1)]
-    evidence_type: infrastructure  # one of: infrastructure, procedural, hybrid
-    coverage: partial              # what this detector proves of the control
+    evidence_type: infrastructure
+    coverage: partial
     notes: >
       Infrastructure-layer evidence only. Full SC-28 implementation requires
       key management procedures and rotation policies documented elsewhere.
@@ -125,7 +145,7 @@ controls:
 ### 3. `evidence.yaml` — the schema
 
 ```yaml
-detector_id: aws.sc_28_s3_encryption
+detector_id: aws.encryption_s3_at_rest
 evidence_shape:
   resource: string                 # Terraform resource name
   encryption: object | null        # the encryption configuration block, or null
@@ -150,8 +170,10 @@ Each `.tf` file in `should_match/` must produce at least one positive evidence r
 
 A short plain-English explanation:
 - What this detector checks
-- What it proves (specifically, which layer of which control)
+- Which KSI(s) it evidences, and which underlying 800-53 control(s)
+- What it proves (specifically, which layer of the KSI and control)
 - What it does not prove (the other layers, the procedural aspects, known edge cases)
+- If the KSI mapping is uncertain or `[TBD]` against the current FRMR, name that explicitly
 - Known limitations
 - Example output
 
@@ -160,7 +182,7 @@ This file is read by users who want to understand what a finding means. Write it
 ### Running the detector tests
 
 ```bash
-uv run pytest tests/detectors/test_aws_sc_28_s3_encryption.py
+uv run pytest tests/detectors/test_aws_encryption_s3_at_rest.py
 ```
 
 If your fixtures match what the detector produces, tests pass. If not, the harness tells you what the detector produced and what you expected.
@@ -171,7 +193,7 @@ If your fixtures match what the detector produces, tests pass. If not, the harne
 
 **Every PR:**
 - Passes `ruff` (lint + format) — run `uv run ruff check . && uv run ruff format .`
-- Passes `mypy --strict` on touched core paths — run `uv run mypy src/efterlev/primitives src/efterlev/detectors src/efterlev/oscal`
+- Passes `mypy --strict` on touched core paths — run `uv run mypy src/efterlev/primitives src/efterlev/detectors src/efterlev/frmr src/efterlev/oscal`
 - Passes `pytest` — run `uv run pytest`
 - Has tests for any new detector, primitive, or agent
 - Includes a line in `DECISIONS.md` if the change involves a non-trivial choice
@@ -180,6 +202,8 @@ If your fixtures match what the detector produces, tests pass. If not, the harne
 - Include all five files (detector.py, mapping.yaml, evidence.yaml, fixtures/, README.md)
 - Fixtures cover at least one should-match and one should-not-match case
 - The detector's docstring includes a "does NOT prove" section
+- The `@detector` decorator includes both `ksis=[...]` and `controls=[...]`. KSI IDs must appear verbatim in `catalogs/frmr/FRMR.documentation.json`; if no KSI fits cleanly, mark the mapping decision in the detector's README and open an issue
+- Detector ID is capability-shaped (e.g. `aws.encryption_s3_at_rest`), not control-numbered
 
 **New primitives specifically:**
 - Typed Pydantic input and output models
@@ -204,10 +228,10 @@ If your fixtures match what the detector produces, tests pass. If not, the harne
 
 Prefer the form `layer: short imperative description`. Examples:
 
-- `detectors: add aws.sc_8_alb_tls for TLS listener detection`
+- `detectors: add aws.tls_alb_listener evidencing KSI-SVC-SNT`
 - `primitives: add validate_claim_provenance`
 - `agents/gap: tighten the partial-implementation classification prompt`
-- `docs: clarify what the SC-28 detector does not prove`
+- `docs: clarify what the encryption_s3_at_rest detector does not prove`
 - `ci: add FedRAMP Moderate baseline validation to release workflow`
 
 Bodies are welcome for non-trivial changes. Reference issue numbers with `Refs #123` or `Closes #123`.
