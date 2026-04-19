@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "efterlev"
+version = "0.0.1"
+description = "Repo-native, agent-first compliance scanner for FedRAMP and DoD Impact Levels"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+authors = [{ name = "Efterlev contributors" }]
+keywords = [
+    "compliance",
+    "fedramp",
+    "oscal",
+    "dod",
+    "cmmc",
+    "security",
+    "iac",
+    "terraform",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pydantic>=2.6,<3",
+    "typer>=0.12,<1",
+    "python-hcl2>=4.3,<6",
+    "compliance-trestle>=3.5,<4",
+    "anthropic>=0.40,<1",
+    "mcp>=1.0,<2",
+    "jinja2>=3.1,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.6,<1",
+    "mypy>=1.11,<2",
+]
+
+[project.scripts]
+efterlev = "efterlev.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/lhassa8/efterlev"
+Documentation = "https://github.com/lhassa8/efterlev#readme"
+Repository = "https://github.com/lhassa8/efterlev"
+Issues = "https://github.com/lhassa8/efterlev/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/efterlev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "N",
+    "SIM",
+    "RUF",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/efterlev"]
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "efterlev.primitives.*",
+    "efterlev.detectors.*",
+    "efterlev.oscal.*",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+no_implicit_optional = true
+warn_return_any = true
+warn_unused_ignores = true
+strict_equality = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"
