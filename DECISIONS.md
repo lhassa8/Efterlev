@@ -310,6 +310,28 @@ uv run python -c "from anthropic import Anthropic; r = Anthropic().messages.crea
 
 ---
 
+## 2026-04-19 — MCP stdio transport verified with FastMCP on mcp 1.27.0 `[architecture]` `[process]`
+
+**Decision:** FastMCP (`mcp.server.fastmcp.FastMCP`) is the minimum-viable server shape for v0. Stdio is the transport. Both are confirmed working on this Python 3.12 install.
+
+**Verified today (mcp 1.27.0):**
+
+- `scripts/mcp_smoke_server.py` registers two tools (`echo`, `add_two_numbers`) via the `@mcp.tool()` decorator and runs over stdio without configuration.
+- `scripts/mcp_smoke_client.py` spawns the server as a subprocess, initializes a `ClientSession`, enumerates tools, and invokes each one. Both calls return the correct result. Protocol version negotiated: `2025-11-25`.
+- Server init payload exposes `serverInfo.name="efterlev-smoke"` — this is how external Claude Code discovers the server's identity. The real `src/efterlev/mcp_server/` should follow the same pattern with `name="efterlev"`.
+
+**Not verified today (requires user):**
+
+- Second Claude Code session discovering and calling the smoke server live. The in-process client proves the transport; the live discovery is a separate trust claim (Claude Code's MCP client handles tool discovery, argument schema validation, and result rendering in ways our in-process client does not exercise). Instructions are in `scripts/README.md` under "Live Claude Code verification (manual)".
+
+**Rationale for FastMCP over the lower-level `mcp.server.Server`:** FastMCP's decorator pattern produces agent-legible tool schemas from Python type hints with zero boilerplate. That is exactly the shape we want for the real primitive registration — our primitive decorator can wrap `@mcp.tool()` and add provenance emission without rewriting the MCP plumbing.
+
+**Alternatives considered:**
+
+- **Lower-level `mcp.server.Server`:** more control, more boilerplate, no clear advantage for our use case. Reconsider only if FastMCP's schema generation doesn't play well with our Pydantic input/output models (we'll find out Day 2).
+
+---
+
 
 
 ```
