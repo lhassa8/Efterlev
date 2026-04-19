@@ -54,7 +54,7 @@ Its evidence records carry `ksis_evidenced` and `controls_evidenced` in parallel
 
 Two catalogs are vendored and loaded at startup:
 
-- **FRMR** (`catalogs/frmr/FRMR.documentation.json`) from `FedRAMP/docs` — 11 KSI themes, 60 indicators, plus the FRR (FedRAMP Requirements) and FRD (Definitions) sections. Loaded with Pydantic directly; validated against the vendored `FedRAMP.schema.json`.
+- **FRMR** (`catalogs/frmr/FRMR.documentation.json`) from `FedRAMP/docs` — 11 KSI themes, 60 indicators, plus the FRR (FedRAMP Requirements and Recommendations) and FRD (Definitions) sections. Loaded with Pydantic directly; validated against the vendored `FedRAMP.schema.json`.
 - **NIST SP 800-53 Rev 5** (`catalogs/nist/`) from `usnistgov/oscal-content` — the full 20-family catalog with enhancements. Loaded via `compliance-trestle`.
 
 Both translate immediately into our internal Pydantic model. FRMR and OSCAL are output formats; the internal model is neither. See [`catalogs/README.md`](../catalogs/README.md) for the full provenance of each vendored file.

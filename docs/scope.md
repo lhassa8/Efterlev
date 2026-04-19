@@ -40,7 +40,7 @@ A 4-day hackathon build of a repo-native, KSI-native compliance scanner. A user 
 | State | `.efterlev/` in the working directory (SQLite + content-addressed blob store) |
 | Agent interface | MCP stdio (`efterlev mcp serve`); external Claude Code sessions can discover and call every primitive |
 | Provenance | Append-only, content-addressed, versioned; `efterlev provenance show <id>` walks the chain |
-| Demo target | `demo/govnotes/` — synthetic gov-adjacent SaaS, added as a git submodule, with deliberate gaps the agents exercise |
+| Demo target | `demo/govnotes/` — a synthetic gov-adjacent SaaS with deliberate gaps the agents exercise. Will be added as a git submodule pinned to a specific commit once the upstream repo is initialized; until then, `demo/` is an empty placeholder. |
 
 ## Out of scope for v0 (deferred to v1 or later)
 
