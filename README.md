@@ -45,6 +45,18 @@ See [LIMITATIONS.md](./LIMITATIONS.md) for the honest full accounting.
 
 ## Why it exists
 
+### A primer for the unfamiliar
+
+The U.S. federal government buys software through a process called **FedRAMP** (Federal Risk and Authorization Management Program). Before a federal agency can use your SaaS product, the product has to be authorized at one of three levels — Low, Moderate, or High — based on the sensitivity of the data it handles. Most SaaS authorizations target Moderate.
+
+Historically, getting authorized meant: hire a specialist consultant ($250K+), spend 12–18 months producing a thousand-plus-page document called a **System Security Plan (SSP)**, get assessed by a **3PAO** (Third-Party Assessment Organization, an independent auditor accredited to evaluate FedRAMP packages), and submit the result to the FedRAMP PMO (Program Management Office) for review.
+
+In 2026 this is changing. **FedRAMP 20x** is the new authorization track, and it replaces narrative-heavy SSPs with measurable outcomes called **Key Security Indicators (KSIs)** — concrete things like "encrypt network traffic" and "enforce phishing-resistant MFA" that can be assessed against actual evidence rather than long descriptions of intent. The machine-readable format for that evidence is **FRMR** (FedRAMP Machine-Readable). New SaaS authorizations starting in 2026 are heading into the 20x track.
+
+Efterlev exists for the SaaS company landing in this exact moment.
+
+### The story
+
 A 100-person SaaS company just got told by its biggest prospect: "we'll buy, but only if you're FedRAMP Moderate by next year."
 
 The team looks at each other. Nobody has done this before. They google it and find:
@@ -54,15 +66,69 @@ The team looks at each other. Nobody has done this before. They google it and fi
 - Enterprise GRC tooling priced for the wrong scale
 - Spreadsheets, Word templates, and a NIST document family that runs to thousands of pages
 
-What they actually need is something that reads their Terraform and tells them, in their own language, what's wrong and how to fix it. Something a single engineer can install on a Tuesday and show results at Wednesday's standup. Something whose output is concrete enough that their 3PAO can use it — and whose claims are honest enough that the 3PAO won't throw it out.
+What they actually need is something that reads their Terraform (the code that defines their cloud infrastructure) and tells them, in their own language, what's wrong and how to fix it. Something a single engineer can install on a Tuesday and show results at Wednesday's standup. Something whose output is concrete enough that their 3PAO can use it — and whose claims are honest enough that the 3PAO won't throw it out.
 
-Efterlev is that tool. It runs where the engineer already is (the repo, the CLI, the CI pipeline). It produces FRMR from day one — the machine-readable format FedRAMP 20x is standardizing on, and the format most new SaaS authorizations in 2026 will target — with OSCAL support on the v1 roadmap for users carrying Rev5 transition submissions. It refuses to overclaim because 3PAOs don't trust tools that do.
+Efterlev is that tool. It runs where the engineer already is (the repo, the CLI, the CI pipeline). It produces FRMR from day one — the machine-readable format FedRAMP 20x is standardizing on, and the format most new SaaS authorizations in 2026 will target — with OSCAL support on the v1 roadmap for users carrying older Rev5 transition submissions. It refuses to overclaim, because 3PAOs don't trust tools that do.
 
-As of April 2026, FedRAMP 20x Phase 2 Moderate pilot is still active past its original March 31, 2026 end date, with authorizations like Aeroplicity's landing as recently as April 13, and wider public rollout targeted for later in 2026 — the trajectory Efterlev's KSI-native posture is aligned with.
+As of April 2026, the FedRAMP 20x Phase 2 Moderate pilot is still active past its original March 31, 2026 end date, with authorizations like Aeroplicity's landing as recently as April 13, and wider public rollout targeted for later in 2026 — the trajectory Efterlev's KSI-native posture is aligned with.
 
-It's also deliberately deep rather than broad. FedRAMP 20x Moderate first; DoD IL and CMMC 2.0 on the v1 roadmap. Not SOC 2, not ISO 27001, not HIPAA — there are tools that serve those well, and our value is depth in gov-grade frameworks, not breadth across every compliance acronym.
+It's also deliberately deep rather than broad. FedRAMP 20x Moderate first; DoD Impact Levels (the framework for Department of Defense workloads) and CMMC 2.0 (the framework for ~300,000 defense contractors) on the v1 roadmap. Not SOC 2, not ISO 27001, not HIPAA — there are tools that serve those well, and our value is depth in gov-grade frameworks, not breadth across every compliance acronym.
 
-Add [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) to see where Efterlev fits among existing tools.
+See [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) for where Efterlev fits among existing tools.
+
+---
+
+## How it works
+
+A walk through what happens when you use Efterlev.
+
+**1. You point it at your repo.** Efterlev runs locally on your machine. You install it (`pipx install efterlev`), `cd` into the directory holding your Terraform code, and configure it once.
+
+**2. It scans.** A library of small, deterministic rules called *detectors* reads your `.tf` files and looks for compliance-relevant patterns: is this S3 bucket encrypted? does this load balancer enforce TLS? does this IAM policy require MFA? Each finding is a concrete piece of *evidence* — a fact about your code, with a file path and line number you can verify yourself. No AI is involved at this step; the same input always produces the same output.
+
+**3. The Gap Agent reads the evidence.** This is where AI enters. Claude reads what the scanner found and produces a status report: for each Key Security Indicator, are you implemented, partially implemented, or not implemented? You get a human-readable HTML report.
+
+**4. The Documentation Agent drafts attestations.** For each KSI you want to assert, this agent writes the FRMR-compatible JSON your 3PAO will review. Every assertion cites the evidence it's based on. The output is marked **"DRAFT — requires human review"** so nobody mistakes it for a finished product.
+
+**5. The Remediation Agent suggests fixes.** Pick a finding (say, an unencrypted S3 bucket) and this agent proposes a Terraform change that closes the gap. You review the diff, then apply it yourself. Efterlev never modifies your code without your action.
+
+**6. You can walk the chain.** Anything Efterlev produces — a draft sentence, a status classification, a remediation diff — can be traced back through the AI's reasoning step, the evidence it cited, and the Terraform line that produced that evidence. If the chain breaks down, you know not to trust the output.
+
+That's it. No dashboard, no SaaS sign-up, no waiting on procurement. The whole flow is local; the AI calls go to your configured LLM endpoint (you control the data); the outputs land as files you can review, edit, or hand to your consultant.
+
+---
+
+## How it's built
+
+**Three layers, each with a clear job.**
+
+**Detectors** — the eyes. Each detector is a small, self-contained Python folder with one job: "look for this specific compliance-relevant pattern in this kind of source file." We ship six at v0; the long-term plan is hundreds. Detectors are deterministic — they do not use AI. Anyone can write a new detector without touching the rest of the codebase, which is what makes the detector library a community-contributable asset.
+
+**Primitives** — the verbs. About 15–25 typed functions that wrap the things agents need to do: "scan this directory," "load that catalog," "validate this output against the schema." Primitives are the small, stable interface layer. They do the mechanical work cleanly so the agents can focus on reasoning.
+
+**Agents** — the reasoners. Three at v0 (Gap, Documentation, Remediation). Each is a focused loop: take the evidence (and any related context), call Claude with a carefully written system prompt, produce a typed artifact. Every agent's system prompt lives in a plain `.md` file in the repo, so you can read exactly how each agent is instructed and audit how the prompts change over time.
+
+### How AI is used
+
+We use Claude (currently `claude-opus-4-7`, with `claude-sonnet-4-6` as a fallback) for the parts where reasoning matters: classifying whether a control is implemented, drafting compliance narrative, proposing code changes. We do **not** use AI for the parts where determinism matters: the scanners, the schema validation, the provenance tracking.
+
+This split — **deterministic for evidence, AI for reasoning** — is the most important design decision in the project. It's what lets us tell auditors and 3PAOs the truth: scanner findings are verifiable facts about your code; AI claims are drafts you can audit but should not blindly trust.
+
+**Hallucination defenses are structural, not advisory.** Every AI-generated claim links explicitly to the evidence records it was reasoning over. The system rejects any AI output that cites evidence that doesn't actually exist. Every claim carries a "DRAFT — requires human review" marker that cannot be removed by a configuration flag. This is enforced at the type-system level, not by convention.
+
+### Provenance is automatic and complete
+
+Every detector finding, every AI claim, every remediation suggestion is stored as a node in a local graph (SQLite plus a content-addressed file store under `.efterlev/`). Edges point from derived claims to their sources. The graph is **append-only** — new evidence does not overwrite old, it adds. You can trace any output sentence back to the file and line that produced it with a single CLI command (`efterlev provenance show <id>`).
+
+### MCP makes Efterlev pluggable
+
+**MCP** (Model Context Protocol) is how AI agents discover and call tools. Efterlev exposes its primitives via an MCP server, which means any MCP-capable AI tool — including a fresh Claude Code session running in your editor — can drive Efterlev directly. You can build your own compliance workflow on top of Efterlev's primitives without forking the codebase. Our own agents use the same MCP interface, which is how we know it actually works.
+
+### The stack
+
+Python 3.12, Pydantic v2 for typed I/O, Typer for the CLI, `compliance-trestle` for loading the NIST 800-53 catalog, `python-hcl2` for parsing Terraform, the official MCP Python SDK for the server, the Anthropic Python SDK for Claude calls. AWS Bedrock as a second LLM backend is committed for v1 (so the tool can run inside FedRAMP-authorized GovCloud environments). Apache 2.0 throughout.
+
+For deeper architectural detail, see [docs/architecture.md](./docs/architecture.md). For the design history and reversals, see [DECISIONS.md](./DECISIONS.md).
 
 ---
 
@@ -170,22 +236,6 @@ Expansion happens along two axes in parallel: **input sources** (what Efterlev c
 - **v1.5+:** Runtime cloud API scanning (different threat model, needs its own design pass)
 
 See [docs/dual_horizon_plan.md](./docs/dual_horizon_plan.md) for the full roadmap.
-
----
-
-## How it works
-
-Three concepts. Everything else is implementation detail.
-
-**Detectors** read source material (Terraform plans, app code, CI configs) and emit deterministic evidence. They are the moat: a community-contributable library where each detector is a self-contained folder.
-
-**Primitives** are typed, MCP-exposed functions that represent agent-legible capabilities — scan, map, generate, validate. ~15–25 of them, small and stable. Both our own agents and external agents (your own Claude Code session, for instance) can call them.
-
-**Agents** compose primitives to accomplish a reasoning task: classifying KSI gap status, drafting FRMR attestations, proposing remediation. Each agent has a system prompt you can read in the repo and a typed output artifact you can audit.
-
-Every step emits a provenance record. The provenance store is a content-addressed, append-only graph — scanner output is evidence, agent output is a claim derived from that evidence, and you can walk the chain from any generated sentence back to the Terraform line that produced it.
-
-The architectural bet: evidence before claims, provenance always, KSIs as the user-facing surface, FRMR as primary output (OSCAL in v1 for users who need it). See [docs/architecture.md](./docs/architecture.md) for details.
 
 ---
 
