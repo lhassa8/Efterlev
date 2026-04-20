@@ -32,7 +32,7 @@ Append-only log of non-trivial decisions made during the design and build of Eft
 **Decision:** The internal data model is our own Pydantic types (Control, Evidence, Claim, Finding, Mapping, Provenance). OSCAL is produced at the output boundary by dedicated generator primitives. Trestle is used only for loading OSCAL inputs and for validation.
 
 **Rationale:**
-- OSCAL adoption at 3PAOs is still thin as of April 2026 (RFC-0024's machine-readable mandate takes effect September 2026); users consume Word templates today and OSCAL tomorrow, and we want to serve both
+- OSCAL adoption at 3PAOs is still thin as of April 2026 (RFC-0024 proposed a September 2026 machine-readable floor; NOTICE-0009 on 2026-03-25 softened the date and moved formalization into the pending Consolidated Rules for 2026, due end of June); users consume Word templates today and OSCAL tomorrow, and we want to serve both
 - OSCAL's SSP model is complex and opinionated in ways that don't help our core job (detection, evidence, narrative drafting)
 - Users don't ask for OSCAL; they ask for findings and drafts. OSCAL matters at the output boundary, not in the working representation
 - An owned internal model is simpler to iterate, test, and extend
@@ -355,7 +355,7 @@ uv run python -c "from anthropic import Anthropic; r = Anthropic().messages.crea
 **Alternatives considered:**
 
 - **Stay OSCAL-primary and attempt to recover the archived FedRAMP OSCAL profile.** Rejected. `GSA/fedramp-automation` was archived mid-2025 and its OSCAL baselines removed as FedRAMP transitioned to FRMR. Recovering from Wayback Machine or a pre-archive tag is possible but ships stale content that FedRAMP no longer maintains, and the positioning ("we produce OSCAL primarily") bets against where FedRAMP is going. The previous DECISIONS entry ("FedRAMP Moderate OSCAL baseline source is blocked; options under review") listed this as option A; we are rejecting it here.
-- **Drop OSCAL entirely.** Rejected. RFC-0024 establishes a September 2026 machine-readable compliance floor for Rev5 submissions, and tools like OSCAL Hub (donated to the OSCAL Foundation in late 2025) exist and serve a real constituency. Users mid-Rev5-transition need OSCAL output; cutting it entirely forecloses that user. OSCAL lands in v1 as a secondary output for those users.
+- **Drop OSCAL entirely.** Rejected. RFC-0024 proposed a September 2026 machine-readable floor for Rev5 submissions; NOTICE-0009 (2026-03-25) softened the date and moved formalization into CR26 (due end of June 2026, valid through 2028-12-31), but the direction of travel stands. Tools like OSCAL Hub (donated to the OSCAL Foundation in late 2025) exist and serve a real constituency. Users mid-Rev5-transition need OSCAL output; cutting it entirely forecloses that user. OSCAL lands in v1 as a secondary output for those users.
 - **Support both FRMR and OSCAL equally at v0.** Rejected. "Primary format" is a strategy choice, not a feature list. Supporting both equally produces a tool with no clear positioning, double the Day 2–3 generator engineering, and muddled messaging. Primary means primary; we pick.
 - **Treat FRMR as input only (consume KSI definitions) and keep OSCAL as primary output.** Considered briefly. Rejected because it inverts the positioning mismatch: we would produce OSCAL artifacts that map back to KSIs we derived from FRMR — which is more work than generating FRMR directly and lands in a format FedRAMP 20x reviewers are not asking for.
 

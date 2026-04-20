@@ -15,6 +15,8 @@ efterlev init --baseline fedramp-20x-moderate
 efterlev scan
 ```
 
+> **Status (April 2026): pre-implementation scaffold.** The repository's documentation, architecture, CI, and vendored FedRAMP FRMR + NIST 800-53 catalogs are in place; the Python implementation lands during a focused 4-day build. Until then, the sections below describe intended behavior, not shipped behavior. See [Project status](#project-status) for details.
+
 Efterlev is **KSI-native**: its primary abstraction is the Key Security Indicator from FedRAMP 20x, with 800-53 Rev 5 controls as the underlying reference. Its primary output is **FRMR-compatible JSON** (the format FedRAMP 20x is standardizing on). OSCAL output for users transitioning Rev5 submissions is on the v1 roadmap.
 
 Efterlev's current focus is SaaS companies pursuing their first FedRAMP Moderate authorization. Defense contractors pursuing CMMC 2.0 or DoD IL are a v1.5+ expansion; platform teams at larger gov-contractors are v2+. See [docs/icp.md](./docs/icp.md) for the full user profile and what that means for what Efterlev does and doesn't do.
@@ -255,9 +257,15 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 ## Project status
 
-**v0.1** — hackathon release. Six detectors, three agents, FedRAMP 20x Moderate only (KSI-native), AWS + Terraform only. Usable for KSI gap analysis and draft FRMR attestation generation; not yet a production workflow.
+**Current state: pre-implementation scaffold.** The repository is documentation-complete — architecture, ICP, scope contract, threat model, competitive landscape, decision log — with the Python package skeleton (empty `__init__.py` stubs), CI (ruff / mypy / pytest on every push), vendored FedRAMP FRMR and NIST 800-53 Rev 5 catalogs, and dependency pinning all in place. Implementation lands during a focused 4-day build; a `v0.1` tag will be cut at the end of that build once the demo flow runs green end-to-end.
 
-**Stable surface:** primitive interface, detector contract, provenance model, FRMR output shape. These are designed to not break.
+**v0.1 targets** (on completion of the build):
+
+- Six detectors, three agents, FedRAMP 20x Moderate only (KSI-native), AWS + Terraform only
+- Usable for KSI gap analysis and draft FRMR attestation generation
+- Not yet a production workflow
+
+**Stable surface** (designed to not break once shipped): primitive interface, detector contract, provenance model, FRMR output shape.
 
 **Changing surface:** detector content (as we add more), agent system prompts (as we tune them), CLI ergonomics (as we hear from users), OSCAL output generators (arriving in v1).
 

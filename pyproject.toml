@@ -52,13 +52,21 @@ dev = [
 efterlev = "efterlev.cli.main:app"
 
 [project.urls]
-Homepage = "https://github.com/lhassa8/efterlev"
-Documentation = "https://github.com/lhassa8/efterlev#readme"
-Repository = "https://github.com/lhassa8/efterlev"
-Issues = "https://github.com/lhassa8/efterlev/issues"
+Homepage = "https://github.com/lhassa8/Efterlev"
+Documentation = "https://github.com/lhassa8/Efterlev#readme"
+Repository = "https://github.com/lhassa8/Efterlev"
+Issues = "https://github.com/lhassa8/Efterlev/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/efterlev"]
+
+# Ship the vendored FRMR + NIST 800-53 catalogs inside the installed package
+# so `pipx install efterlev` (and other wheel-based installs) gets the reference
+# data the tool needs at runtime. Day 1 implementation will pick the canonical
+# lookup path — `importlib.resources.files("efterlev") / "catalogs" / ...` is
+# the expected direction, which this force-include supports.
+[tool.hatch.build.targets.wheel.force-include]
+"catalogs" = "efterlev/catalogs"
 
 [tool.ruff]
 line-length = 100
