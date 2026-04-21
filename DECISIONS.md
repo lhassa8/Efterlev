@@ -421,6 +421,40 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-21 — Resolve design call #1: SC-28 represented with empty KSI list `[architecture]` `[scope]`
+
+**Decision:** The `aws.encryption_s3_at_rest` detector (and any future detector evidencing an 800-53 control that no KSI in the vendored FRMR currently maps to) declares `ksis=[]` with the relevant `controls=[...]`. The Gap Agent renderer will label such findings as "unmapped to any KSI in FRMR 0.9.43-beta" alongside the 800-53 controls they evidence.
+
+**Rationale:**
+
+- Matches Efterlev's honesty posture: we don't claim KSI alignment the upstream FRMR hasn't sanctioned. A 3PAO reviewer who knows FRMR sees Efterlev output match FRMR's shape exactly, with no stretched mappings.
+- The `@detector` decorator already supports `ksis=[]` (Phase 1c), and `Evidence.ksis_evidenced` already supports `[]` (Phase 1a). No data model change needed.
+- SC-28 is a real control ICP A users will ask about. Keeping it in v0 coverage trades a slightly muddier demo headline ("five KSI-native areas plus one 800-53-only area") for a defensible honesty posture and a genuinely useful detection area.
+- Gives us a clean template for future unmapped-control cases. As v1 adds detectors and FRMR mapping coverage lags, this pattern will recur; establishing it now avoids a later data-model scramble.
+
+**Alternatives rejected:**
+
+- **Option A: `ksis=["KSI-SVC-VRI"]` with a caveat.** Rejected. KSI-SVC-VRI maps to SC-13 (integrity via cryptography), not SC-28 (confidentiality at rest). Fudging the mapping to make the demo headline uniform fights the evidence-vs-claims discipline the whole project rests on; a 3PAO who knows FRMR would see VRI associated with content it doesn't cover and drop trust in the tool.
+- **Option B: Reframe the detector around SC-13 integrity, drop SC-28.** Rejected. SC-28 is a real control ICP A users will ask about. Silently dropping it from v0 coverage trades a concrete detection area away for a cleaner mapping story — bad trade when the mapping problem is resolvable via Option C.
+
+**Implementation impact (Phase 2c, Phase 3):**
+
+- Detector declaration:
+  ```python
+  @detector(
+      id="aws.encryption_s3_at_rest",
+      ksis=[],
+      controls=["SC-28", "SC-28(1)"],
+      source="terraform",
+      version="0.1.0",
+  )
+  ```
+- Detector `README.md` "does NOT prove" section states: "evidences the infrastructure layer of SC-28; no FRMR KSI currently maps to SC-28, so this finding has no KSI attribution and will render as unmapped."
+- Gap Agent renderer (Phase 3): when `ksis_evidenced=[]`, show "—" in the KSI column with the unmapped-FRMR footnote. The provenance chain still walks the same way.
+- Day 1 brief's "SC-28 unmapped-control representation" row can be marked resolved.
+
+---
+
 
 
 ```
