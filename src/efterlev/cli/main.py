@@ -130,14 +130,43 @@ def init(
 
 @app.command()
 def scan(
-    target: str = typer.Option(
-        ".",
+    target: Path = typer.Option(
+        Path("."),
         "--target",
         help="Path to the repo to scan. Defaults to the current directory.",
     ),
 ) -> None:
     """Run all applicable detectors against the target and write evidence records."""
-    _stub("2", "scan")
+    from efterlev.errors import DetectorError
+    from efterlev.primitives.scan import ScanTerraformInput, scan_terraform
+    from efterlev.provenance import ProvenanceStore, active_store
+
+    root = target.resolve()
+    if not (root / ".efterlev").is_dir():
+        typer.echo(
+            f"error: no `.efterlev/` directory under {root}. Run `efterlev init` first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        with ProvenanceStore(root) as store, active_store(store):
+            result = scan_terraform(ScanTerraformInput(target_dir=root))
+    except DetectorError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(f"Scanned {root}")
+    typer.echo(f"  resources parsed:  {result.resources_parsed}")
+    typer.echo(f"  detectors run:     {result.detectors_run}")
+    typer.echo(f"  evidence records:  {result.evidence_count}")
+    for det in result.per_detector:
+        typer.echo(f"    {det.detector_id}@{det.version:<7}  +{det.evidence_count}")
+    if result.evidence_record_ids:
+        typer.echo("")
+        typer.echo("Record IDs (pass to `efterlev provenance show`):")
+        for rid, ev in zip(result.evidence_record_ids, result.evidence, strict=False):
+            typer.echo(f"  {rid}  {ev.content.get('resource_name', '—')}")
 
 
 @agent_app.command("gap")

@@ -14,7 +14,6 @@ import pytest
 
 from efterlev.detectors.base import (
     DetectorSpec,
-    clear_registry,
     detector,
     get_registry,
 )
@@ -24,8 +23,17 @@ from efterlev.provenance import ProvenanceStore, active_store
 
 
 @pytest.fixture(autouse=True)
-def _reset_registry() -> None:
-    clear_registry()
+def _isolated_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give each test an empty detector registry; restore real state on teardown.
+
+    Swapping the module's `_REGISTRY` attribute rather than clearing the real
+    dict prevents test-registered detectors from leaking into later test files
+    that read `get_registry()` (notably the scan primitive, which reads it
+    at scan time).
+    """
+    import efterlev.detectors.base as mod
+
+    monkeypatch.setattr(mod, "_REGISTRY", {})
 
 
 def _fake_evidence(detector_id: str = "aws.fake", controls: list[str] | None = None) -> Evidence:

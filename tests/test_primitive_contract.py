@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from efterlev.errors import PrimitiveError
 from efterlev.primitives.base import (
     PrimitiveSpec,
-    clear_registry,
     get_registry,
     primitive,
 )
@@ -23,8 +22,11 @@ from efterlev.provenance import ProvenanceStore, active_store
 
 
 @pytest.fixture(autouse=True)
-def _reset_registry() -> None:
-    clear_registry()
+def _isolated_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give each test an empty primitive registry; restore real state on teardown."""
+    import efterlev.primitives.base as mod
+
+    monkeypatch.setattr(mod, "_REGISTRY", {})
 
 
 class _FakeIn(BaseModel):

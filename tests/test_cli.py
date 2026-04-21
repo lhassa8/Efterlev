@@ -7,6 +7,8 @@ real behavior — that lands with each subcommand's implementation phase.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
@@ -39,7 +41,6 @@ def test_agent_subtree_lists_three_agents() -> None:
 @pytest.mark.parametrize(
     "args",
     [
-        ["scan"],
         ["agent", "gap"],
         ["agent", "document", "--ksi", "KSI-SVC-SNT"],
         ["agent", "remediate", "--ksi", "KSI-SVC-SNT"],
@@ -53,6 +54,37 @@ def test_subcommand_stubs_raise_not_implemented(args: list[str]) -> None:
     assert isinstance(result.exception, NotImplementedError)
     # The stub message should name the phase so the user knows what's coming.
     assert "Phase" in str(result.exception)
+
+
+def test_scan_missing_efterlev_dir_prints_error(tmp_path: pytest.TempPathFactory) -> None:
+    result = runner.invoke(app, ["scan", "--target", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "no `.efterlev/` directory" in result.output
+
+
+def test_scan_after_init_produces_evidence(tmp_path: pytest.TempPathFactory) -> None:
+    # Write an encrypted bucket then init + scan end-to-end.
+    Path(str(tmp_path) + "/main.tf").write_text(
+        'resource "aws_s3_bucket" "logs" {\n'
+        '  bucket = "logs"\n'
+        "  server_side_encryption_configuration {\n"
+        "    rule {\n"
+        "      apply_server_side_encryption_by_default {\n"
+        '        sse_algorithm = "AES256"\n'
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}\n"
+    )
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0, init_result.output
+
+    scan_result = runner.invoke(app, ["scan", "--target", str(tmp_path)])
+    assert scan_result.exit_code == 0, scan_result.output
+    assert "Scanned" in scan_result.output
+    assert "resources parsed:" in scan_result.output
+    assert "aws.encryption_s3_at_rest" in scan_result.output
+    assert "Record IDs" in scan_result.output
 
 
 def test_init_succeeds_and_prints_summary(tmp_path: pytest.TempPathFactory) -> None:
