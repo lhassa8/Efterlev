@@ -479,6 +479,19 @@ def agent_remediate(
         typer.echo("")
         typer.echo(f"record id: {proposal.claim_record_id}")
 
+    from efterlev.reports import render_remediation_proposal_html
+
+    html_body = render_remediation_proposal_html(proposal)
+    reports_dir = root / ".efterlev" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    # Include the KSI in the filename so running remediate for multiple KSIs
+    # doesn't produce files that can only be distinguished by timestamp.
+    html_path = reports_dir / f"remediation-{ksi}-{timestamp}.html"
+    html_path.write_text(html_body, encoding="utf-8")
+    typer.echo("")
+    typer.echo(f"HTML report: {html_path}")
+
 
 @provenance_app.command("show")
 def provenance_show(

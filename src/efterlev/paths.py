@@ -92,14 +92,21 @@ def resolve_within_root(candidate: Path, root: Path) -> Path | None:
     result is still under the resolved `root`. Returns the resolved path on
     success, `None` on any attempted escape.
 
-    `candidate` may be absolute or relative. Absolute candidates are rejected
-    outright — evidence paths should be repo-relative by convention, and an
-    absolute path is an unambiguous signal that something went wrong upstream.
+    `candidate` may be absolute or relative. Both are treated the same way:
+    resolve against `root`, then check containment. Absolute paths that
+    happen to live inside `root` are accepted — the Terraform parser captures
+    source_ref.file paths exactly as they were walked at scan time, which in
+    CI is absolute (e.g. `/home/runner/work/repo/infra/terraform/main.tf`).
+    Rejecting those on principle broke the remediation flow; containment is
+    the real safety check. Absolute paths outside `root` (`/etc/passwd`,
+    `../../../secrets`) still fail containment and are rejected.
     """
-    if candidate.is_absolute():
-        return None
     resolved_root = root.resolve()
     try:
+        # When `candidate` is absolute, `resolved_root / candidate` ignores
+        # `resolved_root` and yields `candidate`. When it's relative, the
+        # two are joined. Both paths then go through `.resolve()` to
+        # normalize symlinks and `..` segments before the containment check.
         full = (resolved_root / candidate).resolve()
         # relative_to raises ValueError if `full` isn't under `resolved_root`.
         full.relative_to(resolved_root)

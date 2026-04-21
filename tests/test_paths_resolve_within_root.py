@@ -29,9 +29,23 @@ def test_accepts_nested_relative_path(tmp_path: Path) -> None:
     assert resolved == (nested / "main.tf").resolve()
 
 
-def test_rejects_absolute_path(tmp_path: Path) -> None:
-    # Absolute paths never resolve safely against a root — reject on principle.
+def test_rejects_absolute_path_outside_root(tmp_path: Path) -> None:
+    # An absolute path that is NOT under root is still rejected — containment
+    # is the safety check. `/etc/passwd` obviously doesn't live in tmp_path.
     assert resolve_within_root(Path("/etc/passwd"), tmp_path) is None
+
+
+def test_accepts_absolute_path_inside_root(tmp_path: Path) -> None:
+    # Absolute paths that resolve INSIDE root are accepted. Real CI case:
+    # the Terraform parser captures source_ref.file paths exactly as walked,
+    # which under GitHub Actions comes out as absolute (e.g.
+    # /home/runner/work/repo/infra/terraform/main.tf). Rejecting those
+    # outright broke the remediation flow; containment is the real check.
+    (tmp_path / "main.tf").write_text("resource {}")
+    abs_path = (tmp_path / "main.tf").resolve()
+    resolved = resolve_within_root(abs_path, tmp_path)
+    assert resolved is not None
+    assert resolved == abs_path
 
 
 def test_rejects_parent_traversal(tmp_path: Path) -> None:
