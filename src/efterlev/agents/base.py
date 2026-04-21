@@ -28,9 +28,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from abc import ABC, abstractmethod
+from abc import ABC
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
@@ -48,15 +47,15 @@ _FENCE_RE = re.compile(r'<evidence id="([^"]+)">')
 def format_evidence_for_prompt(evidence: list[Evidence]) -> str:
     """Return a prompt fragment wrapping each Evidence in an XML fence.
 
-    Fence format: `<evidence id="sha256:<evidence_id>">` + the JSON-serialized
-    `content` dict + `</evidence>`. The `evidence_id` is the internal
-    content-addressed id; the `sha256:` prefix makes the fence visually
-    self-identifying in the prompt so the model can't confuse it with some
-    other tag convention embedded in evidence content.
+    Fence format: `<evidence id="<evidence_id>">` + the JSON-serialized content
+    dict + `</evidence>`. The `evidence_id` already carries the `sha256:`
+    prefix (see `models._hashing.compute_content_id`), so the rendered fence
+    looks like `<evidence id="sha256:abc…">` and matches the provenance
+    record_id format exactly. An LLM that cites the fence id is citing a
+    provenance-walkable id directly, no prefix translation at the boundary.
 
-    Records are emitted in input order; callers ordering matters for the
-    downstream validator (which parses IDs by regex) only insofar as IDs
-    are unique.
+    Records are emitted in input order; the downstream validator parses IDs
+    by regex and only cares about uniqueness.
     """
     if not evidence:
         return "(no evidence records)"
@@ -71,7 +70,7 @@ def format_evidence_for_prompt(evidence: list[Evidence]) -> str:
             "content": ev.content,
         }
         body = json.dumps(payload, sort_keys=True, indent=2)
-        blocks.append(f'<evidence id="sha256:{ev.evidence_id}">\n{body}\n</evidence>')
+        blocks.append(f'<evidence id="{ev.evidence_id}">\n{body}\n</evidence>')
     return "\n\n".join(blocks)
 
 
@@ -85,7 +84,7 @@ def parse_evidence_fence_ids(prompt: str) -> set[str]:
     return set(_FENCE_RE.findall(prompt))
 
 
-class Agent[T_out: BaseModel](ABC):
+class Agent(ABC):
     """Abstract agent.
 
     Subclasses implement:
@@ -94,10 +93,14 @@ class Agent[T_out: BaseModel](ABC):
       - `system_prompt_path` (class var): path relative to the agent module
         file pointing at the system prompt markdown.
       - `output_model` (class var): pydantic model the raw LLM JSON is parsed
-        into before being returned.
-      - `run(input)`: assemble the user message(s), call `self._invoke_llm(...)`,
-        transform the parsed output model into the agent's final typed artifact,
-        and return it.
+        into *per invocation*. Not necessarily the same type the agent's
+        top-level `run(...)` returns — an agent that loops over many inputs
+        (e.g. the Documentation Agent drafting one narrative per KSI) uses
+        `output_model` for the per-call LLM shape and aggregates into a
+        separate report type.
+      - `run(input)`: subclass-defined signature. Assembles user message(s),
+        calls `self._invoke_llm(...)` one or more times, and returns a
+        typed artifact on the internal model.
 
     The `_invoke_llm` helper:
       1. Calls the injected `LLMClient`.
@@ -196,8 +199,3 @@ class Agent[T_out: BaseModel](ABC):
             )
 
         return output, response, system_prompt
-
-    @abstractmethod
-    def run(self, input: Any) -> T_out:
-        """Run the agent. Subclasses define input/output types concretely."""
-        raise NotImplementedError

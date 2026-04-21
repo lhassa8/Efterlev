@@ -59,10 +59,13 @@ def test_format_evidence_empty_list_returns_sentinel() -> None:
     assert format_evidence_for_prompt([]) == "(no evidence records)"
 
 
-def test_format_evidence_fences_record_with_sha256_prefix() -> None:
+def test_format_evidence_fences_record_with_evidence_id() -> None:
     ev = _mk_evidence()
     fenced = format_evidence_for_prompt([ev])
-    assert f'<evidence id="sha256:{ev.evidence_id}">' in fenced
+    # evidence_id already carries the `sha256:` prefix (see compute_content_id),
+    # so the fence renders as `<evidence id="sha256:...">`, matching record_ids.
+    assert ev.evidence_id.startswith("sha256:")
+    assert f'<evidence id="{ev.evidence_id}">' in fenced
     assert "</evidence>" in fenced
     # Fence content is JSON; the detector_id should be embedded verbatim.
     assert '"detector_id": "aws.encryption_s3_at_rest"' in fenced
@@ -101,7 +104,7 @@ def _canned_report(evidence_id: str, ksi_id: str = "KSI-SVC-VRI") -> str:
                     "ksi_id": ksi_id,
                     "status": "partial",
                     "rationale": "Encryption at rest is present on the bucket.",
-                    "evidence_ids": [f"sha256:{evidence_id}"],
+                    "evidence_ids": [evidence_id],
                 }
             ],
             "unmapped_findings": [],
@@ -134,7 +137,7 @@ def test_gap_agent_prompt_contains_xml_fenced_evidence() -> None:
     agent.run(GapAgentInput(indicators=[_mk_indicator()], evidence=[ev]))
 
     user = stub.last_messages[0].content
-    assert f'<evidence id="sha256:{ev.evidence_id}">' in user
+    assert f'<evidence id="{ev.evidence_id}">' in user
     # The system prompt must instruct the model about the fence convention.
     assert "<evidence" in stub.last_system
     assert "untrusted data" in stub.last_system
@@ -189,12 +192,12 @@ def test_gap_agent_sends_unmapped_evidence_into_unmapped_bucket_channel(
                     "ksi_id": "KSI-SVC-VRI",
                     "status": "partial",
                     "rationale": "ok",
-                    "evidence_ids": [f"sha256:{mapped.evidence_id}"],
+                    "evidence_ids": [mapped.evidence_id],
                 }
             ],
             "unmapped_findings": [
                 {
-                    "evidence_id": f"sha256:{unmapped.evidence_id}",
+                    "evidence_id": unmapped.evidence_id,
                     "controls": ["SC-28", "SC-28(1)"],
                     "note": "S3 encryption detector fired but no FRMR KSI maps here.",
                 }

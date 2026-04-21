@@ -507,6 +507,30 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-21 — Documentation Agent composition scope: skeleton stays separate, composition collapses into the agent `[agents]` `[primitives]`
+
+**Decision:** Honor the deterministic half of design call #2 — `generate_frmr_skeleton` is a real `@primitive(deterministic=True)` that external consumers (including MCP agents) can call standalone to get a scanner-only citations draft. The "separate generative primitive" (`generate_frmr_attestation`) sketched in design call #2's Implementation-impact section is **not** implemented as a standalone primitive at v0; attestation composition (`skeleton + status + narrative → AttestationDraft(mode="agent_drafted")`) lives inside `DocumentationAgent.run`.
+
+**Rationale:**
+
+- The LLM client must be injected at construction time for the agent to be testable with a `StubLLMClient`. A `@primitive` decorator has a fixed `(input_model) -> output_model` call shape and no natural place for a client parameter. Adding an `active_llm_client` ContextVar parallel to `active_store` would work but is architectural overhead we do not need at v0.
+- The composition step itself is ~10 lines of BaseModel assembly — not meaningfully reusable outside the agent, and not worth its own `@primitive` registry row.
+- The spirit of design call #2 — splitting the Evidence-class deterministic work (skeleton) from the Claims-class generative work (narrative) at a clean API boundary — is honored. A user who wants scanner-only output calls `generate_frmr_skeleton` directly. A user who wants agent-drafted output calls the agent.
+- When MCP lands (Phase 4), both `generate_frmr_skeleton` AND `DocumentationAgent` will be exposable — the agent-as-MCP-tool story is a v0 item in `CLAUDE.md`'s non-negotiable principles.
+
+**Alternatives rejected:**
+
+- **Option A: Make `generate_frmr_attestation` a deterministic composition primitive that takes pre-drafted narrative text as input.** Rejected. Nothing else would construct a narrative string outside the agent, so the primitive would have exactly one real caller — pure overhead.
+- **Option B: Add an `active_llm_client` ContextVar and make `generate_frmr_attestation` a generative primitive that calls the LLM internally.** Rejected for v0. The ContextVar works but is a layer of indirection we don't need yet; wait for a second generative primitive to share the plumbing cost with before introducing it.
+
+**Implementation impact (Phase 3):**
+
+- `src/efterlev/primitives/generate/generate_frmr_skeleton.py` — standalone deterministic primitive, already landed.
+- `src/efterlev/agents/documentation.py` — `DocumentationAgent.run` calls `generate_frmr_skeleton`, invokes the LLM, validates cited IDs, assembles the final `AttestationDraft(mode="agent_drafted")`, and persists a `Claim(claim_type="narrative")`.
+- If a future consumer needs "LLM-drafted narrative for a KSI, standalone" (without the whole attestation composition), we'll split `draft_ksi_narrative` out at that point and revisit the ContextVar discussion.
+
+---
+
 
 
 ```

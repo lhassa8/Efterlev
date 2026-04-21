@@ -255,3 +255,40 @@ class ProvenanceStore:
             if {"detector_id", "source_ref", "timestamp"} <= payload.keys():
                 results.append((record_id, payload))
         return results
+
+    def iter_claims_by_metadata_kind(
+        self, kind: str
+    ) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
+        """Return `(record_id, metadata, payload)` for every claim tagged `kind`.
+
+        The Gap Agent tags each KSI classification Claim with
+        `metadata={"kind": "ksi_classification", ...}`. Downstream agents
+        (Documentation, Remediation) find the classifications by filtering on
+        the kind tag rather than re-classifying from raw evidence.
+
+        The filter is `record_type="claim"` + `metadata.kind=<kind>`; payloads
+        are returned alongside so callers can reconstruct the Claim content
+        without a second blob read.
+        """
+        rows = self._conn.execute(
+            "SELECT record_id, metadata, content_ref FROM provenance_records "
+            "WHERE record_type = 'claim' ORDER BY timestamp, record_id"
+        ).fetchall()
+        results: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        for record_id, metadata_json, content_ref in rows:
+            try:
+                metadata = json.loads(metadata_json)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(metadata, dict) or metadata.get("kind") != kind:
+                continue
+            full = self.blob_dir / content_ref
+            if not full.exists():
+                continue
+            try:
+                payload = json.loads(full.read_bytes())
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                results.append((record_id, metadata, payload))
+        return results

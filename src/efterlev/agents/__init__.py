@@ -9,6 +9,14 @@ for both the model invocation and each resulting `Claim`.
 from __future__ import annotations
 
 from efterlev.agents.base import Agent, format_evidence_for_prompt, parse_evidence_fence_ids
+from efterlev.agents.documentation import (
+    DocumentationAgent,
+    DocumentationAgentInput,
+    DocumentationReport,
+    KsiAttestation,
+    NarrativeOutput,
+    reconstruct_classifications_from_store,
+)
 from efterlev.agents.gap import (
     GapAgent,
     GapAgentInput,
@@ -19,11 +27,17 @@ from efterlev.agents.gap import (
 
 __all__ = [
     "Agent",
+    "DocumentationAgent",
+    "DocumentationAgentInput",
+    "DocumentationReport",
     "GapAgent",
     "GapAgentInput",
     "GapReport",
+    "KsiAttestation",
     "KsiClassification",
+    "NarrativeOutput",
     "UnmappedFinding",
     "format_evidence_for_prompt",
     "parse_evidence_fence_ids",
+    "reconstruct_classifications_from_store",
 ]

@@ -239,14 +239,93 @@ def agent_gap(
 
 @agent_app.command("document")
 def agent_document(
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the repo whose `.efterlev/` store will be read. Defaults to cwd.",
+    ),
     ksi: str = typer.Option(
         None,
         "--ksi",
-        help="KSI ID to draft an attestation for. Defaults to all implemented KSIs.",
+        help="KSI ID to draft an attestation for. Defaults to every classified KSI.",
     ),
 ) -> None:
     """Draft an FRMR-compatible attestation for a KSI, grounded in its evidence."""
-    _stub("3", "agent document")
+    from efterlev.agents import (
+        DocumentationAgent,
+        DocumentationAgentInput,
+        reconstruct_classifications_from_store,
+    )
+    from efterlev.errors import AgentError
+    from efterlev.frmr.loader import FrmrDocument
+    from efterlev.models import Evidence
+    from efterlev.provenance import ProvenanceStore, active_store
+
+    root = target.resolve()
+    if not (root / ".efterlev").is_dir():
+        typer.echo(
+            f"error: no `.efterlev/` directory under {root}. Run `efterlev init` first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    frmr_cache = root / ".efterlev" / "cache" / "frmr_document.json"
+    if not frmr_cache.is_file():
+        typer.echo(
+            f"error: FRMR cache missing at {frmr_cache}. Re-run `efterlev init`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
+
+    try:
+        with ProvenanceStore(root) as store:
+            evidence = [Evidence.model_validate(p) for _rid, p in store.iter_evidence()]
+            classification_rows = store.iter_claims_by_metadata_kind("ksi_classification")
+            classifications = reconstruct_classifications_from_store(classification_rows)
+
+            if not classifications:
+                typer.echo(
+                    "error: no Gap Agent classifications in the store. "
+                    "Run `efterlev agent gap` first.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+
+            with active_store(store):
+                agent = DocumentationAgent()
+                report = agent.run(
+                    DocumentationAgentInput(
+                        indicators=frmr_doc.indicators,
+                        evidence=evidence,
+                        classifications=classifications,
+                        baseline_id="fedramp-20x-moderate",
+                        frmr_version=frmr_doc.version,
+                        only_ksi=ksi,
+                    )
+                )
+    except AgentError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(f"Documentation Agent drafted {len(report.attestations)} attestation(s).")
+    for att in report.attestations:
+        draft = att.draft
+        typer.echo("")
+        typer.echo(f"  === {draft.ksi_id} ({draft.status or 'no status'}) ===")
+        typer.echo(f"  citations: {len(draft.citations)}")
+        if draft.narrative:
+            # Wrap-free first 160 chars as a preview; full draft lives in the store.
+            preview = draft.narrative.strip().replace("\n", " ")
+            ellipsis = "…" if len(preview) > 160 else ""
+            typer.echo(f"  DRAFT — requires human review: {preview[:160]}{ellipsis}")
+        if att.claim_record_id is not None:
+            typer.echo(f"  record id: {att.claim_record_id}")
+    if report.skipped_ksi_ids:
+        typer.echo("")
+        skipped = ", ".join(report.skipped_ksi_ids)
+        typer.echo(f"Skipped {len(report.skipped_ksi_ids)} KSI(s): {skipped}")
 
 
 @agent_app.command("remediate")

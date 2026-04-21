@@ -83,7 +83,7 @@ class GapReport(BaseModel):
     claim_record_ids: list[str] = Field(default_factory=list)
 
 
-class GapAgent(Agent[GapReport]):
+class GapAgent(Agent):
     """LLM-backed KSI classifier, grounded in deterministic scanner evidence."""
 
     name = "gap_agent@0.1.0"
@@ -108,13 +108,13 @@ class GapAgent(Agent[GapReport]):
         _validate_cited_ids(report, fenced_prompt=system_prompt + "\n" + user_message)
 
         # Persist one Claim per KSI classification, linking back to the
-        # evidence IDs the model cited. Record ids (not Claim.claim_ids) are
-        # returned for CLI display so the user can pass them directly to
-        # `efterlev provenance show`.
+        # evidence IDs the model cited. `cited_evidence_ids` are already in
+        # `sha256:<hex>` form (the fence id format) which matches evidence
+        # record_ids exactly, so Claim.derived_from stores them as-is — no
+        # prefix translation at the boundary.
         record_ids: list[str] = []
         store = get_active_store()
         for clf in report.ksi_classifications:
-            derived = [_strip_sha_prefix(eid) for eid in clf.evidence_ids]
             claim = Claim.create(
                 claim_type="classification",
                 content={
@@ -123,7 +123,7 @@ class GapAgent(Agent[GapReport]):
                     "rationale": clf.rationale,
                 },
                 confidence="medium",
-                derived_from=derived,
+                derived_from=list(clf.evidence_ids),
                 model=response.model,
                 prompt_hash=response.prompt_hash,
             )
@@ -131,7 +131,7 @@ class GapAgent(Agent[GapReport]):
                 record = store.write_record(
                     payload=claim.model_dump(mode="json"),
                     record_type="claim",
-                    derived_from=derived,
+                    derived_from=list(clf.evidence_ids),
                     agent=self.name,
                     model=response.model,
                     prompt_hash=response.prompt_hash,
@@ -198,10 +198,3 @@ def _validate_cited_ids(report: GapReport, *, fenced_prompt: str) -> None:
             f"gap agent output cites evidence IDs not present in the prompt: "
             f"{sorted(fabricated)[:5]}. Prompt-injection guard refuses fabricated citations."
         )
-
-
-def _strip_sha_prefix(fence_id: str) -> str:
-    """Convert fence id (`sha256:<hex>`) back to the internal `evidence_id` (`<hex>`)."""
-    if fence_id.startswith("sha256:"):
-        return fence_id[len("sha256:") :]
-    return fence_id

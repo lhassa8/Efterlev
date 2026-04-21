@@ -41,7 +41,6 @@ def test_agent_subtree_lists_three_agents() -> None:
 @pytest.mark.parametrize(
     "args",
     [
-        ["agent", "document", "--ksi", "KSI-SVC-SNT"],
         ["agent", "remediate", "--ksi", "KSI-SVC-SNT"],
         ["mcp", "serve"],
     ],
@@ -59,6 +58,26 @@ def test_agent_gap_missing_efterlev_dir_prints_error(tmp_path: pytest.TempPathFa
     result = runner.invoke(app, ["agent", "gap", "--target", str(tmp_path)])
     assert result.exit_code == 1
     assert "no `.efterlev/` directory" in result.output
+
+
+def test_agent_document_missing_efterlev_dir_prints_error(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    result = runner.invoke(app, ["agent", "document", "--target", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "no `.efterlev/` directory" in result.output
+
+
+def test_agent_document_without_classifications_prints_error(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0, init_result.output
+    # Init ran but no `agent gap` yet — no classifications in the store,
+    # so the CLI should say so rather than calling the LLM.
+    result = runner.invoke(app, ["agent", "document", "--target", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "no Gap Agent classifications" in result.output
 
 
 def test_agent_gap_without_evidence_prints_error(tmp_path: pytest.TempPathFactory) -> None:
