@@ -87,19 +87,45 @@ def _root(
 
 @app.command()
 def init(
-    target: str = typer.Option(
-        ".",
+    target: Path = typer.Option(
+        Path("."),
         "--target",
-        help="Path to the repo to scan. Defaults to the current directory.",
+        help="Path to the repo to initialize. Defaults to the current directory.",
     ),
     baseline: str = typer.Option(
         "fedramp-20x-moderate",
         "--baseline",
         help="Compliance baseline to load. v0 supports `fedramp-20x-moderate` only.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite an existing `.efterlev/` directory.",
+    ),
 ) -> None:
     """Initialize `.efterlev/` in the target repo with a provenance store and config."""
-    _stub("2", "init")
+    from efterlev.errors import CatalogLoadError, ConfigError
+    from efterlev.workspace import init_workspace
+
+    try:
+        result = init_workspace(target.resolve(), baseline, force=force)
+    except (ConfigError, CatalogLoadError) as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(f"Initialized {result.efterlev_dir}")
+    typer.echo(f"  baseline:              {result.baseline}")
+    typer.echo(
+        f"  FRMR:                  v{result.frmr_version} "
+        f"({result.frmr_last_updated}, {result.num_themes} themes, "
+        f"{result.num_indicators} indicators)"
+    )
+    typer.echo(
+        f"  NIST SP 800-53 Rev 5:  "
+        f"{result.num_controls} controls "
+        f"(+{result.num_enhancements} enhancements)"
+    )
+    typer.echo(f"  load receipt:          {result.receipt_record_id}")
 
 
 @app.command()

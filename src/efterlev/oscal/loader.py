@@ -16,6 +16,7 @@ without case-folding or normalization.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -41,11 +42,22 @@ class OscalCatalog(BaseModel):
 def load_oscal_800_53(path: Path) -> OscalCatalog:
     """Load a NIST 800-53 Rev 5 OSCAL catalog file and flatten it.
 
+    Results are cached in-process by resolved path + mtime so repeat loads
+    (common across agents / tests in a single process) don't pay trestle's
+    ~28s parse more than once. If the underlying file is rewritten, the
+    cache naturally invalidates because mtime changes.
+
     Raises `CatalogLoadError` on I/O, parsing, or structural failure.
     """
     if not path.exists():
         raise CatalogLoadError(f"failed to load OSCAL catalog at {path}: file not found")
+    return _load_oscal_800_53_cached(str(path.resolve()), path.stat().st_mtime_ns)
 
+
+@lru_cache(maxsize=8)
+def _load_oscal_800_53_cached(resolved_path: str, mtime_ns: int) -> OscalCatalog:
+    """Inner cached load; keyed by (resolved path, mtime) so file changes invalidate."""
+    path = Path(resolved_path)
     try:
         trestle_catalog = TrestleCatalog.oscal_read(path)
     except Exception as e:  # trestle raises a zoo of exceptions; we wrap them

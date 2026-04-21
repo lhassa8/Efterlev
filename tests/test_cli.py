@@ -39,7 +39,6 @@ def test_agent_subtree_lists_three_agents() -> None:
 @pytest.mark.parametrize(
     "args",
     [
-        ["init"],
         ["scan"],
         ["agent", "gap"],
         ["agent", "document", "--ksi", "KSI-SVC-SNT"],
@@ -54,6 +53,22 @@ def test_subcommand_stubs_raise_not_implemented(args: list[str]) -> None:
     assert isinstance(result.exception, NotImplementedError)
     # The stub message should name the phase so the user knows what's coming.
     assert "Phase" in str(result.exception)
+
+
+def test_init_succeeds_and_prints_summary(tmp_path: pytest.TempPathFactory) -> None:
+    result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "Initialized" in result.output
+    assert "FRMR:" in result.output
+    assert "NIST SP 800-53 Rev 5:" in result.output
+
+
+def test_init_refuses_existing_workspace(tmp_path: pytest.TempPathFactory) -> None:
+    first = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert first.exit_code == 0
+    second = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert second.exit_code == 1
+    assert "already exists" in second.output
 
 
 def test_provenance_show_missing_efterlev_dir_prints_error(
