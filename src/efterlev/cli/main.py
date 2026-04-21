@@ -473,8 +473,22 @@ def provenance_show(
 
 @mcp_app.command("serve")
 def mcp_serve() -> None:
-    """Run the MCP stdio server exposing every registered primitive."""
-    _stub("4", "mcp serve")
+    """Run the MCP stdio server exposing every registered tool.
+
+    Blocks on stdin/stdout for the MCP protocol. Intended to be launched
+    as a subprocess by an MCP client (Claude Code, etc.); not interactive.
+    Per DECISIONS design call #4: stdio-only, stateless, every tool call
+    logged to the target repo's provenance store for audit.
+    """
+    import asyncio
+
+    from efterlev.mcp_server import run_stdio_server
+
+    try:
+        asyncio.run(run_stdio_server())
+    except KeyboardInterrupt:
+        # Clean shutdown on Ctrl-C; Typer already swallows but be explicit.
+        raise typer.Exit(code=0) from None
 
 
 if __name__ == "__main__":

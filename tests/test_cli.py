@@ -38,11 +38,11 @@ def test_agent_subtree_lists_three_agents() -> None:
         assert sub in result.output
 
 
-def test_mcp_serve_is_still_a_stub() -> None:
-    result = runner.invoke(app, ["mcp", "serve"])
-    assert result.exit_code != 0
-    assert isinstance(result.exception, NotImplementedError)
-    assert "Phase" in str(result.exception)
+def test_mcp_serve_command_is_registered() -> None:
+    """`efterlev mcp serve` is wired up — behavior lives in tests/test_mcp_server.py."""
+    result = runner.invoke(app, ["mcp", "serve", "--help"])
+    assert result.exit_code == 0
+    assert "MCP stdio server" in result.output
 
 
 def test_agent_gap_missing_efterlev_dir_prints_error(tmp_path: pytest.TempPathFactory) -> None:

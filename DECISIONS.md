@@ -531,6 +531,32 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-21 — Resolve design call #4: MCP trust model — stdio-only, stateless, logged `[mcp]` `[security]` `[architecture]`
+
+**Decision:** The v0 MCP server is (a) stdio-only, no TCP or socket listener; (b) stateless — each tool invocation takes the target repo path as an argument, the server holds no ambient "current repo" state between calls; (c) self-logging — every tool call writes one `ProvenanceRecord(record_type="claim", metadata={"kind": "mcp_tool_call", ...})` into the target repo's provenance store before dispatching the actual work, capturing tool name, arguments, and client identifier (MCP `clientInfo.name` when available, `"unknown"` otherwise); (d) no per-tool access control — every registered tool is callable by every connected client, with the trust boundary being the OS-level stdio pipe.
+
+**Rationale:**
+
+- stdio-only eliminates the network attack surface entirely. An MCP client has to be on the same machine with the ability to spawn a subprocess; if they can do that, they have shell-equivalent access to the repo already. TCP transport would introduce auth/session complexity the v0 scope cannot justify.
+- Stateless keeps the server composable: one server process can handle many repos, and Claude Code / external tools don't need a "switch-repo" dance. Each tool call is self-contained.
+- Logging tool calls into the provenance store means the graph *already* records who asked what. A user investigating a classification can see whether it was produced by their own CLI run or by an external MCP caller, which is a real auditability requirement for a compliance tool.
+- No per-tool ACLs at v0: adds real complexity, no demo-phase value. Users who want isolation run the server only when they want external access; they turn it off otherwise. A v1 ACL layer can land without protocol changes.
+
+**Alternatives rejected:**
+
+- **TCP transport with bearer tokens.** Rejected for v0. Auth tokens mean secret storage, rotation, revocation, and session lifecycle — all real surface area that's not load-bearing for the architectural proof. Stdio is the right v0 scope.
+- **Server bound at launch to one target repo.** Rejected. Simpler to reason about but makes Claude Code–as–client awkward: a client working across repos would have to start one server per repo. Stateless is strictly more flexible with no real cost.
+- **Drop per-tool-call provenance logging for speed.** Rejected. The whole point of Efterlev is provenance; the MCP layer can't silently bypass it. Logging is cheap (one SQLite row + one receipt-log line).
+
+**Implementation impact (Phase 4):**
+
+- `src/efterlev/mcp_server/server.py` — stdio-only server, uses the MCP Python SDK's `stdio_server()` transport.
+- Tools at v0: `efterlev_init`, `efterlev_scan`, `efterlev_agent_gap`, `efterlev_agent_document`, `efterlev_agent_remediate`, `efterlev_provenance_show`, `efterlev_list_primitives`. Every tool takes an explicit `target` path.
+- Each tool handler opens a fresh `ProvenanceStore(target)`, writes an `mcp_tool_call` record capturing `{"tool": name, "arguments": args, "client_id": ...}`, then runs the underlying CLI-equivalent logic under `active_store(...)`.
+- `THREAT_MODEL.md` gets an "MCP attack surface" section listing (1) local-only transport, (2) caller is trusted as subprocess parent, (3) tool-call log is the audit trail, (4) agent tools still require `ANTHROPIC_API_KEY` in the server's env — server-side key management, not client-supplied.
+
+---
+
 
 
 ```

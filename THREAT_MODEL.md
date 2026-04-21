@@ -131,6 +131,28 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 
 ---
 
+### T6: MCP attack surface
+
+**Threat:** Efterlev exposes every primitive/agent to any process that can speak MCP over its stdio pipe. A malicious MCP client could drive Efterlev to scan arbitrary paths, burn API credits on LLM calls, or cite fabricated evidence in drafted output.
+
+**Mitigations (per DECISIONS 2026-04-21 design call #4):**
+- **Local-only transport.** The v0 server speaks MCP over stdio, never TCP. The caller must be able to spawn the `efterlev mcp serve` subprocess, which already implies local-shell access to the repo — the network attack surface is zero.
+- **Subprocess-parent trust boundary.** The trust boundary is the OS-level stdio pipe. Whoever spawned the server is authorized to call every tool. This is the same trust model as `git`, `terraform`, and every other developer CLI.
+- **Tool-call audit log.** Every MCP tool invocation writes one `ProvenanceRecord(record_type="claim", metadata={"kind": "mcp_tool_call", ...})` into the target repo's provenance store *before* dispatching the actual work. A user investigating a classification can see whether it came from their own CLI run or an external MCP caller (and which one — the MCP `clientInfo.name` is captured when available).
+- **Evidence/source-file fencing survives the MCP boundary.** Agent tools run the same XML-fenced prompt path as the CLI (design call #3), so a hostile MCP caller cannot bypass prompt-injection defenses by injecting evidence through the MCP layer.
+- **API keys stay server-side.** The Anthropic API key is read from the server process's environment, never passed in via MCP tool arguments. A client that can call `efterlev_agent_gap` can spend the server's API budget but cannot exfiltrate the key.
+
+**Residual risk:**
+- A client that can spawn the server has shell-equivalent access to the host and can do far worse than drive MCP tools. The MCP layer doesn't reduce that risk but doesn't amplify it either.
+- Per-tool ACLs are a v1 concern. Users who want fine-grained control run the server only while they want external access.
+
+**Not in scope for v0:**
+- TCP transport with bearer tokens (see DECISIONS).
+- Per-tool permission scopes (all-or-nothing at v0).
+- Rate limiting on agent tools (a client can drive N LLM calls; operational cost is the user's to bound).
+
+---
+
 ## Explicitly NOT in scope for the tool's threat model
 
 - **Protecting the user from themselves.** Efterlev trusts its invoking user. A user who deliberately points Efterlev at sensitive content and chooses to use generative agents is making an informed decision.
