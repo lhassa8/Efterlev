@@ -1,0 +1,28 @@
+detector_id: aws.fips_ssl_policies_on_lb_listeners
+
+ksis:
+  - id: KSI-SVC-VRI
+    coverage: partial
+    notes: >
+      Infrastructure-layer evidence. Confirms the ssl_policy selected
+      for an AWS LB listener is in a FIPS-aligned family. Does not
+      prove certificate strength, key length, runtime cipher
+      negotiation, or the downstream cryptographic-module certification
+      that AWS itself represents for the LB service.
+  - id: KSI-SVC-SNT
+    coverage: reinforces
+    notes: >
+      The cryptographic-algorithm layer of "Securing Network Traffic."
+      aws.tls_on_lb_listeners covers the presence layer; this detector
+      covers the strength layer.
+
+controls:
+  - id: SC-13
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Evidences use of FIPS-aligned cryptographic policies at the LB
+      termination layer. Full SC-13 coverage includes every other place
+      in the system where cryptography is applied (S3 SSE, RDS at-rest,
+      SQS/SNS, custom KMS usage); this detector narrows to the TLS
+      transport case.
