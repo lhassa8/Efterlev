@@ -38,19 +38,10 @@ def test_agent_subtree_lists_three_agents() -> None:
         assert sub in result.output
 
 
-@pytest.mark.parametrize(
-    "args",
-    [
-        ["agent", "remediate", "--ksi", "KSI-SVC-SNT"],
-        ["mcp", "serve"],
-    ],
-    ids=lambda args: " ".join(args),
-)
-def test_subcommand_stubs_raise_not_implemented(args: list[str]) -> None:
-    result = runner.invoke(app, args)
+def test_mcp_serve_is_still_a_stub() -> None:
+    result = runner.invoke(app, ["mcp", "serve"])
     assert result.exit_code != 0
     assert isinstance(result.exception, NotImplementedError)
-    # The stub message should name the phase so the user knows what's coming.
     assert "Phase" in str(result.exception)
 
 
@@ -66,6 +57,40 @@ def test_agent_document_missing_efterlev_dir_prints_error(
     result = runner.invoke(app, ["agent", "document", "--target", str(tmp_path)])
     assert result.exit_code == 1
     assert "no `.efterlev/` directory" in result.output
+
+
+def test_agent_remediate_missing_efterlev_dir_prints_error(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    result = runner.invoke(
+        app, ["agent", "remediate", "--ksi", "KSI-SVC-VRI", "--target", str(tmp_path)]
+    )
+    assert result.exit_code == 1
+    assert "no `.efterlev/` directory" in result.output
+
+
+def test_agent_remediate_unknown_ksi_prints_error(tmp_path: pytest.TempPathFactory) -> None:
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0, init_result.output
+    result = runner.invoke(
+        app,
+        ["agent", "remediate", "--ksi", "KSI-DOES-NOT-EXIST", "--target", str(tmp_path)],
+    )
+    assert result.exit_code == 1
+    assert "not in the loaded baseline" in result.output
+
+
+def test_agent_remediate_without_classification_prints_error(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0, init_result.output
+    # Pick any real KSI from the loaded FRMR; no `agent gap` has run yet.
+    result = runner.invoke(
+        app, ["agent", "remediate", "--ksi", "KSI-SVC-SNT", "--target", str(tmp_path)]
+    )
+    assert result.exit_code == 1
+    assert "no Gap Agent classification" in result.output
 
 
 def test_agent_document_without_classifications_prints_error(

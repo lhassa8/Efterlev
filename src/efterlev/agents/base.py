@@ -6,21 +6,25 @@ Three things live here:
      embed Evidence content into a prompt. Each record is wrapped in an
      `<evidence id="sha256:...">...</evidence>` fence per DECISIONS
      2026-04-21 design call #3. No agent assembles prompts by hand.
+     `format_source_files_for_prompt(source_files)` is the analogous
+     helper for raw `.tf` file content — same trust model, different fence
+     tag, separate parse helper.
 
-  2. `parse_evidence_fence_ids(prompt)` — recovers the set of fence IDs
-     actually present in a prompt, used by the post-generation validator
-     to confirm every cited evidence ID maps to a real fence.
+  2. `parse_evidence_fence_ids(prompt)` / `parse_source_file_fence_paths(prompt)`
+     — recover the set of fence IDs/paths actually present in a prompt, used
+     by post-generation validators to confirm every cited ID or path maps to
+     a real fence.
 
   3. `Agent` — abstract base. Subclasses declare `name`, `system_prompt_path`,
-     and an `output_model` pydantic class; `Agent.run(...)` loads the
+     and an `output_model` pydantic class; `Agent._invoke_llm(...)` loads the
      prompt, calls the LLM via the injected client, parses + validates the
      response, and emits a provenance record for the model invocation.
      Subclasses build the user message(s) and transform the parsed JSON
      into the final typed artifact.
 
-Evidence fencing is mandatory. Any agent that assembles its own evidence
-strings bypasses the prompt-injection defense that the whole generative
-layer depends on.
+Fencing is mandatory for anything scanner-derived or attacker-controllable.
+Any agent that assembles its own evidence or source-file strings bypasses
+the prompt-injection defense the whole generative layer depends on.
 """
 
 from __future__ import annotations
@@ -41,7 +45,8 @@ from efterlev.provenance.context import get_active_store
 log = logging.getLogger(__name__)
 
 
-_FENCE_RE = re.compile(r'<evidence id="([^"]+)">')
+_EVIDENCE_FENCE_RE = re.compile(r'<evidence id="([^"]+)">')
+_SOURCE_FILE_FENCE_RE = re.compile(r'<source_file path="([^"]+)">')
 
 
 def format_evidence_for_prompt(evidence: list[Evidence]) -> str:
@@ -81,7 +86,39 @@ def parse_evidence_fence_ids(prompt: str) -> set[str]:
     Used by the post-generation validator to enforce "cited IDs must appear
     as fences." Not order-preserving — set semantics are sufficient.
     """
-    return set(_FENCE_RE.findall(prompt))
+    return set(_EVIDENCE_FENCE_RE.findall(prompt))
+
+
+def format_source_files_for_prompt(source_files: dict[str, str]) -> str:
+    """Return a prompt fragment wrapping each `.tf` source file in an XML fence.
+
+    Fence format: `<source_file path="<path>">` + raw file content +
+    `</source_file>`. The Remediation Agent needs the full source text to
+    produce a valid unified diff, but `.tf` comments are attacker-controllable
+    just like Evidence content — same trust model, different fence tag so
+    the validator can enforce "model may only cite paths it was shown" in
+    the same way it enforces evidence ids.
+
+    The content is embedded verbatim (no JSON escaping): the model reads it
+    as Terraform, not as a JSON payload, and the `</source_file>` terminator
+    is unambiguous because `.tf` syntax never produces that string.
+    """
+    if not source_files:
+        return "(no source files)"
+
+    blocks: list[str] = []
+    for path, content in source_files.items():
+        blocks.append(f'<source_file path="{path}">\n{content}\n</source_file>')
+    return "\n\n".join(blocks)
+
+
+def parse_source_file_fence_paths(prompt: str) -> set[str]:
+    """Recover every `<source_file path="...">` path present in a prompt.
+
+    Set semantics — the Remediation Agent's post-generation validator just
+    needs to enforce "cited paths must appear as fences."
+    """
+    return set(_SOURCE_FILE_FENCE_RE.findall(prompt))
 
 
 class Agent(ABC):

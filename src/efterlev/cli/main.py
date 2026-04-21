@@ -335,9 +335,110 @@ def agent_remediate(
         "--ksi",
         help="KSI ID to propose a remediation for.",
     ),
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the repo whose `.efterlev/` store will be read. Defaults to cwd.",
+    ),
 ) -> None:
     """Propose a Terraform diff fixing a selected KSI gap."""
-    _stub("3", "agent remediate")
+    from efterlev.agents import (
+        RemediationAgent,
+        RemediationAgentInput,
+        reconstruct_classifications_from_store,
+    )
+    from efterlev.errors import AgentError
+    from efterlev.frmr.loader import FrmrDocument
+    from efterlev.models import Evidence
+    from efterlev.provenance import ProvenanceStore, active_store
+
+    root = target.resolve()
+    if not (root / ".efterlev").is_dir():
+        typer.echo(
+            f"error: no `.efterlev/` directory under {root}. Run `efterlev init` first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    frmr_cache = root / ".efterlev" / "cache" / "frmr_document.json"
+    if not frmr_cache.is_file():
+        typer.echo(
+            f"error: FRMR cache missing at {frmr_cache}. Re-run `efterlev init`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
+    indicator = frmr_doc.indicators.get(ksi)
+    if indicator is None:
+        typer.echo(
+            f"error: KSI {ksi!r} is not in the loaded baseline (FRMR {frmr_doc.version}).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        with ProvenanceStore(root) as store:
+            classification_rows = store.iter_claims_by_metadata_kind("ksi_classification")
+            classifications = reconstruct_classifications_from_store(classification_rows)
+            clf = next((c for c in classifications if c.ksi_id == ksi), None)
+            if clf is None:
+                typer.echo(
+                    f"error: no Gap Agent classification for {ksi} in the store. "
+                    "Run `efterlev agent gap` first.",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            if clf.status == "implemented":
+                typer.echo(f"{ksi} is classified as `implemented`. No remediation needed.")
+                raise typer.Exit(code=0)
+            if clf.status == "not_applicable":
+                typer.echo(f"{ksi} is classified as `not_applicable`. No remediation needed.")
+                raise typer.Exit(code=0)
+
+            all_evidence = [Evidence.model_validate(p) for _rid, p in store.iter_evidence()]
+            ksi_evidence = [ev for ev in all_evidence if ksi in ev.ksis_evidenced]
+
+            # Read the .tf files every evidence record points at, keyed by
+            # the path as stored in the evidence (typically repo-relative).
+            source_files: dict[str, str] = {}
+            for ev in ksi_evidence:
+                file_path = Path(str(ev.source_ref.file))
+                full = file_path if file_path.is_absolute() else root / file_path
+                if full.is_file() and str(ev.source_ref.file) not in source_files:
+                    source_files[str(ev.source_ref.file)] = full.read_text(encoding="utf-8")
+
+            with active_store(store):
+                agent = RemediationAgent()
+                proposal = agent.run(
+                    RemediationAgentInput(
+                        indicator=indicator,
+                        classification=clf,
+                        evidence=ksi_evidence,
+                        source_files=source_files,
+                        baseline_id="fedramp-20x-moderate",
+                        frmr_version=frmr_doc.version,
+                    )
+                )
+    except AgentError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(f"Remediation Agent draft for {proposal.ksi_id} ({proposal.status}):")
+    typer.echo("")
+    typer.echo("DRAFT — requires human review. Efterlev does not apply diffs.")
+    typer.echo("")
+    typer.echo(proposal.explanation)
+    if proposal.diff:
+        typer.echo("")
+        typer.echo("--- diff ---")
+        typer.echo(proposal.diff)
+    if proposal.cited_source_files:
+        typer.echo("")
+        typer.echo(f"Files touched: {', '.join(proposal.cited_source_files)}")
+    if proposal.claim_record_id is not None:
+        typer.echo("")
+        typer.echo(f"record id: {proposal.claim_record_id}")
 
 
 @provenance_app.command("show")

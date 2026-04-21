@@ -8,7 +8,13 @@ for both the model invocation and each resulting `Claim`.
 
 from __future__ import annotations
 
-from efterlev.agents.base import Agent, format_evidence_for_prompt, parse_evidence_fence_ids
+from efterlev.agents.base import (
+    Agent,
+    format_evidence_for_prompt,
+    format_source_files_for_prompt,
+    parse_evidence_fence_ids,
+    parse_source_file_fence_paths,
+)
 from efterlev.agents.documentation import (
     DocumentationAgent,
     DocumentationAgentInput,
@@ -24,6 +30,12 @@ from efterlev.agents.gap import (
     KsiClassification,
     UnmappedFinding,
 )
+from efterlev.agents.remediation import (
+    RemediationAgent,
+    RemediationAgentInput,
+    RemediationOutput,
+    RemediationProposal,
+)
 
 __all__ = [
     "Agent",
@@ -36,8 +48,14 @@ __all__ = [
     "KsiAttestation",
     "KsiClassification",
     "NarrativeOutput",
+    "RemediationAgent",
+    "RemediationAgentInput",
+    "RemediationOutput",
+    "RemediationProposal",
     "UnmappedFinding",
     "format_evidence_for_prompt",
+    "format_source_files_for_prompt",
     "parse_evidence_fence_ids",
+    "parse_source_file_fence_paths",
     "reconstruct_classifications_from_store",
 ]
