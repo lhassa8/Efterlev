@@ -18,6 +18,7 @@ Implementation phases (see `docs/dual_horizon_plan.md` §2.3):
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -235,6 +236,21 @@ def agent_gap(
         typer.echo("Claim record IDs (pass to `efterlev provenance show`):")
         for cid in report.claim_record_ids:
             typer.echo(f"  {cid}")
+
+    from efterlev.reports import render_gap_report_html
+
+    html_body = render_gap_report_html(
+        report,
+        baseline_id="fedramp-20x-moderate",
+        frmr_version=frmr_doc.version,
+    )
+    reports_dir = root / ".efterlev" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    html_path = reports_dir / f"gap-{timestamp}.html"
+    html_path.write_text(html_body, encoding="utf-8")
+    typer.echo("")
+    typer.echo(f"HTML report: {html_path}")
 
 
 @agent_app.command("document")
