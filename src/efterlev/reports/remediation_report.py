@@ -26,6 +26,7 @@ from datetime import datetime
 from jinja2 import Environment, select_autoescape
 
 from efterlev.agents import RemediationProposal
+from efterlev.models import Evidence
 from efterlev.reports.html import DRAFT_BANNER_HTML, render_base_document
 
 _BODY_TEMPLATE = """
@@ -72,7 +73,14 @@ _BODY_TEMPLATE = """
     <strong>Grounded in evidence ({{ proposal.cited_evidence_ids | length }}):</strong>
     <ul>
     {% for eid in proposal.cited_evidence_ids %}
-      <li><code class="fence-id">{{ eid }}</code></li>
+      <li>
+        <code class="fence-id">{{ eid }}</code>
+        {% if detector_by_id.get(eid) == "manifest" -%}
+        <span class="source-badge source-manifest"
+              title="Human-signed procedural attestation from .efterlev/manifests/"
+              >attestation</span>
+        {%- endif %}
+      </li>
     {% endfor %}
     </ul>
   </div>
@@ -156,12 +164,23 @@ _REMEDIATION_CSS = """
 def render_remediation_proposal_html(
     proposal: RemediationProposal,
     *,
+    evidence: list[Evidence] | None = None,
     generated_at: datetime | None = None,
 ) -> str:
-    """Return a complete HTML document rendering of a RemediationProposal."""
+    """Return a complete HTML document rendering of a RemediationProposal.
+
+    Pass `evidence` (the records the agent reasoned over for this KSI)
+    to get per-citation source badges. Unbadged citations = scanner-
+    derived detector Evidence; "attestation"-badged = manifest-sourced.
+    """
     env = Environment(autoescape=select_autoescape(["html", "xml"]))
     template = env.from_string(_BODY_TEMPLATE)
-    body = template.render(proposal=proposal, draft_banner=DRAFT_BANNER_HTML)
+    detector_by_id: dict[str, str] = {ev.evidence_id: ev.detector_id for ev in (evidence or [])}
+    body = template.render(
+        proposal=proposal,
+        draft_banner=DRAFT_BANNER_HTML,
+        detector_by_id=detector_by_id,
+    )
 
     when = (generated_at or datetime.now().astimezone()).isoformat(timespec="seconds")
     return render_base_document(

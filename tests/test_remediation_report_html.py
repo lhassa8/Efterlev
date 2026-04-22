@@ -175,3 +175,44 @@ def test_how_to_apply_guidance_always_present() -> None:
         assert "How to apply" in html
         assert "git apply --check" in html
         assert "efterlev scan" in html  # re-scan step reference
+
+
+def test_manifest_cited_evidence_gets_attestation_badge() -> None:
+    """When `evidence=` is passed, cited evidence records whose detector_id
+    is "manifest" render with an attestation badge (fix for review finding 6).
+    """
+    from pathlib import Path
+
+    from efterlev.models import Evidence, SourceRef
+
+    detector_ev = Evidence.create(
+        detector_id="aws.tls_on_lb_listeners",
+        source_ref=SourceRef(file=Path("infra/lb.tf"), line_start=10, line_end=22),
+        ksis_evidenced=["KSI-SVC-SNT"],
+        controls_evidenced=["SC-8"],
+        content={"resource_name": "public"},
+        timestamp=_when(),
+    )
+    manifest_ev = Evidence.create(
+        detector_id="manifest",
+        source_ref=SourceRef(file=Path(".efterlev/manifests/inbox.yml")),
+        ksis_evidenced=["KSI-AFR-FSI"],
+        controls_evidenced=["IR-6"],
+        content={"statement": "soc monitored"},
+        timestamp=_when(),
+    )
+    html = render_remediation_proposal_html(
+        _proposal(cited_evidence_ids=[detector_ev.evidence_id, manifest_ev.evidence_id]),
+        evidence=[detector_ev, manifest_ev],
+        generated_at=_when(),
+    )
+    assert ">attestation</span>" in html
+    assert html.count("source-manifest") == 2  # CSS rule + one badge instance
+
+
+def test_cited_evidence_without_evidence_kwarg_renders_unbadged() -> None:
+    """Back-compat: callers not passing `evidence=` still get a valid
+    report; citations render without badges."""
+    html = render_remediation_proposal_html(_proposal(), generated_at=_when())
+    assert "sha256:abc123" in html
+    assert ">attestation</span>" not in html

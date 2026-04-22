@@ -287,6 +287,7 @@ def agent_gap(
         report,
         baseline_id="fedramp-20x-moderate",
         frmr_version=frmr_doc.version,
+        evidence=evidence,
     )
     reports_dir = root / ".efterlev" / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -589,7 +590,7 @@ def agent_remediate(
 
     from efterlev.reports import render_remediation_proposal_html
 
-    html_body = render_remediation_proposal_html(proposal)
+    html_body = render_remediation_proposal_html(proposal, evidence=ksi_evidence)
     reports_dir = root / ".efterlev" / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")

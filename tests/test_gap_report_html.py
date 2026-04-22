@@ -160,3 +160,62 @@ def test_empty_report_still_renders_valid_document() -> None:
     html = render_gap_report_html(_report(), **_baseline_kwargs())
     assert "<!DOCTYPE html>" in html
     assert "0 KSI classification(s), 0 unmapped finding(s)" in html
+
+
+def test_manifest_cited_evidence_gets_attestation_badge() -> None:
+    """When `evidence=` is passed, manifest-sourced citations render with a
+    badge so a 3PAO or reviewer can tell human-signed evidence from
+    scanner-derived evidence at a glance. Fix for review finding 5.
+    """
+    from pathlib import Path
+
+    from efterlev.models import Evidence, SourceRef
+
+    detector_ev = Evidence.create(
+        detector_id="aws.encryption_s3_at_rest",
+        source_ref=SourceRef(file=Path("main.tf"), line_start=1, line_end=10),
+        ksis_evidenced=["KSI-SVC-VRI"],
+        controls_evidenced=["SC-28"],
+        content={"resource_name": "audit"},
+        timestamp=datetime(2026, 4, 22, tzinfo=UTC),
+    )
+    manifest_ev = Evidence.create(
+        detector_id="manifest",
+        source_ref=SourceRef(file=Path(".efterlev/manifests/security-inbox.yml")),
+        ksis_evidenced=["KSI-AFR-FSI"],
+        controls_evidenced=["IR-6"],
+        content={"statement": "soc monitored 24/7"},
+        timestamp=datetime(2026, 4, 22, tzinfo=UTC),
+    )
+    clf = KsiClassification(
+        ksi_id="KSI-AFR-FSI",
+        status="implemented",
+        rationale="Human-attested procedural coverage in manifest.",
+        evidence_ids=[detector_ev.evidence_id, manifest_ev.evidence_id],
+    )
+    html = render_gap_report_html(
+        _report(classifications=[clf]),
+        evidence=[detector_ev, manifest_ev],
+        **_baseline_kwargs(),
+    )
+    # Two citations rendered; exactly one badge (the manifest-sourced one).
+    assert detector_ev.evidence_id in html
+    assert manifest_ev.evidence_id in html
+    assert ">attestation</span>" in html
+    # One source-manifest CSS rule + exactly one badge instance = 2 occurrences.
+    assert html.count("source-manifest") == 2
+
+
+def test_citations_without_evidence_kwarg_render_unbadged() -> None:
+    """Pre-existing callers that don't pass `evidence=` still work: citations
+    render without any badge (detector-source default)."""
+    clf = KsiClassification(
+        ksi_id="KSI-SVC-VRI",
+        status="partial",
+        rationale="ok",
+        evidence_ids=["sha256:abc"],
+    )
+    html = render_gap_report_html(_report(classifications=[clf]), **_baseline_kwargs())
+    assert "sha256:abc" in html
+    # Stylesheet still defines `.source-manifest`; no badge element should fire.
+    assert ">attestation</span>" not in html

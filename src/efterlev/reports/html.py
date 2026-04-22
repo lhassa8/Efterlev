@@ -112,6 +112,28 @@ h3 { font-size: 15px; margin-top: 0; }
 .evidence-links { margin-top: 10px; font-size: 12px; color: #6a737d; }
 .evidence-links code { font-size: 11px; }
 
+/* Source-distinction badge. Manifest-sourced Evidence is human-signed
+   procedural attestation (detector_id="manifest"); scanner-derived
+   Evidence is the default and is unbadged. Amber to echo the DRAFT
+   banner family and draw the reviewer's eye. See Phase 1 polish and
+   Phase 2 (post-review fixup E). */
+.source-badge {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.source-badge.source-manifest {
+  background: #fff4d6;
+  color: #7a5200;
+  border: 1px solid #e0c88a;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

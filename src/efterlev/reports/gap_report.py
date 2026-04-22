@@ -27,6 +27,7 @@ from datetime import datetime
 from jinja2 import Environment, select_autoescape
 
 from efterlev.agents import GapReport
+from efterlev.models import Evidence
 from efterlev.reports.html import DRAFT_BANNER_HTML, render_base_document
 
 _BODY_TEMPLATE = """
@@ -72,7 +73,10 @@ _BODY_TEMPLATE = """
   <div class="evidence-links">
     Cites {{ clf.evidence_ids | length }} evidence record(s):
     {% for eid in clf.evidence_ids -%}
-    <code class="fence-id">{{ eid }}</code>{% if not loop.last %}, {% endif %}
+    <code class="fence-id">{{ eid }}</code>{% if detector_by_id.get(eid) == "manifest"
+      %}<span class="source-badge source-manifest"
+              title="Human-signed procedural attestation from .efterlev/manifests/"
+              >attestation</span>{% endif %}{% if not loop.last %}, {% endif %}
     {%- endfor %}
   </div>
   {% else %}
@@ -121,11 +125,20 @@ def render_gap_report_html(
     *,
     baseline_id: str,
     frmr_version: str,
+    evidence: list[Evidence] | None = None,
     generated_at: datetime | None = None,
 ) -> str:
-    """Return a complete HTML document rendering of a GapReport."""
+    """Return a complete HTML document rendering of a GapReport.
+
+    Pass `evidence` (the same list the agent reasoned over) to get
+    per-citation source badges — manifest-sourced citations render with
+    an "attestation" pill so reviewers can tell human-signed evidence
+    from scanner-derived evidence at a glance. When `evidence` is None
+    or empty, citations render without badges (scanner-only default).
+    """
     env = Environment(autoescape=select_autoescape(["html", "xml"]))
     template = env.from_string(_BODY_TEMPLATE)
+    detector_by_id: dict[str, str] = {ev.evidence_id: ev.detector_id for ev in (evidence or [])}
     # `body` is a Jinja-rendered, autoescape-protected string. Passing it to
     # `render_base_document` as `body_html` is safe: the base renderer
     # interpolates via f-string (no re-escape, which is what we want —
@@ -137,6 +150,7 @@ def render_gap_report_html(
         baseline_id=baseline_id,
         frmr_version=frmr_version,
         draft_banner=DRAFT_BANNER_HTML,
+        detector_by_id=detector_by_id,
     )
 
     when = (generated_at or datetime.now().astimezone()).isoformat(timespec="seconds")
