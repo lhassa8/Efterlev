@@ -1,0 +1,10 @@
+detector_id: aws.rds_encryption_at_rest
+
+evidence_shape:
+  resource_type: string         # always "aws_db_instance"
+  resource_name: string         # the Terraform logical name
+  encryption_state: enum        # "present" | "absent"
+  algorithm: string?            # "AES256"; omitted when absent
+  key_management: enum?         # "customer_managed" | "aws_managed"; omitted when absent
+  kms_key_id: string?           # present only when customer_managed
+  gap: string?                  # present only when encryption_state=absent

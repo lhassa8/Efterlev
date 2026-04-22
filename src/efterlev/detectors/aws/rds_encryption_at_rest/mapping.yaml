@@ -1,0 +1,16 @@
+detector_id: aws.rds_encryption_at_rest
+
+# DECISIONS 2026-04-21 Option C: SC-28 has no FRMR KSI in 0.9.43-beta.
+ksis: []
+
+controls:
+  - id: SC-28
+    enhancements: [SC-28(1)]
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Infrastructure-layer evidence only. The detector confirms that an
+      RDS instance declares storage_encrypted=true and names the AES-256
+      default algorithm; it does not evidence key rotation, BYOK/CMK
+      governance practices, snapshot-encryption posture, or runtime state.
+      Key management (SC-12) is the kms_key_rotation detector's territory.

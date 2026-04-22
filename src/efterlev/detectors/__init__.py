@@ -21,6 +21,7 @@ from efterlev.detectors.aws import (
     encryption_s3_at_rest,  # noqa: F401
     fips_ssl_policies_on_lb_listeners,  # noqa: F401
     mfa_required_on_iam_policies,  # noqa: F401
+    rds_encryption_at_rest,  # noqa: F401
     s3_public_access_block,  # noqa: F401
     tls_on_lb_listeners,  # noqa: F401
 )
