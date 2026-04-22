@@ -761,6 +761,57 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-22 — E2E smoke harness landed + first real-Opus run `[process]` `[verification]` `[agents]`
+
+**Context.** Every test in `tests/` uses `StubLLMClient`, so up through the post-review fixups landing on 2026-04-22 the production Opus prompts had never been exercised in this development environment against the real API. Prompt quality on a 60-KSI Gap classification, fence-nonce respect under adversarial-looking content, FRMR JSON shape under real model output, and narrative grounding in evidence were all unmeasured. CLAUDE.md's "What has NOT been verified yet" block called this out as the next high-leverage task.
+
+**Decision (three interlocking parts):**
+
+1. **`scripts/e2e_smoke.py` as the harness.** Self-contained Python script that lays down an embedded Terraform fixture exercising all six v0 detectors (2× S3, 2× LB, 1× CloudTrail, 1× RDS, 2× IAM with heredoc literal-JSON per the MFA detector's fixture convention) plus one KSI-AFR-FSI Evidence Manifest, then shells out to `uv run efterlev …` for init → scan → agent gap → agent document → agent remediate. Every stage is a real subprocess so the full Typer/CLI layer is exercised — not just Python-level primitives. Manifests land under `.efterlev/manifests/` *after* init (init refuses to clobber an existing `.efterlev/`), mirroring the real usage flow. Results written to `.e2e-results/<UTC-ISO-TS>/` with `workspace/`, `outputs/` (captured stdio + exit per stage), `artifacts/` (copied HTML + FRMR JSON), `checks.json` (machine-readable), and `summary.md` (human-readable). `.e2e-results/` is gitignored.
+2. **Check framework with three severities.** `critical` (13) — fail the run: all five stages exit 0, ≥1 detector and ≥1 manifest evidence record, ≥50 of 60 classifications, no fabricated citations (independent re-verification of fence-validator enforcement against the store's known evidence IDs), ≥2 distinct statuses, AttestationArtifact parses as valid Pydantic with `requires_review=True`, no absolute workspace paths in the FRMR JSON. `quality` (5) — warn: rationale length, narrative substance, manifest attestor grounding, HTML badge render, remediation diff shape. `info` — per-stage wall-clock and indicator count. `ANTHROPIC_API_KEY` unset → exit 2 (skip semantics distinct from pass=0, fail=1). `tests/test_e2e_smoke.py` wraps for `pytest -k e2e` with the same skip posture.
+3. **"Gap differentiates" check is ≥2 distinct statuses, not `implemented` AND `not_implemented`.** The initial spec required both specific status values. The first real-Opus run produced 53 `not_implemented` + 7 `partial` + 0 `implemented` — the correct call, because from infra-only Terraform evidence nothing is fully implemented at the FedRAMP level (procedural and operational layers remain unverified). Even the manifest-attested KSI-AFR-FSI got `partial`, with the rationale "covers the operational existence of the inbox. It does not cover independent verification that the inbox meets FedRAMP FSI requirements end-to-end" — textbook evidence-vs-claims discipline per CLAUDE.md Principle 1. A check that failed on that behavior would have pressured the harness (and, transitively, future prompt revisions that treat "tests pass" as the success signal) toward overclaiming — exactly the direction the product commits NOT to move. The relaxed check preserves the stated intent ("sanity check that the model is differentiating") without punishing correctly cautious output.
+
+**Rationale:**
+
+- Subprocess-based invocation (not in-process calls to CLI helpers) is the right trust model for a smoke: we catch Typer argument-parsing bugs, click version drift, env-var handling, and everything between "what the developer types" and "what the agents see." Unit tests can't reach those bugs.
+- Manifests-after-init sequencing matches real customer flow and dodges the "`.efterlev/` already exists, re-run with --force" failure mode the first dry run surfaced.
+- Three-tier severity (critical / quality / info) avoids conflating "harness is broken" with "model output is imperfect." Quality checks catch regressions in model behavior without blocking releases; critical checks guard the trust-model invariants (provenance, repo-relative paths, review-required flag) that must never silently drift.
+- Relaxing the gap-differentiates check preserves the product's evidence-before-claims discipline at the measurement layer. Goodhart's Law applies in reverse: if we measure "model says 'implemented' sometimes," we get a model tuned to say "implemented" sometimes, regardless of whether it should. Measuring "model makes distinctions" captures the real signal without the incentive pull.
+
+**Alternatives rejected:**
+
+- **Stub the LLM in the smoke too and compare against frozen snapshots.** Rejected — this is the one test class whose purpose is to be real-model-backed. Snapshot tests at this level would drift unhelpfully on every prompt revision and couldn't catch the real failure modes (prompt degradation, fence-nonce respect under live content, token-budget behavior on the full 60-KSI classification).
+- **Keep the strict `implemented AND not_implemented` check and enrich the fixture until Opus is forced to say `implemented`.** Rejected. Fixture-stuffing would need to add procedural attestations for every KSI touched by the detectors, at which point the "smoke" becomes a 60-KSI integration test. The fix belongs on the check, not on the fixture.
+- **Write a full pytest integration suite instead of a standalone script.** Rejected. The harness needs to be runnable outside pytest (live debugging, iterative prompt work, arbitrary result-dir inspection). Making pytest the only entry point would hide the harness behind test-runner machinery. Current shape: standalone script primary, thin pytest wrapper for CI.
+- **Validate the FRMR artifact against `FedRAMP.schema.json`.** Rejected — that schema describes the catalog, not the attestation (DECISIONS 2026-04-22 "Phase 2"). The harness validates against `AttestationArtifact` Pydantic structural typing, which is the v1 schema-posture commitment.
+
+**Implementation landed in this commit sequence:**
+
+- `scripts/e2e_smoke.py` — harness (`b3014e7`).
+- `tests/test_e2e_smoke.py` — pytest wrapper with key-absent skip (`b3014e7`).
+- `scripts/README.md` — Contents entry (`b3014e7`).
+- `.gitignore` — `.e2e-results/` (`b3014e7`).
+- `scripts/e2e_smoke.py` — gap-differentiates check relaxed from `implemented AND not_implemented` to `≥2 distinct statuses` (`5913af7`).
+- `CLAUDE.md`, `README.md`, `DECISIONS.md` — doc sync reflecting the now-verified pipeline.
+
+**First-run findings (2026-04-22, commit `5913af7`):**
+
+- All five CLI stages exited 0. Wall times: init 1s, scan 0.2s, gap 88s, document 396s, remediate 13s. Total ~8 minutes.
+- 60/60 classifications produced (`max_tokens=16384` sufficient for the full baseline, no truncation).
+- Fence validator held under real model output; no fabricated citations.
+- AttestationArtifact parsed clean with 60 indicators, `requires_review=True`, no absolute workspace paths leaked.
+- 7 KSIs classified `partial` (the ones with real positive evidence), 53 `not_implemented`, 0 `implemented`. Opus is appropriately cautious from infra-only evidence — see sub-decision 3.
+- Mean rationale length 138 chars; 7/7 implemented+partial narratives >200 chars; manifest-KSI narrative cites the attestor; HTML renders the amber attestation badge; remediation produced a unified-diff-shaped draft.
+- After the check relaxation: 13/13 critical pass, 5/5 quality pass.
+
+**Deferred:**
+
+- Running the smoke in CI against a repo-wide budget-gated Anthropic key is a Phase 4+ concern (gated on a real CI integration need).
+- Adding a cost/token-count check (per-stage) would help catch prompt bloat regressions; deferred until we have 3+ real runs to set a baseline.
+- The harness does NOT yet exercise the MCP server path — MCP stdio smoke lives in `scripts/mcp_smoke_{server,client}.py` and is a separate concern. A future harness that invokes primitives through MCP (rather than through Typer) would round out the coverage; gated on need.
+
+---
+
 
 
 ```

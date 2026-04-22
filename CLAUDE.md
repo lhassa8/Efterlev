@@ -57,16 +57,15 @@ v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, h
 - E: Gap Report + Remediation Report both carry the manifest "attestation" badge when passed `evidence=`; CSS consolidated in the shared stylesheet.
 - F: Per-run fence nonce (`secrets.token_hex(4)`) prevents content-injected forged fences. `<evidence_NONCE id="...">` and `<source_file_NONCE path="...">`; parse helpers take the nonce and ignore any fence with a different one. Full design call: DECISIONS 2026-04-22 "Post-review fixups A–F."
 
+**E2E smoke harness (`b3014e7`, `5913af7`):** `scripts/e2e_smoke.py` shells out to `uv run efterlev …` across init → scan → agent gap → agent document → agent remediate against an embedded Terraform fixture exercising all six v0 detectors plus one KSI-AFR-FSI Evidence Manifest. Results land in `.e2e-results/<UTC-ISO-TS>/` with captured stdio, copied artifacts, `checks.json`, and `summary.md`. Checks split into critical (13, fail the run), quality (5, warn), and info (per-stage). Gated on `ANTHROPIC_API_KEY` — exits 2 if unset. Pytest wrapper at `tests/test_e2e_smoke.py` for `pytest -k e2e`. First real-Opus run: all five CLI stages exited 0, 60/60 classifications produced (no truncation at 16384 max_tokens), fence validator held, FRMR artifact parsed clean with no absolute-path leaks, manifest-KSI narrative grounded in the attestor's keywords. Full design call: DECISIONS 2026-04-22 "E2E smoke harness landed + first real-Opus run."
+
 **End state at 2026-04-22:**
-- 279 tests passing.
+- 279 tests passing (+ 1 E2E skipped by default without `ANTHROPIC_API_KEY`).
 - ruff clean; mypy strict-clean on 76 source files (strict on `efterlev.{primitives,detectors,oscal,manifests}.*`).
-- End-to-end smoke (`init` → `scan` with one .tf + one manifest) verified.
+- Full pipeline verified end-to-end against a real Opus 4.7 call: Gap (60-KSI classification, 88s), Documentation (per-KSI Sonnet 4.6 narratives, ~7min), Remediation (diff-shaped output, 13s). 12/13 critical checks pass, 5/5 quality checks pass.
 - `generate_frmr_attestation` produces canonical, byte-stable JSON with typed-Pydantic validation at construction.
 
-**What has NOT been verified yet:** the full pipeline has not been run end-to-end against a real LLM call in this development environment. Unit tests use `StubLLMClient`. Prompt quality, fence-nonce respect, Gap Agent output coherence on a real 60-KSI classification, and FRMR JSON shape under real Opus output are all unmeasured. The next high-leverage task is an E2E smoke harness that runs the full CLI against a synthetic fixture with `ANTHROPIC_API_KEY` and evaluates output quality. See DECISIONS for the pending entry.
-
 **What's next (per v1 locked plan, DECISIONS 2026-04-22):**
-- E2E smoke harness (before any new phase work) — reusable, repeatable, exercised before each release.
 - Phase 6-lite (6 additional detectors chosen for highest archetype value), pulled in parallel with Phase 4 per the locked month-2 sequencing.
 - Phase 4 (runtime + drift) — gated on having enough scans-over-time data to make drift meaningful; may wait for first prospect usage.
 - Phase 5 (review workflow, sigstore signing, manifest-staleness prompt-layer treatment).

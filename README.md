@@ -353,7 +353,7 @@ Designed to not break once opened publicly (or to customers under NDA):
 
 ### Tests
 
-279 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 76 source files. Pipeline not yet verified against a real LLM in this development environment — unit tests use `StubLLMClient`. Building a reusable E2E smoke harness is the next planned work.
+279 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 76 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY`), with a pytest wrapper at `tests/test_e2e_smoke.py` (`pytest -k e2e`) that skips when the key is unset.
 
 ### What's NOT in scope right now (per v1 lock)
 
