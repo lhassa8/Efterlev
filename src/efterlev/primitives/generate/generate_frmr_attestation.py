@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 
 from efterlev import __version__ as efterlev_version
 from efterlev.errors import ValidationError as EfterlevValidationError
@@ -144,21 +145,35 @@ def generate_frmr_attestation(
             ),
             KSI=ksi_block,
         )
-    except Exception as e:  # pragma: no cover — Pydantic construction shouldn't fail here
+    except PydanticValidationError as e:  # pragma: no cover — construction shouldn't fail
         raise EfterlevValidationError(
             f"generate_frmr_attestation failed to construct a valid artifact: {e}"
         ) from e
 
     # Canonical JSON: sorted keys, no trailing whitespace, UTF-8, newline-terminated.
-    # The byte sequence is stable across runs for a given input — important for
-    # reproducibility, content-hashable audit trails, and diff-against-prior-run
-    # workflows (Phase 4 drift).
+    # The byte sequence is stable across runs for a given input — required for
+    # reproducibility, content-hashable audit trails, and Phase 4 drift workflows.
+    # Determinism note: `generated_at` is part of the input model, so "same input"
+    # includes a pinned timestamp. Callers that don't pin `generated_at` get
+    # `datetime.now(UTC)` stamped inside, which varies per call — that's the
+    # intended semantic ("the moment this artifact was produced"), not a loss
+    # of determinism.
     payload: dict[str, Any] = artifact.model_dump(mode="json")
     artifact_json = json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
+
+    # Dedupe skipped KSIs while preserving first-seen order. Consumers need a
+    # unique list for display; the primitive contract should provide it
+    # directly rather than push the dedupe responsibility to every caller.
+    seen: set[str] = set()
+    skipped_unique: list[str] = []
+    for ksi in skipped:
+        if ksi not in seen:
+            seen.add(ksi)
+            skipped_unique.append(ksi)
 
     return GenerateFrmrAttestationOutput(
         artifact=artifact,
         artifact_json=artifact_json,
         indicator_count=artifact.indicator_count,
-        skipped_unknown_ksi=skipped,
+        skipped_unknown_ksi=skipped_unique,
     )

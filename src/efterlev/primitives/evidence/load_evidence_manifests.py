@@ -157,12 +157,22 @@ def load_evidence_manifests(
             len(files),
         )
 
+    # Dedupe skipped KSIs while preserving first-seen order. Two manifest files
+    # referencing the same unknown KSI should surface as one entry in the
+    # output, not two.
+    seen: set[str] = set()
+    skipped_unique: list[str] = []
+    for ksi in skipped:
+        if ksi not in seen:
+            seen.add(ksi)
+            skipped_unique.append(ksi)
+
     return LoadEvidenceManifestsOutput(
         files_found=len(files),
         manifests_loaded=loaded,
         evidence=evidence,
         per_manifest=per_manifest,
-        skipped_unknown_ksi=skipped,
+        skipped_unknown_ksi=skipped_unique,
     )
 
 

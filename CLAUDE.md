@@ -52,7 +52,7 @@ These override local convenience. If you feel tempted to violate one, stop and a
 - **Language:** Python 3.12
 - **Dependency management:** `uv`
 - **Typing:** Pydantic v2 for all primitive I/O. No untyped dicts crossing a primitive boundary.
-- **FRMR:** `FRMR.documentation.json` vendored from `FedRAMP/docs` into `catalogs/frmr/`. It is a single authoritative JSON file (`info`, `FRD`, `FRR`, `KSI`) — substantially simpler than OSCAL's nested model hierarchy. Load with Pydantic directly; no specialized library required. Validate against `FedRAMP.schema.json` (JSON Schema draft 2020-12) before returning output.
+- **FRMR:** `FRMR.documentation.json` vendored from `FedRAMP/docs` into `catalogs/frmr/`. It is a single authoritative JSON file (`info`, `FRD`, `FRR`, `KSI`) — substantially simpler than OSCAL's nested model hierarchy. Load with Pydantic directly; no specialized library required. **Validation:** on load, validate the vendored catalog against `FedRAMP.schema.json` (JSON Schema draft 2020-12) before acceptance. On output, attestation artifacts use Pydantic structural validation (`extra="forbid"` + strict literals) at construction time — FedRAMP has not published an attestation-output schema as of April 2026, so `FedRAMP.schema.json` does not apply to our output. See DECISIONS 2026-04-22 "Phase 2: FRMR attestation generator" for the schema-posture call and the follow-up for an external `efterlev-attestation.schema.json` mirror.
 - **OSCAL (v0 input only):** `compliance-trestle` for loading the vendored NIST SP 800-53 Rev 5 catalog, which every KSI indicator references via its `controls` field. Trestle is not used for FedRAMP-specific profiles (no current upstream source after the GSA/fedramp-automation archive). OSCAL *output* generation is a v1 roadmap item; hand-rolled Pydantic generators where trestle's generation APIs are clunky — document reason in `DECISIONS.md`.
 - **MCP:** Official Anthropic Python SDK for MCP server authoring. Stdio transport.
 - **Agent inference:** Anthropic Python SDK. Default model `claude-opus-4-7`. Switch to `claude-sonnet-4-6` only if we hit latency issues during demo. **Centralize client instantiation in `src/efterlev/llm/__init__.py` — do not scatter `anthropic.Anthropic()` calls across agent files.** This is the cheap hedge for the v1 pluggable-backend work; see `DECISIONS.md`.
@@ -333,7 +333,7 @@ KSIs below are from FRMR 0.9.43-beta (vendored at `catalogs/frmr/FRMR.documentat
 
 These detection areas were chosen because the infrastructure layer is genuinely dispositive — a detector can honestly say "the encryption configuration is present" without overclaiming the full KSI (including the procedural aspects). Detector `README.md` files must name the layer they evidence and the layer they do not.
 
-**Explicitly deferred to v1+:**
+**Explicitly deferred to v1+ as detectors:**
 
 - AC-2, AC-3, AC-6, AC-17 (identity/access controls requiring procedural evidence)
 - AU-3 (audit record content — requires log schema inspection)
@@ -343,6 +343,8 @@ These detection areas were chosen because the infrastructure layer is genuinely 
 - IA-5 (authenticator management — partially detectable)
 - All AT-\*, PL-\*, PS-\*, PM-\* (pure policy/procedural controls)
 - Any control requiring runtime cloud API calls (v1+)
+
+Phase 1 Evidence Manifests (`.efterlev/manifests/*.yml`, landed 2026-04-22) are the complement: procedural controls in this list that have no Terraform-detectable surface can be covered by customer-authored, human-signed attestations that flow into the Gap Agent as `Evidence(detector_id="manifest")` alongside detector Evidence. Manifests do NOT replace detectors where a detector is practical (IAM policy MFA, CloudTrail scope, etc.) — they cover the procedural layer detectors cannot see. See DECISIONS 2026-04-22 "Phase 1: Evidence Manifests" for the full design call.
 
 ---
 

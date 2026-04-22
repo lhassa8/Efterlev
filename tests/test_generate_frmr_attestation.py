@@ -193,7 +193,7 @@ def test_provenance_block_is_invariant_requires_review_true() -> None:
     # raise ValidationError.
     from pydantic import ValidationError
 
-    from efterlev.models.attestation_artifact import AttestationArtifactProvenance
+    from efterlev.models import AttestationArtifactProvenance
 
     with pytest.raises(ValidationError):
         AttestationArtifactProvenance(requires_review=False)  # type: ignore[arg-type]

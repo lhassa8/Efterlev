@@ -158,11 +158,20 @@ def scan(
     # KSI→controls mapping, derived from the cached FRMR document the workspace
     # wrote at `init` time. Required for manifest loading (we don't invent
     # control lists; we resolve them from FRMR as the single source of truth).
+    # Hard-error on missing cache rather than silently skipping every manifest
+    # as "unknown KSI" — the latter masked broken init states as configuration
+    # mistakes. Match the error style of `agent gap`/`agent document`.
     frmr_cache = root / ".efterlev" / "cache" / "frmr_document.json"
-    ksi_to_controls: dict[str, list[str]] = {}
-    if frmr_cache.is_file():
-        frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
-        ksi_to_controls = {k: list(ind.controls) for k, ind in frmr_doc.indicators.items()}
+    if not frmr_cache.is_file():
+        typer.echo(
+            f"error: FRMR cache missing at {frmr_cache}. Re-run `efterlev init`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
+    ksi_to_controls: dict[str, list[str]] = {
+        k: list(ind.controls) for k, ind in frmr_doc.indicators.items()
+    }
 
     manifest_dir = root / ".efterlev" / "manifests"
 
@@ -194,7 +203,8 @@ def scan(
         rel = m.file.relative_to(root) if m.file.is_absolute() else m.file
         typer.echo(f"    manifest {rel}  ksi={m.ksi}  +{m.attestation_count}")
     if manifest_result.skipped_unknown_ksi:
-        skipped = ", ".join(sorted(set(manifest_result.skipped_unknown_ksi)))
+        # Primitive already deduplicates; join for display.
+        skipped = ", ".join(manifest_result.skipped_unknown_ksi)
         typer.echo(f"  skipped manifest(s) for unknown KSI(s): {skipped}")
     if scan_result.evidence_record_ids:
         typer.echo("")
@@ -308,7 +318,12 @@ def agent_document(
     from efterlev.errors import AgentError
     from efterlev.frmr.loader import FrmrDocument
     from efterlev.models import Evidence
+    from efterlev.primitives.generate import (
+        GenerateFrmrAttestationInput,
+        generate_frmr_attestation,
+    )
     from efterlev.provenance import ProvenanceStore, active_store
+    from efterlev.reports import render_documentation_report_html
 
     root = target.resolve()
     if not (root / ".efterlev").is_dir():
@@ -328,8 +343,14 @@ def agent_document(
 
     frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
 
+    # Single ProvenanceStore context for the whole command: agent invocation
+    # and FRMR-attestation generation both write records, and both belong to
+    # the same logical "documentation run" in the provenance graph. Opening
+    # the store twice (as this command did before Phase 2 polish) would put
+    # the two primitives' records in different active-store contexts, which
+    # is observable through the provenance walker and wasted SQLite opens.
     try:
-        with ProvenanceStore(root) as store:
+        with ProvenanceStore(root) as store, active_store(store):
             evidence = [Evidence.model_validate(p) for _rid, p in store.iter_evidence()]
             classification_rows = store.iter_claims_by_metadata_kind("ksi_classification")
             classifications = reconstruct_classifications_from_store(classification_rows)
@@ -342,18 +363,34 @@ def agent_document(
                 )
                 raise typer.Exit(code=1)
 
-            with active_store(store):
-                agent = DocumentationAgent()
-                report = agent.run(
-                    DocumentationAgentInput(
-                        indicators=frmr_doc.indicators,
-                        evidence=evidence,
-                        classifications=classifications,
-                        baseline_id="fedramp-20x-moderate",
-                        frmr_version=frmr_doc.version,
-                        only_ksi=ksi,
-                    )
+            agent = DocumentationAgent()
+            report = agent.run(
+                DocumentationAgentInput(
+                    indicators=frmr_doc.indicators,
+                    evidence=evidence,
+                    classifications=classifications,
+                    baseline_id="fedramp-20x-moderate",
+                    frmr_version=frmr_doc.version,
+                    only_ksi=ksi,
                 )
+            )
+
+            attestation_drafts = [att.draft for att in report.attestations]
+            claim_record_ids = {
+                att.draft.ksi_id: att.claim_record_id
+                for att in report.attestations
+                if att.claim_record_id is not None
+            }
+            attestation_result = generate_frmr_attestation(
+                GenerateFrmrAttestationInput(
+                    drafts=attestation_drafts,
+                    indicators=frmr_doc.indicators,
+                    baseline_id="fedramp-20x-moderate",
+                    frmr_version=frmr_doc.version,
+                    frmr_last_updated=frmr_doc.last_updated,
+                    claim_record_ids=claim_record_ids,
+                )
+            )
     except AgentError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1) from e
@@ -376,12 +413,6 @@ def agent_document(
         skipped = ", ".join(report.skipped_ksi_ids)
         typer.echo(f"Skipped {len(report.skipped_ksi_ids)} KSI(s): {skipped}")
 
-    from efterlev.primitives.generate import (
-        GenerateFrmrAttestationInput,
-        generate_frmr_attestation,
-    )
-    from efterlev.reports import render_documentation_report_html
-
     html_body = render_documentation_report_html(
         report,
         baseline_id="fedramp-20x-moderate",
@@ -395,33 +426,16 @@ def agent_document(
     typer.echo("")
     typer.echo(f"HTML report: {html_path}")
 
-    # FRMR-compatible attestation JSON — the v1 Phase 2 primary production
-    # output. Emit alongside the HTML so a single run of `agent document`
-    # produces both the human-readable report and the machine-readable
-    # artifact for downstream consumers.
-    attestation_drafts = [att.draft for att in report.attestations]
-    claim_record_ids = {
-        att.draft.ksi_id: att.claim_record_id
-        for att in report.attestations
-        if att.claim_record_id is not None
-    }
-    with ProvenanceStore(root) as store, active_store(store):
-        attestation_result = generate_frmr_attestation(
-            GenerateFrmrAttestationInput(
-                drafts=attestation_drafts,
-                indicators=frmr_doc.indicators,
-                baseline_id="fedramp-20x-moderate",
-                frmr_version=frmr_doc.version,
-                frmr_last_updated=frmr_doc.last_updated,
-                claim_record_ids=claim_record_ids,
-            )
-        )
+    # FRMR-compatible attestation JSON alongside the HTML — one CLI run, two
+    # artifacts. The human-readable HTML is for review; the machine-readable
+    # JSON is the v1 primary production output fed to 3PAOs and downstream.
     attestation_path = reports_dir / f"attestation-{timestamp}.json"
     attestation_path.write_text(attestation_result.artifact_json, encoding="utf-8")
     typer.echo(f"FRMR attestation: {attestation_path}")
     typer.echo(f"  indicators:       {attestation_result.indicator_count}")
     if attestation_result.skipped_unknown_ksi:
-        skipped = ", ".join(sorted(set(attestation_result.skipped_unknown_ksi)))
+        # Primitive already deduplicates; just format for display.
+        skipped = ", ".join(attestation_result.skipped_unknown_ksi)
         typer.echo(f"  skipped unknown:  {skipped}")
 
 
