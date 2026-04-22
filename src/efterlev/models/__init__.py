@@ -23,6 +23,7 @@ from efterlev.models.claim import Claim, ClaimType, Confidence
 from efterlev.models.control import Control, ControlEnhancement
 from efterlev.models.evidence import Evidence
 from efterlev.models.indicator import Baseline, Indicator, Theme
+from efterlev.models.manifest import AttestationType, EvidenceManifest, ManifestAttestation
 from efterlev.models.provenance import ProvenanceRecord, RecordType
 from efterlev.models.source import TerraformResource
 from efterlev.models.source_ref import SourceRef
@@ -32,6 +33,7 @@ __all__ = [
     "AttestationDraft",
     "AttestationMode",
     "AttestationStatus",
+    "AttestationType",
     "Baseline",
     "Claim",
     "ClaimType",
@@ -39,7 +41,9 @@ __all__ = [
     "Control",
     "ControlEnhancement",
     "Evidence",
+    "EvidenceManifest",
     "Indicator",
+    "ManifestAttestation",
     "ProvenanceRecord",
     "RecordType",
     "SourceRef",

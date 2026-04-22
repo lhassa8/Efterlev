@@ -28,8 +28,15 @@ build/
 htmlcov/
 .tox/
 
-# Efterlev runtime state (created by `efterlev init` and agents)
-.efterlev/
+# Efterlev runtime state (created by `efterlev init` and agents).
+# Most of `.efterlev/` is tool-managed state (SQLite store, content-addressed
+# blobs, receipts log, cached catalogs, generated reports) that must NOT be
+# committed. Exception: `.efterlev/manifests/` is customer-authored procedural
+# attestations versioned alongside the code they describe, so we explicitly
+# un-ignore that subtree while keeping the rest ignored.
+.efterlev/*
+!.efterlev/manifests/
+!.efterlev/manifests/**
 out/
 
 # Editor and OS artifacts

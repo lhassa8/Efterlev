@@ -25,6 +25,10 @@ class DetectorError(EfterlevError):
     """A detector raised while scanning source material, or failed to load its mapping."""
 
 
+class ManifestError(EfterlevError):
+    """An Evidence Manifest (`.efterlev/manifests/*.yml`) failed to load, parse, or validate."""
+
+
 class PrimitiveError(EfterlevError):
     """A primitive's input or output failed its typed contract."""
 

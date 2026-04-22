@@ -144,7 +144,11 @@ def test_scan_after_init_produces_evidence(tmp_path: pytest.TempPathFactory) -> 
     assert "Scanned" in scan_result.output
     assert "resources parsed:" in scan_result.output
     assert "aws.encryption_s3_at_rest" in scan_result.output
-    assert "Record IDs" in scan_result.output
+    # Manifest loading is now part of `scan`; the record-IDs section is
+    # labeled "Detector record IDs" to distinguish from manifest-sourced
+    # Evidence (Phase 1, Evidence Manifest landing).
+    assert "Detector record IDs" in scan_result.output
+    assert "manifest files:" in scan_result.output
 
 
 def test_init_succeeds_and_prints_summary(tmp_path: pytest.TempPathFactory) -> None:

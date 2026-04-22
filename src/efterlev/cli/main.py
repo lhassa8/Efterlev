@@ -137,8 +137,13 @@ def scan(
         help="Path to the repo to scan. Defaults to the current directory.",
     ),
 ) -> None:
-    """Run all applicable detectors against the target and write evidence records."""
-    from efterlev.errors import DetectorError
+    """Run all applicable detectors and load Evidence Manifests under the target."""
+    from efterlev.errors import DetectorError, ManifestError
+    from efterlev.frmr.loader import FrmrDocument
+    from efterlev.primitives.evidence import (
+        LoadEvidenceManifestsInput,
+        load_evidence_manifests,
+    )
     from efterlev.primitives.scan import ScanTerraformInput, scan_terraform
     from efterlev.provenance import ProvenanceStore, active_store
 
@@ -150,23 +155,51 @@ def scan(
         )
         raise typer.Exit(code=1)
 
+    # KSI→controls mapping, derived from the cached FRMR document the workspace
+    # wrote at `init` time. Required for manifest loading (we don't invent
+    # control lists; we resolve them from FRMR as the single source of truth).
+    frmr_cache = root / ".efterlev" / "cache" / "frmr_document.json"
+    ksi_to_controls: dict[str, list[str]] = {}
+    if frmr_cache.is_file():
+        frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
+        ksi_to_controls = {k: list(ind.controls) for k, ind in frmr_doc.indicators.items()}
+
+    manifest_dir = root / ".efterlev" / "manifests"
+
     try:
         with ProvenanceStore(root) as store, active_store(store):
-            result = scan_terraform(ScanTerraformInput(target_dir=root))
-    except DetectorError as e:
+            scan_result = scan_terraform(ScanTerraformInput(target_dir=root))
+            manifest_result = load_evidence_manifests(
+                LoadEvidenceManifestsInput(
+                    manifest_dir=manifest_dir,
+                    ksi_to_controls=ksi_to_controls,
+                )
+            )
+    except (DetectorError, ManifestError) as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1) from e
 
+    total_evidence = scan_result.evidence_count + manifest_result.evidence_count
     typer.echo(f"Scanned {root}")
-    typer.echo(f"  resources parsed:  {result.resources_parsed}")
-    typer.echo(f"  detectors run:     {result.detectors_run}")
-    typer.echo(f"  evidence records:  {result.evidence_count}")
-    for det in result.per_detector:
+    typer.echo(f"  resources parsed:    {scan_result.resources_parsed}")
+    typer.echo(f"  detectors run:       {scan_result.detectors_run}")
+    typer.echo(f"  manifest files:      {manifest_result.files_found}")
+    typer.echo(f"  manifests loaded:    {manifest_result.manifests_loaded}")
+    typer.echo(f"  evidence records:    {total_evidence}")
+    typer.echo(f"    from detectors:    {scan_result.evidence_count}")
+    typer.echo(f"    from manifests:    {manifest_result.evidence_count}")
+    for det in scan_result.per_detector:
         typer.echo(f"    {det.detector_id}@{det.version:<7}  +{det.evidence_count}")
-    if result.evidence_record_ids:
+    for m in manifest_result.per_manifest:
+        rel = m.file.relative_to(root) if m.file.is_absolute() else m.file
+        typer.echo(f"    manifest {rel}  ksi={m.ksi}  +{m.attestation_count}")
+    if manifest_result.skipped_unknown_ksi:
+        skipped = ", ".join(sorted(set(manifest_result.skipped_unknown_ksi)))
+        typer.echo(f"  skipped manifest(s) for unknown KSI(s): {skipped}")
+    if scan_result.evidence_record_ids:
         typer.echo("")
-        typer.echo("Record IDs (pass to `efterlev provenance show`):")
-        for rid, ev in zip(result.evidence_record_ids, result.evidence, strict=False):
+        typer.echo("Detector record IDs (pass to `efterlev provenance show`):")
+        for rid, ev in zip(scan_result.evidence_record_ids, scan_result.evidence, strict=False):
             typer.echo(f"  {rid}  {ev.content.get('resource_name', '—')}")
 
 

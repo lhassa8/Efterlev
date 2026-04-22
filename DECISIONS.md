@@ -635,6 +635,55 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-22 — Phase 1: Evidence Manifests — human-attested procedural Evidence `[architecture]` `[data-model]` `[phase-1]`
+
+**Decision:** Evidence Manifests are YAML files under `.efterlev/manifests/*.yml` that customers author to declare human-signed attestations for procedural controls the Terraform scanner can't see. Each attestation produces one `Evidence` record with `detector_id="manifest"`. Eight design sub-decisions, all interdependent:
+
+1. **Manifest attestations are `Evidence`, not `Claim`.** They sit on the Evidence side of the Evidence/Claims line because they are deterministic at load time (same YAML → byte-identical records) and do NOT travel through an LLM. The trust basis differs from detector Evidence (human signature + review cadence vs. scanner determinism) but the data-model class is the same.
+2. **Source distinguished by `Evidence.detector_id == "manifest"`.** No new field on `Evidence`; the existing `detector_id: str` carries the source. Renderers and agent prompts branch on this to display and reason about the two kinds differently without a schema migration.
+3. **One YAML file = one KSI.** A customer attesting the same underlying process to multiple KSIs writes multiple files (copy-paste, change `ksi:`). Keeps file→KSI one-to-one, simplifies downstream filtering, staleness reporting, and provenance walks.
+4. **Controls resolved from FRMR, not declared in YAML.** The loader takes `ksi_to_controls` from the loaded FRMR document and fills `Evidence.controls_evidenced`. Customers never duplicate the KSI→control mapping; FRMR is the single source of truth.
+5. **Freshness (`next_review`) preserved in `Evidence.content`; staleness treated at Phase 5.** Phase 1 emits `is_stale: bool` alongside the review dates. Prompt-level staleness gating on the Gap Agent (treating stale manifest evidence as unreliable) is deferred to Phase 5 (workflow maturity).
+6. **Manifest loader is a `@primitive(capability="evidence", deterministic=True)`.** First primitive in the `primitives/evidence/` slot. Per-attestation persistence is inline, mirroring the `@detector` pattern (one provenance record per Evidence + one summary record per primitive call). Not a `@detector` — detectors are source-typed and operate on typed source material; manifest loading is a different axis.
+7. **Unknown KSIs are skipped, not fabricated.** A manifest referencing a KSI absent from the loaded baseline is reported in `skipped_unknown_ksi` and logged; no Evidence is emitted. We do not invent a KSI mapping, per the non-negotiable principle in `CLAUDE.md`.
+8. **Supporting docs stay opaque at Phase 1.** URLs and local paths in `supporting_docs:` are preserved verbatim in `Evidence.content`. No fetching, no existence checks, no hash snapshots. Hashing + blob-store snapshotting is a Phase 5 (signed attestation chain) enhancement.
+
+**Rationale:**
+
+- Scanner-derived Evidence and human-attested Evidence are both "things citable without LLM involvement." The Evidence-vs-Claims line is about deterministic vs. generative, not about machine-origin vs. human-origin. Merging them as one class preserves the discipline.
+- `detector_id="manifest"` instead of a new `source: Literal[...]` field on Evidence is a zero-migration change — existing provenance store, HTML renderers, and agent flow manifest Evidence through unchanged. A future refactor can promote source to a dedicated field if the string-prefix check becomes load-bearing beyond rendering.
+- Resolving controls from FRMR rather than from the YAML prevents typo-shaped silent bugs (customer writes `SC-28-1` instead of `SC-28(1)`) and means the KSI↔control mapping has exactly one source of truth across the system.
+- Staleness is a real product concern but Phase 1 is already touching the data model, the loader, the primitive, and the CLI. Adding prompt-layer Gap Agent changes diffuses testing and inflates scope. Phase 5 (reviewed_by / approved_by on AttestationDraft) is the natural home.
+
+**Alternatives rejected:**
+
+- **`Claim` instead of `Evidence`.** A `Claim` carries `requires_review=True` and LLM-generation provenance. A human-signed attestation is NOT "LLM-drafted prose requiring human review" — it's a human's own prose requiring their own re-review on the cadence they declared. Conflating the two collapses the distinction the whole system rests on.
+- **New `AttestationEvidence` class alongside `Evidence`.** Would double the types every renderer, agent, and primitive handles; the actual structural differences are small and fit in `content`. Parallel types are correct only when call-sites need to branch on Python-level type; they don't here.
+- **`controls:` field in the YAML.** Duplication + typo risk. FRMR is the source of truth.
+- **One Evidence per manifest file, with statements concatenated.** Customers want multiple attestations per file (different statements, different dates, different attesters) cited individually. One Evidence per attestation is the right provenance-walk granularity.
+- **Treat missing/URL supporting docs as errors.** An unreachable URL or moved file should not block a scan; the customer's compliance reviewer is the one who will follow the links. Phase 5's signed-attestation work introduces the hashing + snapshotting pipeline that makes existence enforcement meaningful.
+
+**Implementation landed in this commit:**
+
+- `src/efterlev/models/manifest.py` — `EvidenceManifest`, `ManifestAttestation` Pydantic models with `extra="forbid"`.
+- `src/efterlev/manifests/{loader.py,__init__.py}` — file discovery, YAML parse, Pydantic validation.
+- `src/efterlev/primitives/evidence/load_evidence_manifests.py` — the primitive.
+- `src/efterlev/cli/main.py` — `efterlev scan` now invokes both `scan_terraform` and `load_evidence_manifests` within the same `ProvenanceStore` context; the summary output reports evidence from both sources and lists per-manifest attestation counts.
+- `src/efterlev/errors.py` — `ManifestError` added to the typed hierarchy.
+- `docs/examples/evidence-manifests/security-inbox.yml` — reference template for `KSI-AFR-FSI` (FedRAMP Security Inbox).
+- `.gitignore` — carve-out: `.efterlev/manifests/` is versioned while the rest of `.efterlev/` stays ignored.
+- `pyproject.toml` — `pyyaml` as a direct runtime dep; `types-PyYAML` in dev deps; `efterlev.manifests.*` added to mypy strict override.
+- Tests: 10 loader tests + 6 primitive tests. 253 total pass; 74 source files mypy-clean; ruff clean.
+
+**Deferred from this commit:**
+
+- HTML renderer visual distinction for manifest-sourced Evidence (follow-up; small).
+- Staleness treatment at Gap Agent prompt layer (Phase 5).
+- Supporting-doc hash snapshots and signed attestations (Phase 5).
+- Demo manifest inside `demo/govnotes` (submodule bump lives on its own commit; template at `docs/examples/evidence-manifests/` is sufficient until then).
+
+---
+
 
 
 ```

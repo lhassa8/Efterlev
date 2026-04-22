@@ -45,6 +45,10 @@ dependencies = [
     # Already available transitively via mcp; pinning directly because Phase 2a's
     # FRMR loader uses Draft 2020-12 validation as a first-class input check.
     "jsonschema>=4.20,<5",
+    # Evidence Manifest loader parses customer-authored YAML under
+    # `.efterlev/manifests/`. Transitively available via other deps; pinning
+    # directly because it's load-bearing for a core primitive.
+    "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
@@ -54,6 +58,9 @@ dev = [
     "pytest>=9.0.3,<10",
     "ruff>=0.6,<1",
     "mypy>=1.11,<2",
+    # PEP 561 stubs for pyyaml — required by mypy strict on
+    # `efterlev.manifests.*`. Runtime pyyaml lives in project deps.
+    "types-PyYAML>=6.0,<7",
 ]
 
 [project.scripts]
@@ -114,6 +121,7 @@ module = [
     "efterlev.primitives.*",
     "efterlev.detectors.*",
     "efterlev.oscal.*",
+    "efterlev.manifests.*",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

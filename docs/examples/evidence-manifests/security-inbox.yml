@@ -1,0 +1,31 @@
+# Example Evidence Manifest — copy to `<repo>/.efterlev/manifests/` and edit.
+#
+# Evidence Manifests declare human-signed procedural attestations for KSIs
+# whose evidence is not observable from the Terraform scanner alone. Each
+# manifest binds to exactly one KSI and contains one or more attestation
+# entries; the manifest loader emits one Evidence record per attestation,
+# with `detector_id="manifest"`.
+#
+# Commit manifests to version control alongside your Terraform: they're
+# part of your compliance posture and should go through code review.
+# See DECISIONS 2026-04-22 for the design rationale.
+
+ksi: KSI-AFR-FSI
+name: FedRAMP Security Inbox
+evidence:
+  - type: attestation
+    statement: >
+      security@example.com is monitored by the SOC team 24/7. The inbox is
+      configured in Google Workspace with a 15-minute acknowledgment SLA
+      documented in runbooks/security-inbox.md, and auto-forwards
+      high-severity reports to the on-call PagerDuty rotation. Incoming
+      messages are triaged into our incident management system within the
+      SLA window, and a weekly audit of acknowledgment timings is reviewed
+      by the security lead.
+    attested_by: vp-security@example.com
+    attested_at: 2026-04-15
+    reviewed_at: 2026-04-15
+    next_review: 2026-10-15
+    supporting_docs:
+      - ./policies/security-inbox-sop.pdf
+      - https://wiki.example.com/soc/security-inbox
