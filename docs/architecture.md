@@ -20,11 +20,17 @@ The separation is deliberate. Detectors churn freely — the library grows with 
 
 Two distinct classes of information flow through Efterlev, treated differently throughout.
 
-`Evidence` is deterministic, scanner-derived, and high-trust. Every evidence record carries a source reference (file path, line range, commit hash) plus the detector ID and version that produced it, the KSIs and 800-53 controls it evidences, and a content payload shaped by the detector's schema. Evidence is verifiable: anyone can look at the cited source line and confirm the detector's finding.
+`Evidence` is deterministic, scanner-derived OR human-attested, and high-trust. Every evidence record carries a source reference (file path, line range, commit hash) plus the detector ID (or `"manifest"` for human-signed attestations) and version, the KSIs and 800-53 controls it evidences, and a content payload shaped by the detector's schema. Evidence is verifiable: anyone can look at the cited source line — `.tf` for scanner-derived, `.efterlev/manifests/*.yml` for human-attested — and confirm the record's content.
 
-`Claim` is LLM-reasoned output — narrative, mapping proposal, remediation diff, KSI-status classification. Every claim carries a confidence level, a forced "DRAFT — requires human review" marker, an explicit `derived_from` list pointing to the evidence IDs (and/or other claim IDs) the claim is grounded in, the model name that produced it, and a hash of the system prompt used. A claim with no `derived_from` is structurally impossible; the `validate_claim_provenance` primitive rejects anything else.
+**Two Evidence sources (v1):** detector Evidence is produced by a `@detector` reading typed source material (Terraform today; CloudFormation / K8s / runtime in v1.5+). Manifest Evidence is produced by the `load_evidence_manifests` primitive reading customer-authored YAML attestations under `.efterlev/manifests/`. Both land as the same `Evidence` Pydantic type in the provenance store; the `detector_id` field distinguishes them (`"aws.encryption_s3_at_rest"` vs `"manifest"`). Renderers visually separate them with an "attestation" badge on manifest-sourced citations. The Gap Agent's prompt sees both through the same XML fences and treats both as untrusted data to reason about; the fence-citation validator is the same.
+
+`Claim` is LLM-reasoned output — narrative, mapping proposal, remediation diff, KSI-status classification. Every claim carries a confidence level, a forced "DRAFT — requires human review" marker, an explicit `derived_from` list pointing to the evidence IDs (and/or other claim IDs) the claim is grounded in, the model name that produced it, and a hash of the system prompt used. A claim with no `derived_from` is structurally impossible; the post-generation fence-citation validators in each agent reject fabricated IDs.
 
 The distinction shows up everywhere: in the data model, in rendered HTML, in FRMR output, in terminal summaries. An auditor reading any Efterlev artifact can always tell which layer they are looking at. This is the structural answer to "how do you defend against hallucination?" — not a disclaimer, but a type distinction the whole system is built around.
+
+### Prompt-injection defense: nonced XML fences
+
+Evidence content (detector output, manifest statements, Terraform comments) is attacker-controllable at the input boundary. Naive string embedding would let a hostile manifest or `.tf` comment break out of its fence and inject fake evidence IDs that pass the citation validator. Efterlev's defense (2026-04-22 post-review fixup F): every agent `run()` generates a fresh random hex nonce via `secrets.token_hex(4)`. Fences become `<evidence_NONCE id="sha256:..."> ... </evidence_NONCE>` (and `<source_file_NONCE path="...">` for Terraform source). The post-generation parser accepts only fences whose nonce matches the caller's; content-injected fences with any other nonce are ignored. An adversarial content author would need to predict 32 bits of entropy at authoring time to forge a fence — infeasible.
 
 ## Provenance
 
@@ -61,11 +67,21 @@ Two catalogs are vendored and loaded at startup:
 
 Both translate immediately into our internal Pydantic model. FRMR and OSCAL are output formats; the internal model is neither. See [`catalogs/README.md`](../catalogs/README.md) for the full provenance of each vendored file.
 
+## FRMR attestation output (v1 Phase 2, landed 2026-04-22)
+
+The v1 primary production output is an `AttestationArtifact` — a typed Pydantic model serialized to canonical JSON. The `generate_frmr_attestation` primitive assembles it from a list of `AttestationDraft` records (produced by the Documentation Agent) plus the loaded FRMR indicator catalog. The artifact's structure mirrors FRMR's conventions (top-level `info` + `KSI` keyed by theme short_name + indicator records under each theme) but is NOT a valid FRMR *catalog* document — FedRAMP has not published an attestation-output schema as of April 2026, and our artifact carries attestation data (status, mode, narrative, citations, `claim_record_id`) the FRMR catalog schema rejects under `additionalProperties: false`.
+
+Validation posture: Pydantic `extra="forbid"` and strict `Literal` types at construction time. A malformed artifact raises `ValidationError` before serialization. `AttestationArtifactProvenance.requires_review` is `Literal[True]` — a construction-time invariant that Pydantic enforces. No caller can construct an artifact claiming reviewer-final status; when the Phase 5 review workflow lands, `reviewed_by` and `approved_by` are additive trail fields that do not flip `requires_review`.
+
+Canonical JSON: sorted keys, indent=2, UTF-8, newline-terminated — byte-stable across runs for a given input (with `generated_at` pinned), which supports the Phase 4 drift story (diff two scans' artifacts) and content-addressable audit trails.
+
+The `efterlev agent document` CLI path emits both the existing HTML report and an `attestation-<ts>.json` artifact. Full design call in `DECISIONS.md` 2026-04-22 "Phase 2: FRMR attestation generator."
+
 ## OSCAL's role
 
-OSCAL is a v1 secondary output format, not the internal representation and not the primary output. It exists in the architecture for three reasons: there is still a Rev5 transition cohort that submits OSCAL today; FedRAMP's direction of travel for Rev5 machine-readable submissions — originally proposed as a September 2026 effective date in RFC-0024, softened by NOTICE-0009 on 2026-03-25, and now pending formalization in the Consolidated Rules for 2026 (CR26, expected end of June 2026, valid through 2028-12-31) — will still require an OSCAL path for users mid-transition; and RegScale's OSCAL Hub (donated to the OSCAL Foundation in late 2025) is a real downstream consumer of what we produce. The v1 OSCAL generators will serialize `AttestationDraft`, `Evidence`, and `Claim` records into OSCAL Assessment Results, partial SSP, and POA&M artifacts validated against NIST's schemas.
+OSCAL is **deferred to v1.5+** (not v1), gated on customer pull. The architecture continues to support it — the internal `AttestationDraft` / `Evidence` / `Claim` / `AttestationArtifact` records are generator-format-agnostic, and the `oscal/` package slot exists — but the SSP / Assessment Results / POA&M generators are not built at v1. Rev5-transition users and RegScale OSCAL-Hub-consuming prospects are the signal that pulls them forward. See `DECISIONS.md` 2026-04-22 "Lock v1 scope" for the sequencing call and `DECISIONS.md` 2026-04-22 "Phase 2: FRMR attestation generator" for the schema-posture rationale.
 
-At v0, OSCAL is input-only: we load the 800-53 catalog via trestle. Nothing in v0 emits OSCAL; nothing in the internal model is OSCAL-shaped. Adding OSCAL generators in v1 is additive — one more generator primitive per artifact type — not a rearchitecture. The decision record for why FRMR, not OSCAL, is the primary v0 output lives in [`DECISIONS.md`](../DECISIONS.md) under the 2026-04-19 entry.
+At v0 and v1, OSCAL is input-only: we load the 800-53 catalog via trestle. Nothing today emits OSCAL; nothing in the internal model is OSCAL-shaped. When the v1.5 OSCAL generators land they'll serialize the same internal records the FRMR generator serializes today — additive, not a rearchitecture.
 
 ## MCP as the agent interface
 

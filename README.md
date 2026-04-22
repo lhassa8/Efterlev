@@ -15,9 +15,14 @@ efterlev init --baseline fedramp-20x-moderate
 efterlev scan
 ```
 
-> **Status (April 2026): v0 shipped; v1 closed-development.** Six detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML report rendering for every agent output, end-to-end CI demo running against a sample FedRAMP Terraform repo on GitHub Actions. The repository is private through v1 development (closed-source, no public announcement); security-team review access for evaluating customers is granted via private-repo invite under NDA. License is Apache 2.0; public-release timing will be revisited at first customer engagement or Month 6. See [Project status](#project-status) for specifics of what's in and what's next.
+> **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 landed; v1 closed-development.**
+> - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports.
+> - **v1 Phase 1 (Evidence Manifests):** customers declare procedural attestations in `.efterlev/manifests/*.yml`; they flow into the Gap Agent alongside detector Evidence. Takes scanner-only coverage from ~20% of the FedRAMP Moderate baseline toward 80%+ when paired with detectors.
+> - **v1 Phase 2 (FRMR attestation generator):** `efterlev agent document` now emits an FRMR-compatible attestation JSON artifact alongside the HTML report — the v1 primary production output.
+>
+> The repository is private through v1 development (closed-source, no public announcement); security-team review access for evaluating customers is granted via private-repo invite under NDA. License is Apache 2.0; public-release timing is revisited at first customer engagement or Month 6. See `DECISIONS.md` 2026-04-22 for the v1 scope lock and `CLAUDE.md` for the current-state summary.
 
-Efterlev is **KSI-native**: its primary abstraction is the Key Security Indicator from FedRAMP 20x, with 800-53 Rev 5 controls as the underlying reference. Agent-drafted outputs (gap classifications, attestation narratives, remediation diffs) are emitted as self-contained HTML reports at v0; a FRMR-compatible attestation-JSON generator is the first v1 deliverable — the internal model is already FRMR-shaped. OSCAL output for Rev5-transition submissions is deferred to v1.5+, gated on customer pull (see `DECISIONS.md` 2026-04-22).
+Efterlev is **KSI-native**: its primary abstraction is the Key Security Indicator from FedRAMP 20x, with 800-53 Rev 5 controls as the underlying reference. Agent outputs (gap classifications, attestation narratives, remediation diffs) render as self-contained HTML reports; the Documentation Agent additionally emits an FRMR-compatible attestation JSON artifact consumable by 3PAOs and downstream tooling. OSCAL output for Rev5-transition submissions is deferred to v1.5+, gated on customer pull (see `DECISIONS.md` 2026-04-22).
 
 Efterlev's current focus is SaaS companies pursuing their first FedRAMP Moderate authorization. Defense contractors pursuing CMMC 2.0 or DoD IL are a v1.5+ expansion; platform teams at larger gov-contractors are v2+. See [docs/icp.md](./docs/icp.md) for the full user profile and what that means for what Efterlev does and doesn't do.
 
@@ -288,7 +293,7 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 ## Project status
 
-**Current state: v0 shipped. Repository private; first public tag pending hardening + credential rotation.**
+**Current state (2026-04-22): v0 shipped; v1 Phase 1 + Phase 2 landed. Repository private through v1 development.**
 
 ### What v0 contains
 
@@ -296,44 +301,67 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 **Detectors (6).** `aws.encryption_s3_at_rest`, `aws.tls_on_lb_listeners`, `aws.fips_ssl_policies_on_lb_listeners`, `aws.mfa_required_on_iam_policies`, `aws.cloudtrail_audit_logging`, `aws.backup_retention_configured`. All self-contained under `src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml, fixtures/, and README.md. Each detector's README names what it proves and what it does not.
 
-**Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit evidence-fencing rules and cite-by-fenced-id discipline.
-
-**Primitives (2 deterministic so far).** `scan_terraform`, `generate_frmr_skeleton`. Both `@primitive`-registered and MCP-exposed. `generate_frmr_skeleton` produces a scanner-only `AttestationDraft` from evidence — the deterministic half of FRMR attestation assembly, usable standalone without any LLM call.
+**Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit per-run-nonced-fence rules and cite-by-fenced-id discipline (see Phase 2 post-review fixup F below).
 
 **Provenance.** SQLite index + content-addressed blob store + append-only JSONL receipt log under `.efterlev/`. Every record (Evidence, Claim, ProvenanceRecord) is content-addressed by SHA-256. `efterlev provenance show <record_id>` walks the chain.
 
-**Output surface.** Self-contained HTML reports under `.efterlev/reports/`: gap-\<ts\>.html, documentation-\<ts\>.html, remediation-\<ksi\>-\<ts\>.html. Inline CSS, no JavaScript, no external fonts — portable, emailable, archivable. Evidence records render with a green left border; Claims render amber with the DRAFT banner. That visual split is the trust-class discipline made visible.
+**Output surface.** Self-contained HTML reports under `.efterlev/reports/`: gap-\<ts\>.html, documentation-\<ts\>.html, remediation-\<ksi\>-\<ts\>.html. Inline CSS, no JavaScript, no external fonts — portable, emailable, archivable. Evidence records render with a green left border; Claims render amber with the DRAFT banner. Manifest-sourced citations carry an "attestation" badge to distinguish human-signed from scanner-derived evidence.
 
-**MCP server.** stdio transport, stateless, self-logging. 7 tools: `efterlev_init`, `efterlev_scan`, `efterlev_agent_gap`, `efterlev_agent_document`, `efterlev_agent_remediate`, `efterlev_provenance_show`, `efterlev_list_primitives`. Every tool invocation writes one `mcp_tool_call` claim record into the target repo's provenance store before dispatching. See [THREAT_MODEL.md](./THREAT_MODEL.md) T6.
+**MCP server.** stdio transport, stateless, self-logging. Seven tools covering every CLI verb. Every tool invocation writes one `mcp_tool_call` claim record into the target repo's provenance store before dispatching. See [THREAT_MODEL.md](./THREAT_MODEL.md) T6.
 
-**CI proof.** End-to-end demo runs on every PR to [lhassa8/govnotes-demo](https://github.com/lhassa8/govnotes-demo) (public demo-target repo) using the workflow at `.github/workflows/efterlev-scan.yml`. Workflow installs Efterlev from this private repo, runs the full pipeline against real Terraform, and uploads gap + documentation + remediation HTML artifacts.
+### What v1 Phase 1 added (2026-04-22, commits `d43a2a3` + `7cc86d6`)
 
-**Tests.** 238 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 70 source files. `pytest`, `ruff`, `mypy` run on every push via GitHub Actions.
+**Evidence Manifests** — customer-authored procedural attestations under `.efterlev/manifests/*.yml`. Each YAML binds to one KSI and contains one or more human-signed attestation entries (`statement`, `attested_by`, `attested_at`, `reviewed_at`, `next_review`, `supporting_docs`). At scan time, manifests become `Evidence` records with `detector_id="manifest"` and flow through the Gap Agent alongside detector Evidence. The single highest-leverage addition in v1: the scanner-only ceiling is ~20% of the Moderate baseline; manifests lift coverage toward the procedural-heavy 80%. Full design call in `DECISIONS.md` 2026-04-22 "Phase 1: Evidence Manifests."
 
-### What v0 does NOT contain yet
+**New primitive:** `load_evidence_manifests` in the `evidence/` capability slot (the first primitive there). Deterministic. One provenance record per attestation.
 
-- **FRMR-compatible JSON serialization** of `AttestationDraft` records. The internal model is FRMR-shaped; the serializer primitive is v1. v0 emits HTML only.
-- **OSCAL output generators.** v1. `compliance-trestle` is used for 800-53 catalog *input* today.
-- **Non-Terraform input sources.** v0 is `.tf` files only. No CloudFormation, CDK, Pulumi, Kubernetes, runtime cloud APIs.
-- **More detectors.** Six is the MVP set. The detector library is designed to grow — a new detector is one folder plus one import line.
-- **Public package on PyPI.** Install is from git while the repo is private.
+**Renderer badge:** Documentation Report (now carried by Gap Report and Remediation Report too per fixup E) marks manifest-sourced citations with an amber "attestation" pill.
 
-### Stable surface
+### What v1 Phase 2 added (2026-04-22, commit `5d35bf7`)
 
-Designed to not break once shipped publicly:
+**FRMR attestation generator** — `generate_frmr_attestation` primitive serializes `AttestationDraft` records to a typed `AttestationArtifact` and a canonical JSON string. Deterministic (no LLM call inside — the LLM work happened upstream in the Documentation Agent). Output shape is FRMR-inspired (top-level `info` + `KSI`-by-theme nesting + `provenance` block); it is NOT a valid FRMR *catalog* document, because FedRAMP has not published an attestation-output schema and our artifact carries attestation data the catalog schema does not express. Pydantic `extra="forbid"` + `Literal[True]` on `requires_review` is the v1 structural guarantee.
+
+**CLI integration:** `efterlev agent document` now emits `.efterlev/reports/attestation-<ts>.json` alongside the existing HTML report. Single run, two artifacts — human-readable HTML for review, machine-readable JSON for 3PAO ingestion and downstream tooling.
+
+Full design call in `DECISIONS.md` 2026-04-22 "Phase 2: FRMR attestation generator."
+
+### What post-review fixups A–F tightened (2026-04-22, commits `e62e309` → `fcaf94a`)
+
+- **A:** Specific `pydantic.ValidationError` catch in the attestation primitive; dedup `skipped_unknown_ksi` at primitive boundaries; hard-error on missing FRMR cache in `scan`; consolidated ProvenanceStore context in `agent document`; CLAUDE.md schema-posture refresh.
+- **B:** `docs/dual_horizon_plan.md` §3.1 rewrite to match the v1 lock.
+- **C:** Remediation Agent filters `detector_id="manifest"` Evidence out of source-file assembly; clean short-circuit on manifest-only KSIs.
+- **D:** `Evidence.source_ref.file` is repo-relative, not absolute. No user filesystem layout leaks into the provenance store, HTML, or FRMR JSON.
+- **E:** Gap Report + Remediation Report now carry the manifest attestation badge when passed `evidence=`. CSS consolidated in the shared stylesheet.
+- **F:** Per-run fence nonce (`<evidence_NONCE id="...">` / `<source_file_NONCE path="...">`) hardens the prompt-injection defense against content-injected forged fences. All three agents pass a fresh nonce from `new_fence_nonce()` to every format/parse call in a `run()`. Adversarial test locks in that content-embedded fake fences with mismatching nonces are rejected.
+
+### Current stable surface
+
+Designed to not break once opened publicly (or to customers under NDA):
 
 - `@detector` and `@primitive` decorator contracts
-- Evidence / Claim / ProvenanceRecord / AttestationDraft Pydantic models
+- Evidence / Claim / ProvenanceRecord / AttestationDraft / AttestationArtifact / EvidenceManifest Pydantic models
 - CLI verb names and argument shapes
 - MCP tool names and JSON Schemas
-- `.efterlev/` on-disk layout
+- `.efterlev/` on-disk layout (carved-out: `.efterlev/manifests/` is customer-authored and committed; rest is tool state and gitignored)
+- FRMR attestation JSON top-level shape (`info`, `KSI`, `provenance`)
 
 ### Changing surface
 
-- Detector content (as more land)
-- Agent system prompts (as they're tuned)
-- FRMR JSON output shape (serializer arrives in v1)
-- OSCAL generators (v1)
+- Detector content (as more land — Phase 6 target is 30 total; held pending customer signal)
+- Agent system prompts (as they're tuned against real LLM output)
+- OSCAL generators (deferred to v1.5+, gated on customer pull)
+
+### Tests
+
+279 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 76 source files. Pipeline not yet verified against a real LLM in this development environment — unit tests use `StubLLMClient`. Building a reusable E2E smoke harness is the next planned work.
+
+### What's NOT in scope right now (per v1 lock)
+
+- **OSCAL SSP / AR / POA&M generators.** v1.5+ gated on first Rev5-transition or OSCAL-Hub-consuming customer.
+- **AWS Bedrock backend** (commercial + GovCloud). v1 Phase 3, pulled on GovCloud prospect demand.
+- **Non-Terraform input sources** (CloudFormation, CDK, Pulumi, Kubernetes manifests, runtime cloud APIs). v1.5+.
+- **CMMC 2.0 overlay.** v1.5+ when ICP B becomes primary.
+- **Public package on PyPI.** Deferred until repo opens at first customer engagement or Month 6.
 
 ---
 

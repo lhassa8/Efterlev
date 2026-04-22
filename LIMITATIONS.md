@@ -24,25 +24,25 @@ Efterlev accelerates the draft-and-review cycle. It does not substitute for inde
 
 Generated content — FRMR attestations, KSI mappings, SSP narratives (v1), remediation proposals — is produced by large language models. Models hallucinate. Efterlev's provenance system mitigates hallucination by forcing every generated claim to cite its underlying evidence, but it does not eliminate it. Every Claim in the system carries a "DRAFT — requires human review" marker for this reason.
 
-### It does not scan live cloud infrastructure (at v0)
+### It does not scan live cloud infrastructure (at v0 or v1)
 
-Efterlev v0 reads Terraform and OpenTofu source files (`.tf`). It does not call AWS, Azure, or GCP APIs to inspect running resources. CloudFormation, AWS CDK, Pulumi, and Kubernetes manifests are v1 additions — see the roadmap in `README.md`. Runtime cloud API scanning is v1.5+.
+Efterlev reads Terraform and OpenTofu source files (`.tf`) and customer-authored attestation manifests (`.efterlev/manifests/*.yml`). It does not call AWS, Azure, or GCP APIs to inspect running resources. Per the v1 scope lock (`DECISIONS.md` 2026-04-22): CloudFormation, AWS CDK, Pulumi, Kubernetes manifests, and runtime cloud API scanning are deferred to v1.5+, gated on customer pull.
 
 ### It does not perform continuous monitoring (at v0)
 
 Efterlev runs on demand (locally or in CI). It does not run as a daemon watching for drift. The provenance graph's append-only, versioned structure is designed to support continuous monitoring in v1, but the monitoring daemon itself is not yet built.
 
-### It does not cover the full FedRAMP 20x Moderate KSI set (at v0)
+### It does not cover the full FedRAMP 20x Moderate KSI set via detectors alone
 
-The hackathon MVP covers six detection areas (encryption at rest, transmission confidentiality, cryptographic protection, MFA enforcement, event logging & audit generation, system backup) for which infrastructure-layer evidence is genuinely dispositive. FRMR 0.9.43-beta defines 60 KSIs across 11 themes (backed by 800-53 Rev 5 controls — the full Moderate baseline has ~323 controls plus enhancements). The rest will be added incrementally in v1+. See `README.md` for the current coverage table.
+Six scanner-visible detection areas ship (encryption at rest, transmission confidentiality, cryptographic protection, MFA enforcement, event logging & audit generation, system backup) — the areas where infrastructure-layer Terraform evidence is genuinely dispositive. FRMR 0.9.43-beta defines 60 KSIs across 11 themes; most of the remainder are procedural and cannot be evidenced from code alone. For those, v1 Phase 1 (Evidence Manifests, landed 2026-04-22) is the complement: customers author signed attestations under `.efterlev/manifests/*.yml` and those records flow into the Gap Agent alongside detector Evidence. Scanner-only coverage is ~20% of the baseline; scanner + manifests can approach 80%+ when customers author the procedural attestations their organization can genuinely sign for. Additional detectors for the scanner-visible layer (Phase 6 target: 30 total) are held pending customer signal per the v1 lock.
 
 ### The FRMR KSI ↔ 800-53 mapping has known gaps
 
 FRMR is at version 0.9.43-beta as of the vendored snapshot. Some 800-53 controls we can genuinely detect do not yet map to any KSI — most notably SC-28 (encryption at rest). Where this happens, Efterlev will evidence the underlying control honestly and flag the KSI mapping as `[TBD]` or use the closest thematic fit with an explicit caveat in the detector's README. We do not invent KSIs that do not exist in the vendored FRMR, and we do not claim clean KSI alignment where one does not exist.
 
-### It does not detect policy, procedural, or human-process controls
+### It does not automatically detect policy, procedural, or human-process controls
 
-Controls like AT-* (Awareness and Training), PL-* (Planning), PS-* (Personnel Security), PM-* (Program Management), and large parts of AC-* (Access Control — the procedural aspects) cannot be detected from code and IaC alone. Efterlev can generate draft narratives for these controls and their related KSIs (the CED and PIY themes, for example, are heavily procedural), but it cannot provide evidence of their implementation.
+Controls like AT-* (Awareness and Training), PL-* (Planning), PS-* (Personnel Security), PM-* (Program Management), and large parts of AC-* (Access Control — the procedural aspects) cannot be detected from code and IaC alone. v1 Phase 1 Evidence Manifests are the path: customers declare what their organization does and who signed off (a VP, a security lead, a runbook owner) in a YAML the same way they commit code. The Gap Agent sees those attestations and classifies KSIs accordingly. What Efterlev does NOT do is evidence the underlying human process; it captures the attestation and its review cadence (`next_review` date), and the tool's output makes clear the record is human-signed, not machine-verified. A reviewer or 3PAO still evaluates the underlying process.
 
 ### It does not cover frameworks beyond FedRAMP and DoD IL (at v0)
 
@@ -60,13 +60,13 @@ The Remediation Agent produces code diffs as local output. Opening PRs against r
 
 Each detector's `README.md` states what the detector proves and what it does not prove. For example: the SC-28 S3 encryption detector evidences the infrastructure layer of SC-28 (encryption is configured) but does not evidence the procedural layer (key management practices, rotation policies, BYOK). Never read an Efterlev finding as "SC-28 is implemented"; read it as "infrastructure-layer evidence for SC-28 is present."
 
-### FRMR output validation is schema-level, not semantic
+### FRMR attestation output is Pydantic-validated, not FedRAMP-schema-validated
 
-Efterlev validates generated FRMR against `FedRAMP.schema.json` (vendored at `catalogs/frmr/`). It does not validate against any additional submission-time constraints FedRAMP may apply during the 20x authorization review. Schema-valid FRMR from Efterlev may still require refinement before submission.
+The FRMR attestation JSON artifact (`efterlev agent document` output) is validated against the Pydantic `AttestationArtifact` model at construction time — `extra="forbid"`, strict literal types, `requires_review=Literal[True]`. FedRAMP's vendored `FedRAMP.schema.json` describes the FRMR *catalog* (what KSIs exist), not attestation *output* (a CSP's statement of evidence). FedRAMP has not published an attestation-output schema as of April 2026; when they do, Efterlev will migrate. See `DECISIONS.md` 2026-04-22 "Phase 2: FRMR attestation generator" for the full schema-posture call. Regardless of schema validation, submission-time FedRAMP review may apply additional constraints the tool does not capture — the artifact is a draft, always.
 
-### OSCAL output (v1) validation is schema-level, not semantic
+### OSCAL output is deferred to v1.5+
 
-When the v1 OSCAL generators ship, generated OSCAL will be validated against the NIST schemas. It will not be validated against FedRAMP's stricter Rev5 submission requirements, which include additional constraints the base OSCAL schema does not express. Schema-valid OSCAL from Efterlev may still require refinement before FedRAMP submission.
+The v1 scope lock (2026-04-22) moved OSCAL SSP / AR / POA&M generators from v1 to v1.5+, gated on customer pull. The internal data model already supports serialization into OSCAL shapes when needed; the generators are not built. Rev5-transition users and RegScale OSCAL-Hub-consuming prospects are the signal that pulls them forward.
 
 ### Generated narratives reflect the evidence we have, not the narrative the reviewer expects
 

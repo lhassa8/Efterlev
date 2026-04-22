@@ -33,6 +33,47 @@ The non-negotiable principles below remain authoritative. Where they mention tim
 
 ---
 
+## What's shipped (as of 2026-04-22)
+
+v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, have landed on `claude/review-github-access-6XZIA`:
+
+**v0 (main, commit `6fb7e75`):**
+- 6 AWS-Terraform detectors: `encryption_s3_at_rest`, `tls_on_lb_listeners`, `fips_ssl_policies_on_lb_listeners`, `mfa_required_on_iam_policies`, `cloudtrail_audit_logging`, `backup_retention_configured`.
+- 3 agents: Gap, Documentation, Remediation. All use Opus 4.7 (Documentation on Sonnet 4.6). All three enforce XML-fenced evidence + post-generation citation validation.
+- MCP stdio server exposing every primitive.
+- Provenance graph: SQLite + content-addressed blob store + receipt log.
+- HTML renderers for every agent output.
+- FRMR + 800-53 catalogs vendored with pinned SHA-256 hashes.
+
+**Phase 1 — Evidence Manifests (`d43a2a3`, `7cc86d6`):** Customers author `.efterlev/manifests/*.yml` with human-signed procedural attestations. `EvidenceManifest` Pydantic model, file loader, `load_evidence_manifests` primitive in the `evidence/` capability slot. Manifest attestations become `Evidence` records with `detector_id="manifest"` and flow through the Gap Agent alongside detector Evidence. Documentation Report's citations visually distinguish manifest-sourced from scanner-sourced with an amber "attestation" badge. Takes coverage from ~20% (scanner-only) toward 80%+ (scanner + procedural). Full design call: DECISIONS 2026-04-22 "Phase 1: Evidence Manifests."
+
+**Phase 2 — FRMR attestation generator (`5d35bf7`):** `generate_frmr_attestation` primitive serializes `AttestationDraft` to FRMR-compatible JSON. Typed `AttestationArtifact` Pydantic model with `info` + `KSI`-by-theme + `provenance` blocks, `extra="forbid"` everywhere, `requires_review: Literal[True]` as a construction-time invariant. Canonical JSON output (sorted keys, indent=2). `efterlev agent document` now writes `attestation-<ts>.json` alongside the HTML report. The FRMR `catalogs/frmr/FedRAMP.schema.json` describes the catalog not the attestation output; FedRAMP has not published an attestation schema as of April 2026, so Pydantic structural validation is the v1 guarantee. Full design call: DECISIONS 2026-04-22 "Phase 2: FRMR attestation generator."
+
+**Post-review fixups A–F (`e62e309` → `fcaf94a`):** A deep-dive review surfaced 14 findings; all resolved.
+- A: small tightenings (specific `pydantic.ValidationError` catch, `skipped_unknown_ksi` dedup at primitive boundary, hard-error on missing FRMR cache in `scan`, consolidated ProvenanceStore in `agent document`, CLAUDE.md schema-posture refresh).
+- B: `docs/dual_horizon_plan.md` §3.1 Layer 2 rewritten to reflect the v1 lock.
+- C: Remediation Agent filters manifest Evidence out of source-file assembly; short-circuits cleanly on manifest-only KSIs.
+- D: `Evidence.source_ref.file` is repo-relative, not absolute — no filesystem layout leaked into the FRMR JSON or HTML artifacts. `parse_terraform_file(path, record_as=...)` and `LoadEvidenceManifestsInput.scan_root` are the anchors.
+- E: Gap Report + Remediation Report both carry the manifest "attestation" badge when passed `evidence=`; CSS consolidated in the shared stylesheet.
+- F: Per-run fence nonce (`secrets.token_hex(4)`) prevents content-injected forged fences. `<evidence_NONCE id="...">` and `<source_file_NONCE path="...">`; parse helpers take the nonce and ignore any fence with a different one. Full design call: DECISIONS 2026-04-22 "Post-review fixups A–F."
+
+**End state at 2026-04-22:**
+- 279 tests passing.
+- ruff clean; mypy strict-clean on 76 source files (strict on `efterlev.{primitives,detectors,oscal,manifests}.*`).
+- End-to-end smoke (`init` → `scan` with one .tf + one manifest) verified.
+- `generate_frmr_attestation` produces canonical, byte-stable JSON with typed-Pydantic validation at construction.
+
+**What has NOT been verified yet:** the full pipeline has not been run end-to-end against a real LLM call in this development environment. Unit tests use `StubLLMClient`. Prompt quality, fence-nonce respect, Gap Agent output coherence on a real 60-KSI classification, and FRMR JSON shape under real Opus output are all unmeasured. The next high-leverage task is an E2E smoke harness that runs the full CLI against a synthetic fixture with `ANTHROPIC_API_KEY` and evaluates output quality. See DECISIONS for the pending entry.
+
+**What's next (per v1 locked plan, DECISIONS 2026-04-22):**
+- E2E smoke harness (before any new phase work) — reusable, repeatable, exercised before each release.
+- Phase 6-lite (6 additional detectors chosen for highest archetype value), pulled in parallel with Phase 4 per the locked month-2 sequencing.
+- Phase 4 (runtime + drift) — gated on having enough scans-over-time data to make drift meaningful; may wait for first prospect usage.
+- Phase 5 (review workflow, sigstore signing, manifest-staleness prompt-layer treatment).
+- Phase 3 (multi-backend LLM: commercial Bedrock → GovCloud Bedrock) — gated on customer pull.
+
+---
+
 ## Non-negotiable principles
 
 These override local convenience. If you feel tempted to violate one, stop and ask.
