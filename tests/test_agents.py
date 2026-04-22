@@ -227,6 +227,88 @@ def test_gap_agent_malformed_json_raises(tmp_path: Path) -> None:
         agent.run(GapAgentInput(indicators=[_mk_indicator()], evidence=[_mk_evidence()]))
 
 
+def test_gap_agent_flips_ksi_from_not_implemented_to_implemented_on_manifest(
+    tmp_path: Path,
+) -> None:
+    """Manifest Evidence flows into the Gap Agent identically to detector Evidence.
+
+    Phase 1's load-bearing claim is that a human-signed procedural attestation
+    YAML (Evidence with detector_id="manifest") pushes a KSI from
+    not_implemented to implemented once the customer adds the attestation —
+    covering the procedural layer the Terraform scanner can't see.
+
+    The agent is evidence-source-agnostic. A manifest Evidence and a
+    detector Evidence present identically in the fenced prompt; the agent
+    cites by evidence_id in both cases. This test exercises the flow
+    end-to-end with a stub model that would classify the KSI as
+    "implemented" given the manifest attestation.
+    """
+    manifest_ev = Evidence.create(
+        detector_id="manifest",
+        source_ref=SourceRef(file=Path(".efterlev/manifests/security-inbox.yml")),
+        ksis_evidenced=["KSI-AFR-FSI"],
+        controls_evidenced=["IR-6", "IR-7"],
+        content={
+            "type": "attestation",
+            "statement": "security@example.com monitored 24/7 by SOC team.",
+            "attested_by": "vp-security@example.com",
+            "attested_at": "2026-04-15",
+            "reviewed_at": "2026-04-15",
+            "next_review": "2026-10-15",
+            "supporting_docs": [],
+            "manifest_name": "FedRAMP Security Inbox",
+            "is_stale": False,
+        },
+        timestamp=datetime(2026, 4, 21, tzinfo=UTC),
+    )
+    indicator = Indicator(
+        id="KSI-AFR-FSI",
+        theme="AFR",
+        name="FedRAMP Security Inbox",
+        statement="Maintain a monitored security inbox with documented response procedures.",
+        controls=["IR-6", "IR-7"],
+    )
+    response = json.dumps(
+        {
+            "ksi_classifications": [
+                {
+                    "ksi_id": "KSI-AFR-FSI",
+                    "status": "implemented",
+                    "rationale": (
+                        "Customer attested that security@example.com is monitored 24/7 "
+                        "with a documented SOP and 15-minute acknowledgment SLA."
+                    ),
+                    "evidence_ids": [manifest_ev.evidence_id],
+                }
+            ],
+            "unmapped_findings": [],
+        }
+    )
+    stub = StubLLMClient(response_text=response, model="stub-opus")
+
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        agent = GapAgent(client=stub)
+        report = agent.run(GapAgentInput(indicators=[indicator], evidence=[manifest_ev]))
+
+    # The manifest attestation carried the KSI from not_implemented (the
+    # default absent evidence) to implemented. The whole point of Phase 1.
+    assert len(report.ksi_classifications) == 1
+    clf = report.ksi_classifications[0]
+    assert clf.ksi_id == "KSI-AFR-FSI"
+    assert clf.status == "implemented"
+    assert manifest_ev.evidence_id in clf.evidence_ids
+
+    # The prompt the model saw must have fenced the manifest Evidence
+    # under its sha256 id — the same fence-citation discipline that
+    # applies to detector Evidence (DECISIONS 2026-04-21 design call #3).
+    user_prompt = stub.last_messages[0].content
+    assert f'<evidence id="{manifest_ev.evidence_id}">' in user_prompt
+    # The manifest's provenance-relevant fields must appear in the fenced
+    # content so the model can reason about attestor, date, statement.
+    assert '"detector_id": "manifest"' in user_prompt
+    assert "vp-security@example.com" in user_prompt
+
+
 def test_gap_agent_invalid_schema_raises(tmp_path: Path) -> None:
     # status="totally-bogus" is not a valid GapStatus literal.
     bogus = json.dumps(

@@ -62,6 +62,11 @@ _BODY_TEMPLATE = """
     {% for cite in draft.citations %}
       <li>
         <code class="fence-id">{{ cite.evidence_id }}</code>
+        {% if cite.detector_id == "manifest" -%}
+        <span class="source-badge source-manifest"
+              title="Human-signed procedural attestation from .efterlev/manifests/"
+              >attestation</span>
+        {%- endif %}
         — <code>{{ cite.detector_id }}</code>
         at <code>{{ cite.source_file
           }}{% if cite.source_lines %}:{{ cite.source_lines }}{% endif %}</code>
@@ -110,6 +115,28 @@ _NARRATIVE_CSS = """
   .citations { margin-top: 10px; font-size: 13px; color: #4a4a4a; }
   .citations ul { margin: 6px 0 0 0; padding-left: 20px; }
   .citations li { margin-bottom: 3px; }
+  /* Visual distinction for manifest-sourced Evidence (human-signed
+     procedural attestations vs. scanner-derived detector output). No
+     badge for detector Evidence — detectors are the default; the badge
+     is only needed to mark the exceptional case. Colors chosen to echo
+     the DRAFT banner's amber family so the human reviewer's eye
+     immediately lands on human-signed content. */
+  .source-badge {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    border-radius: 3px;
+    vertical-align: middle;
+  }
+  .source-badge.source-manifest {
+    background: #fff4d6;
+    color: #7a5200;
+    border: 1px solid #e0c88a;
+  }
 </style>
 """
 

@@ -108,6 +108,39 @@ def test_citations_render_with_source_file_and_detector_id() -> None:
     assert "42-58" in html
 
 
+def test_manifest_citation_carries_attestation_badge() -> None:
+    # A citation with detector_id="manifest" (human-signed procedural
+    # attestation) is visually distinguished in the rendered report so a
+    # 3PAO or engineer scanning the doc can tell scanner-derived Evidence
+    # from human-attested Evidence at a glance.
+    manifest_cite = AttestationCitation(
+        evidence_id="sha256:manifestAAA",
+        detector_id="manifest",
+        source_file=".efterlev/manifests/security-inbox.yml",
+        source_lines=None,
+    )
+    detector_cite = AttestationCitation(
+        evidence_id="sha256:detectorBBB",
+        detector_id="aws.cloudtrail_audit_logging",
+        source_file="infra/terraform/cloudtrail.tf",
+        source_lines="10-24",
+    )
+    att = KsiAttestation(
+        draft=_draft(citations=[manifest_cite, detector_cite]),
+        claim_record_id=None,
+    )
+    html = render_documentation_report_html(_report(attestations=[att]), **_kwargs())
+    # Manifest citation gets the badge; detector citation does not. A single
+    # `source-manifest` class occurrence in the body proves the branch fires
+    # once and only once across the two cited records.
+    assert "source-manifest" in html
+    assert html.count("source-manifest") == 2  # CSS rule + one badge instance
+    assert ">attestation</span>" in html
+    # Both evidence ids still render; the badge is additive, not replacing.
+    assert "sha256:manifestAAA" in html
+    assert "sha256:detectorBBB" in html
+
+
 def test_claim_record_id_surfaces_for_provenance_walk() -> None:
     att = KsiAttestation(draft=_draft(), claim_record_id="sha256:recABC")
     html = render_documentation_report_html(_report(attestations=[att]), **_kwargs())
