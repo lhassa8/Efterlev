@@ -1,5 +1,7 @@
 # Contributing to Efterlev
 
+> **v1 status (2026-04-22): external contributions paused.** Efterlev is in closed development through v1 (private repo, no public announcement). External detector/primitive/agent contributions are paused during this period; the architecture continues to support them, and this document stays authoritative for when the repo reopens. If you are an evaluating customer with private-repo access under NDA and want to contribute an internal detector or bug fix, contact the maintainer directly — the contribution path is the same as documented below, with review scoped to the engagement. Reopening timing is gated on first customer engagement or Month 6, whichever comes first. See `DECISIONS.md` 2026-04-22.
+
 We want contributors. This document is the path from curiosity to merged PR. It is written for a human developer, not for Claude Code — that's what `CLAUDE.md` is for.
 
 ---

@@ -16,7 +16,20 @@ The name "Efterlev" is a shortening of the Swedish *efterlevnad* (compliance). P
 
 The full plan lives in `docs/dual_horizon_plan.md`. **Read it before proposing any architectural change.** Competitive positioning lives in `COMPETITIVE_LANDSCAPE.md` — read that before making any positioning-adjacent claim.
 
-We are building this for a 4-day hackathon demo, then continuing as an open-source project. The architecture is designed so that nothing built in the hackathon layer needs to be thrown away to build the v1 layer.
+We are building this for a 4-day hackathon demo, then continuing as a closed-source project through v1 (revisit at first customer or Month 6). The architecture is designed so that nothing built in the hackathon layer needs to be thrown away to build the v1 layer.
+
+---
+
+## v1 scope locked 2026-04-22
+
+Four commitments narrow v1 execution of this charter; see `DECISIONS.md` 2026-04-22 for the full entry. Key adjustments that affect day-to-day decisions:
+
+- **Archetype-only.** No named design partner. ICP A per `docs/icp.md` is the lens; concrete schema choices (Evidence Manifest, Phase 6 detector priorities) may be revised when a real prospect surfaces.
+- **Commercial AWS first.** Bedrock + GovCloud deferred to Phase 3–4 (months 3–4), gated on prospect pull. Anthropic-direct sufficient through v1.
+- **20x-native output first.** FRMR-attestation generator is the only v1 production output. OSCAL SSP/AR/POA&M generators move to v1.5+, gated on customer pull. The `oscal/` generator slot stays in the architecture but is empty.
+- **Closed-source through v1.** Private GitHub repo; customer review access via private-repo invite under NDA. License stays Apache 2.0.
+
+The non-negotiable principles below remain authoritative. Where they mention timelines or contribution channels that this lock affects, the principle stands and the v1 deliverable date moves — not the other way around. Specifically: principle 3 (FRMR primary, OSCAL secondary) is unchanged in intent; OSCAL-as-secondary moves from v1 to v1.5+. Principle 4 (community-contributable detector library) is paused for v1 — the architecture continues to support it; the contribution flow reopens when we open the repo.
 
 ---
 

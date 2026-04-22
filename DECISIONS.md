@@ -583,6 +583,58 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-22 — Lock v1 scope: archetype-only, commercial AWS, 20x-native, closed-NDA `[scope]` `[positioning]` `[process]`
+
+**Decision:** Four interdependent locks set the v1 design envelope now that v0 has shipped. Taken together they narrow the ICP-A-serving posture and reorder the six-phase v1 brief.
+
+1. **Archetype-only; no named design partner at v1 start.** We design against the ICP as described in `docs/icp.md` and accept that concrete schema choices (especially the Evidence Manifest YAML shape and the Phase 6 detector priority list) will need a revision pass once the first real prospect surfaces.
+2. **Commercial AWS first; Bedrock + GovCloud deferred until customer-pulled.** Phase 3 (multi-backend LLM) moves from month 2 to month 3–4, gated on actual GovCloud prospect demand. Phases 1/2/6 own the first two months. Anthropic-direct is sufficient for the archetype's laptop and CI deployment modes.
+3. **20x-native first; OSCAL SSP/AR/POA&M generators deferred to v1.5+.** Phase 2 collapses to the FRMR-attestation generator only. ICP A is first-time FedRAMP Moderate in 2026; 20x Phase 2 is the active authorization path (Aeroplicity authorized April 13). "Rev5 transition" is not an ICP A problem — they have nothing to transition from. NOTICE-0009 (2026-03-25) already softened the RFC-0024 OSCAL floor; CR26 does not compel it for new authorizations. Building OSCAL generators blind, absent a prospect signal, eats ~3 weeks of roadmap for zero archetype value. The `oscal/` generator slot stays in the architecture; it's gated on pull, not push.
+4. **Closed-source through v1; private-repo access under NDA for customer security review.** The repo stays private on GitHub. No public announcement, no HN post, no external contributor outreach. When a prospect's security team wants to read the code before running it on their Terraform, we grant private-repo read access under NDA — not source escrow, not refusal. License file stays Apache 2.0 (the license governs distribution when/if the repo opens; private-repo status is what enforces closed today).
+
+**Rationale for the package:**
+
+- Taken separately each lock is modest. Taken together they free ~3 weeks from the original v1 brief's Phase 2 budget, redirected into detector breadth (Phase 6) and drift (Phase 4) — both closer to daily ICP A value than OSCAL generators would be.
+- Archetype-only + closed-source is coherent: without a named prospect, publishing publicly creates a community we can't yet support and a schema surface we'll want to revise against real input. Closed-by-default keeps us flexible until the first real voice enters.
+- 20x-native first keeps the primary output aligned with FedRAMP's actual 2026 direction. OSCAL generators are preserved in the architecture diagram and the output-abstraction contract, but not built.
+- Commercial-AWS-first matches the adoption wedge described in `docs/icp.md`: deployment modes 1 (developer laptop) and 2 (CI runner). Mode 3 (customer-owned VM inside a GovCloud boundary) is load-bearing later, not now.
+
+**Revised v1 phase sequencing (supersedes `docs/dual_horizon_plan.md` §3.1 for the detector / output / backend axes):**
+
+| Phase | Original v1 brief | Locked v1 |
+|---|---|---|
+| 1 — Evidence Manifest (procedural coverage) | Month 1 | Month 1 |
+| 2 — Output formats | Month 1–2 (FRMR + 3× OSCAL) | Month 1 (FRMR-attestation only) |
+| 3 — Multi-backend LLM | Month 2 | Month 3–4, pulled on GovCloud demand |
+| 4 — Runtime + drift | Month 3 | Month 2 |
+| 5 — Workflow maturity | Month 4 | Month 3 |
+| 6 — Detector library (6 → 30) | Month 5–6 | Month 2–3, parallel with drift |
+
+**Alternatives considered:**
+
+- **Delay all four locks until a named prospect signs.** Rejected. We need a planning commitment *now* to start Phase 1 coherently; waiting for a prospect means waiting indefinitely during which design drifts.
+- **Ship OSCAL generators in Phase 2 anyway, for future-proofing.** Rejected. Future-proofing absent customer pull is the classic OSS-tool failure mode. The abstraction is in place; the generators are a v1.5 addition when pulled.
+- **Public OSS from v1 to invite detector PRs.** Rejected. Archetype-only means no vetted contributor flow and no design partner to trust the architectural choices against. Revisit at first customer engagement or month 6 per the original v1 brief.
+- **Bedrock alongside Anthropic-direct in Phase 1.** Rejected. The `LLMClient` abstraction already exists in `src/efterlev/llm/`; adding the Bedrock implementation absent a customer who needs it is a half-week of work for zero archetype-A value.
+
+**What this does NOT change:**
+
+- The Evidence-vs-Claims discipline (2026-04-18).
+- The detector contract shape (2026-04-18).
+- The FRMR-as-primary-output, KSI-native internal model (2026-04-19 pivot).
+- The MCP trust model (2026-04-21 design call #4).
+- The non-negotiable principles in `CLAUDE.md` — those remain authoritative; only the dates on specific v1 deliverables move.
+
+**Impact on other docs (threaded in the same commit):**
+
+- `docs/icp.md`: new "v1 locked scope" section summarizing these four commitments.
+- `CLAUDE.md`: scope-adjustment note near the top pointing here; community-contributable moat language flagged as paused for v1.
+- `README.md`: status blockquote rewritten to name v1 as closed-development-under-NDA and FRMR-only for output.
+- `CONTRIBUTING.md`: top-of-document notice that external contributions are paused for v1.
+- `docs/dual_horizon_plan.md` §3.1: pointer to this DECISIONS entry for the authoritative v1 sequencing. Full Layer 2 rewrite is a follow-up commit.
+
+---
+
 
 
 ```

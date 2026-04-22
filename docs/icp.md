@@ -86,6 +86,19 @@ The architectural commitment that makes this expansion cheap: the detector contr
 
 ---
 
+## v1 locked scope (2026-04-22)
+
+Four interdependent commitments locked at the start of v1 development, captured in full in `DECISIONS.md` (2026-04-22). Summarized here because they are ICP-material and shape what the archetype user actually gets in v1.
+
+1. **Archetype-only.** No named design partner. We design against the primary ICP as described above and accept that Evidence Manifest schema and Phase 6 detector priorities will need a revision pass once a real prospect surfaces.
+2. **Commercial AWS first.** Deployment modes 1 (developer laptop) and 2 (CI runner) cover the initial customer base. Deployment mode 3 (customer-owned VM inside a GovCloud boundary) and the AWS Bedrock backend are gated on prospect demand; Anthropic-direct is sufficient through v1 for this ICP.
+3. **20x-native output first.** FRMR-compatible attestation JSON is the only v1 production output format. OSCAL SSP / AR / POA&M generators defer to v1.5+, gated on Rev5-transition or OSCAL-Hub-consuming customer demand. The architecture retains the `oscal/` generator slot; it is empty at v1.
+4. **Closed-source through v1.** Private GitHub repository, no public announcement, no external contributor outreach. Customer security-review access is granted via private-repo invite under NDA — not source escrow, not refusal. License stays Apache 2.0; privacy is enforced by the repo's visibility, not the license.
+
+These commitments do not change ICP A's shape. They narrow what Efterlev v1 *ships* to serve that ICP. They are re-evaluated at first customer engagement or Month 6, whichever comes first.
+
+---
+
 ## Secondary ICPs (v1+ expansion)
 
 Named explicitly so we know where we're going without diluting current focus.

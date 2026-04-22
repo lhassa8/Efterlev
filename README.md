@@ -1,6 +1,6 @@
 # Efterlev
 
-**Open-source compliance automation for SaaS companies pursuing their first FedRAMP Moderate authorization via the FedRAMP 20x pilot.**
+**Compliance automation for SaaS companies pursuing their first FedRAMP Moderate authorization via the FedRAMP 20x pilot.**
 
 Scans your Terraform for KSI-level evidence. Drafts FRMR-compatible validation data for your 3PAO. Proposes code-level remediations you can apply today. Runs locally — no SaaS, no telemetry, no procurement cycle.
 
@@ -15,9 +15,9 @@ efterlev init --baseline fedramp-20x-moderate
 efterlev scan
 ```
 
-> **Status (April 2026): v0 shipped.** Six detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML report rendering for every agent output, end-to-end CI demo running against a sample FedRAMP Terraform repo on GitHub Actions. Repository is currently private during hardening; the first public tag will land once install ergonomics and initial credentials are rotated. See [Project status](#project-status) for specifics of what's in and what's next.
+> **Status (April 2026): v0 shipped; v1 closed-development.** Six detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML report rendering for every agent output, end-to-end CI demo running against a sample FedRAMP Terraform repo on GitHub Actions. The repository is private through v1 development (closed-source, no public announcement); security-team review access for evaluating customers is granted via private-repo invite under NDA. License is Apache 2.0; public-release timing will be revisited at first customer engagement or Month 6. See [Project status](#project-status) for specifics of what's in and what's next.
 
-Efterlev is **KSI-native**: its primary abstraction is the Key Security Indicator from FedRAMP 20x, with 800-53 Rev 5 controls as the underlying reference. Agent-drafted outputs (gap classifications, attestation narratives, remediation diffs) are emitted as self-contained HTML reports at v0; FRMR-compatible JSON serialization is a v1 deliverable — the internal model is already FRMR-shaped, it's the generator primitive that's next. OSCAL output for users transitioning Rev5 submissions is on the v1 roadmap alongside.
+Efterlev is **KSI-native**: its primary abstraction is the Key Security Indicator from FedRAMP 20x, with 800-53 Rev 5 controls as the underlying reference. Agent-drafted outputs (gap classifications, attestation narratives, remediation diffs) are emitted as self-contained HTML reports at v0; a FRMR-compatible attestation-JSON generator is the first v1 deliverable — the internal model is already FRMR-shaped. OSCAL output for Rev5-transition submissions is deferred to v1.5+, gated on customer pull (see `DECISIONS.md` 2026-04-22).
 
 Efterlev's current focus is SaaS companies pursuing their first FedRAMP Moderate authorization. Defense contractors pursuing CMMC 2.0 or DoD IL are a v1.5+ expansion; platform teams at larger gov-contractors are v2+. See [docs/icp.md](./docs/icp.md) for the full user profile and what that means for what Efterlev does and doesn't do.
 

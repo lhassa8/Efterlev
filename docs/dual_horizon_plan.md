@@ -291,6 +291,8 @@ This is where Efterlev stops being a hackathon demo and becomes a useful tool th
 
 ### 3.1 The coverage roadmap
 
+> **v1 sequencing superseded 2026-04-22.** The month-by-month targets below reflect the original pre-v0 plan and remain useful context. The authoritative v1 phase sequencing — archetype-only, commercial AWS first, 20x-native output first (FRMR only), closed-source through v1 — is in `DECISIONS.md` 2026-04-22. In particular: OSCAL generators moved from Month 1 of v1 to v1.5+ (gated on customer pull); AWS Bedrock moved from Month 2 to Month 3–4 (gated on GovCloud prospect demand); Phase 4 (runtime + drift) and Phase 6 (detector breadth) moved earlier. A full rewrite of this section is a scheduled follow-up.
+
 Expansion happens along three axes in parallel: **input sources** (what Efterlev can scan), **KSI coverage** (what it can find at the user-facing layer), and **output formats** (how it speaks to downstream tooling). Source-type expansion matters more for adoption; KSI/control depth matters more for trust; the OSCAL output generator is the major v1 format expansion for users carrying Rev5 transition submissions.
 
 Public milestone targets, tracked in GitHub:
