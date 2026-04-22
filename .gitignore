@@ -39,6 +39,11 @@ htmlcov/
 !.efterlev/manifests/**
 out/
 
+# End-to-end smoke harness output — a timestamped results directory
+# per run, holding the scratch workspace, captured CLI stdio, copied
+# artifacts, and the checks report. Never committed.
+.e2e-results/
+
 # Editor and OS artifacts
 .DS_Store
 .idea/

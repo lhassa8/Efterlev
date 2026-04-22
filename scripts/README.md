@@ -23,6 +23,17 @@ standalone via `uv run python scripts/<name>.py`.
 - `mcp_smoke_client.py` — in-process MCP client that spawns the smoke
   server as a subprocess, initializes a session, lists its tools, and
   calls each one. Regression harness for the transport.
+- `e2e_smoke.py` — full-pipeline smoke harness. Lays down an embedded
+  Terraform fixture exercising all six v0 detectors plus one Evidence
+  Manifest attestation, runs `efterlev init → scan → agent gap → agent
+  document → agent remediate` as real `uv run efterlev …` subprocess
+  invocations, and evaluates the outputs against a check list split
+  into `critical` (fail), `quality` (warn), and `info` severities.
+  Results land in `.e2e-results/<UTC-timestamp>/` with captured stdio,
+  copied HTML + JSON artifacts, `checks.json`, and `summary.md`.
+  Requires `ANTHROPIC_API_KEY` — exits 2 if unset (skip semantics),
+  exits 0 on pass, exits 1 on any critical failure. Pytest wrapper
+  available at `tests/test_e2e_smoke.py` for CI use (`pytest -k e2e`).
 
 These scripts are expected to be replaced or removed as the real library
 and `src/efterlev/mcp_server/` wiring lands during the hackathon.
