@@ -1,0 +1,11 @@
+detector_id: aws.encryption_ebs
+
+evidence_shape:
+  resource_type: string         # "aws_ebs_volume" | "aws_instance"
+  resource_name: string         # logical name; for inline blocks: "instance.{root,ebs}_block_device[i]"
+  location: enum                # "standalone" | "root_block_device" | "ebs_block_device"
+  encryption_state: enum        # "present" | "absent"
+  algorithm: string?            # "AES256" when present
+  key_management: enum?         # "customer_managed" | "aws_managed"; omitted when absent
+  kms_key_id: string?           # present only when customer_managed
+  gap: string?                  # present only when encryption_state=absent

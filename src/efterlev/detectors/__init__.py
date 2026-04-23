@@ -19,6 +19,7 @@ from efterlev.detectors.aws import (
     backup_retention_configured,  # noqa: F401
     cloudtrail_audit_logging,  # noqa: F401
     cloudtrail_log_file_validation,  # noqa: F401
+    encryption_ebs,  # noqa: F401
     encryption_s3_at_rest,  # noqa: F401
     fips_ssl_policies_on_lb_listeners,  # noqa: F401
     iam_password_policy,  # noqa: F401
