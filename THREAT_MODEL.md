@@ -37,50 +37,66 @@ All Efterlev state lives under `.efterlev/` in the user's working directory:
 
 These directories are user-readable only (permissions 0700 / 0600). They are gitignored by default in the initialized working directory.
 
-### Secrets handling — current state and planned redaction
+### Secrets handling
 
-**Current state (accurate as of 2026-04-23):** Efterlev does **not** have a
-secret-redaction pass. Evidence emitted by detectors is serialized
-verbatim and sent to the LLM when agents are invoked. Concretely:
-`format_evidence_for_prompt` in `src/efterlev/agents/base.py` JSON-serializes
-each `Evidence.content` dict into the prompt, and detector output is
-whatever the detector chose to include. The `detector_id`s shipped at v0
-do not emit secret values (they emit structural facts like
-`encryption_state=absent`, `traffic_type=ALL`, `rotation_status=enabled`
-— see each detector's `evidence.yaml` for the shape), but the tool does
-not actively *prevent* a future detector from leaking a secret value
-into `content`, and the `source_ref.file` path plus resource names are
-always transmitted.
+**Implemented (2026-04-23):** Every evidence body and source-file body
+that flows into an LLM prompt is passed through a pattern-based
+redaction pass before transmission. Matches are replaced with
+structural `[REDACTED:<kind>:sha256:<8hex>]` tokens that preserve the
+shape of the field (the model can still reason about "this value is
+an AWS access key") without the secret itself. The helper lives at
+`src/efterlev/llm/scrubber.py` and is called unconditionally from
+`format_evidence_for_prompt` and `format_source_files_for_prompt` in
+`src/efterlev/agents/base.py`. Fail-closed: a scrubber exception
+propagates and prevents prompt transmission.
 
-**What this means for users today:**
-- Do not point Efterlev at a repo whose Terraform contains unredacted
-  secret literals (AWS keys in variables, database passwords in locals,
-  private keys in heredocs) if you are unwilling for those values to
-  reach the Anthropic API.
-- Resource names, tag values, S3 bucket names, and KMS key ARNs shown
-  in content are transmitted verbatim. For accounts where these encode
-  customer identity or environment posture, review the scan output
-  (`efterlev scan` with no agent step) to see exactly what each detector
-  records *before* running any agent.
-- Every LLM call is logged to the local provenance store with the
-  prompt hash, model name, and timestamp — `efterlev provenance show`
-  walks the chain so you can audit what left your machine. That
-  auditability is implemented; redaction before transmission is not.
+**Patterns covered (high-confidence, structural):**
+- AWS access key IDs (`AKIA…`/`ASIA…`, IAM or STS)
+- GCP API keys (`AIza…`)
+- GitHub tokens (`gh[posur]_…`)
+- Slack tokens (`xox[bpas]-…`)
+- Stripe secret keys (`sk_(live|test)_…`)
+- PEM-formatted private keys (RSA/DSA/EC/OPENSSH/PGP/generic)
+- JWT-shaped base64url three-segment tokens
 
-**Planned (v1.x, gated on prospect signal):** a `scrub_for_llm(evidence)`
-pass between detectors and `format_evidence_for_prompt` that runs
-pattern matches for common secret formats (AWS access keys, API
-tokens, private-key headers, high-entropy strings adjacent to
-secret-ish keys), hashes matches to `sha256:…[first8]`, and replaces
-them in `content`. Expected shape: one pure-function helper in
-`efterlev.llm`, a per-detector `should_redact` fixture set, a pre-agent
-primitive hook. See `LIMITATIONS.md` for the deferred-features list.
+Each pattern has provenance documented in `scrubber.py` (where the
+regex came from, what it catches, what it doesn't). The library is
+deliberately small: high-confidence matches with very low false-
+positive rates on legitimate infrastructure references (ARNs, resource
+names, KMS key paths, region codes).
 
-**Alternative mitigations available today:**
+**Audit trail:** a `RedactionLedger` can be threaded through
+`format_*_for_prompt` callers to capture every match with
+`{timestamp, pattern_name, sha256_prefix, context_hint}`. The
+`context_hint` names which evidence field or source file held the
+match (e.g. `evidence[aws.iam_user_access_keys]:0`,
+`source_file[iam.tf]`) but NEVER the secret value. The 8-hex-char
+sha256 prefix provides enough entropy to distinguish redactions
+within a scan but not enough to enable preimage recovery. Writing the
+ledger to `.efterlev/redacted.log` (0600 perms) at end-of-scan is a
+follow-up commit — the security property (no secrets in prompts)
+does not depend on the log; the log is audit sugar.
+
+**Limitations (not covered by the current pass):**
+- **High-entropy strings adjacent to secret-ish keys.** Context-aware
+  detection (detect `password|secret|token|key|cred` adjacent to a
+  base64-shaped value) is harder to do without false-positives and is
+  deferred. If your Terraform embeds generic API secrets without known
+  prefixes, this pass will not catch them.
+- **Custom or proprietary token formats.** Only the structural families
+  listed above. A custom JWT-like or UUID-like token issued by your
+  platform isn't in the library.
+- **Secret-scanning is not our primary job.** Users who need exhaustive
+  secret detection should run `trufflehog`, `gitleaks`, or equivalent
+  upstream of Efterlev as the primary defense. Our scrubber is
+  defense-in-depth for what reaches the LLM prompt.
+
+**What a user can do today:**
+- Run with the defaults — scrubbing is on and unconditional.
+- Thread a `RedactionLedger` into agent calls for audit.
 - Scanner-only mode: run `efterlev scan` and skip every `agent *`
-  command. No LLM transmission at all.
-- Zero-data-retention endpoint: Anthropic offers this for API customers;
-  the local-tool-to-API path doesn't change.
+  command. No LLM transmission at all — fullest protection.
+- Zero-data-retention endpoint: Anthropic offers this for API customers.
 - Pluggable LLM backend (v1 roadmap): swap to a local model when the
   Bedrock backend lands and a local-model backend lands after that.
 
@@ -113,12 +129,13 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 **Threat:** Terraform files, CI configs, or source code sent to the LLM provider contain sensitive information (secrets, internal architecture, customer data).
 
 **Mitigations:**
+- **Secret redaction before transmission (2026-04-23):** evidence content and source-file content are passed through `scrub_llm_prompt` inside `format_evidence_for_prompt` and `format_source_files_for_prompt`. Structural secrets (AWS access keys, GitHub/Slack/Stripe tokens, PEM private keys, JWTs, GCP API keys) are replaced with `[REDACTED:<kind>:sha256:<8hex>]` tokens before the prompt is assembled. Fail-closed on scrubber error. See the "Secrets handling" section above for the full pattern library.
 - Evidence records are scoped structural summaries rather than raw source dumps — detectors emit facts like `{"encryption_state": "absent", "resource_name": "reports"}` not the full `main.tf` byte stream. Each detector's `evidence.yaml` documents the shape it emits; review it before running an agent in security-sensitive environments.
 - User can configure zero-data-retention endpoints (Anthropic offers this for API customers)
 - User can opt out of generative agents entirely and use only deterministic scanners (`efterlev scan` only; skip every `agent *` command)
 - Every LLM call is content-addressed in the local provenance store; `efterlev provenance show` surfaces exactly what left the machine
 
-**Residual risk at v0:** Secret values captured by a detector's evidence content reach the LLM verbatim — there is no redaction pass today. Users whose Terraform contains unredacted secret literals should run in scanner-only mode until the planned redaction pass lands. See the "Secrets handling" section above for the full state of this gap and the planned mitigation.
+**Residual risk:** Pattern-based detection is not exhaustive. Custom token formats, high-entropy strings adjacent to secret-ish keys without known prefixes, and generic API secrets without structural markers are NOT caught by the current pass. Defense-in-depth requires running `trufflehog` / `gitleaks` upstream as the primary secret-scanning defense. For maximum protection on secret-laden repos, use scanner-only mode.
 
 ### T2: Compromised detector
 

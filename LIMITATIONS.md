@@ -97,16 +97,19 @@ A 2026-04-23 external review caught several places where earlier docs
 claimed features that are not implemented. They are resolved in this
 LIMITATIONS document; the fixes are tracked as follow-up items below.
 
-**Secret redaction before LLM transmission (planned for v1.x):** there
-is no redaction pass between detectors and the LLM. Evidence `content`
-dicts are JSON-serialized into the prompt verbatim. The detectors
-shipped at v0 emit structural facts only (no secret values in their
-evidence shapes — see each detector's `evidence.yaml`), but the tool
-does not *enforce* that invariant. Users with Terraform containing
-unredacted secret literals should run in scanner-only mode (`efterlev
-scan` only, skip every `agent *` command) until the planned redaction
-pass lands. See `THREAT_MODEL.md` "Secrets handling — current state
-and planned redaction" for the full state.
+**Secret redaction before LLM transmission:** RESOLVED 2026-04-23. A
+pattern-based scrubber in `src/efterlev/llm/scrubber.py` runs
+unconditionally inside `format_evidence_for_prompt` and
+`format_source_files_for_prompt`. Structural secrets (AWS keys,
+GitHub/Slack/Stripe tokens, PEM private keys, JWTs, GCP API keys) are
+replaced with `[REDACTED:<kind>:sha256:<8hex>]` before any prompt
+reaches the LLM. See `THREAT_MODEL.md` "Secrets handling" for the
+pattern library and limitations. Remaining related follow-ups:
+(1) writing the optional `RedactionLedger` audit log to
+`.efterlev/redacted.log` at end-of-scan with 0600 perms, and (2)
+context-aware detection of high-entropy strings adjacent to
+secret-ish keys without known prefixes. Both are additive; the core
+security property (no structural secrets in prompts) holds today.
 
 **Store-write-time `validate_claim_provenance` primitive (planned for
 v1.x, defense-in-depth):** the per-agent citation validators

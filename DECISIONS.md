@@ -999,6 +999,60 @@ Three categories of finding + decisions for each:
 
 ---
 
+## 2026-04-23 — Secret redaction implementation `[security]` `[threat-model]` `[llm]`
+
+**Context.** The 2026-04-23 external honesty pass (preceding entry) named secret redaction as the single highest-leverage real improvement on the backlog. The THREAT_MODEL.md claim that "secrets are never sent to the LLM" was rewritten to be honest about the then-current absence of a redaction pass. This entry records the subsequent implementation of the real thing.
+
+**Decision (eight interlocking design calls):**
+
+1. **Pattern-based structural scrubbing, not generic entropy-detection.** A fixed library of high-confidence regexes matching self-identifying secret formats (AWS access key IDs, GCP API keys, GitHub/Slack/Stripe tokens, PEM private keys, JWT-shape tokens) with a very low false-positive rate on legitimate infrastructure references (ARNs, resource names, KMS key paths, region codes). Generic high-entropy-string detection is deferred because context-aware patterns produce too many false positives on legitimate IaC content (bucket names, resource identifiers, hashes) and over-redaction cripples the LLM's ability to reason about evidence. Users who need exhaustive coverage should run `trufflehog` or `gitleaks` upstream — documented explicitly in THREAT_MODEL.md.
+2. **Redaction token shape: `[REDACTED:<kind>:sha256:<8hex>]`.** Three fields: (a) literal `REDACTED` prefix so humans and the model recognize the pattern; (b) the pattern name (`aws_access_key_id`, `github_token`, etc.) so the model can still reason about field *shape* without the value; (c) the first 8 hex chars of the SHA-256 of the original value so a reviewer can cross-reference a redaction event in the audit log back to a specific match. 32 bits of entropy is sufficient to distinguish within-scan redactions but insufficient for preimage recovery.
+3. **Hook at the prompt-assembly boundary, not at evidence construction.** The scrubber runs inside `format_evidence_for_prompt` and `format_source_files_for_prompt` in `src/efterlev/agents/base.py`, *after* the evidence record has been serialized to JSON but *before* it's wrapped in the nonced fence. This means: original evidence in the provenance store retains full content (0600 perms on the user's own disk, still auditable via `efterlev provenance show`); only what flows INTO the LLM prompt is scrubbed. Alternative hook points (at detector output, at Evidence.create) were rejected because: (a) detectors emit raw facts and keeping their output clean is a better separation of concerns; (b) the provenance store is on-disk at the user's machine, not over the network, so the threat model's "secrets never leave the machine" promise is specifically about the LLM API path.
+4. **Fail-closed.** Any exception raised by the scrubber propagates and prevents prompt transmission. A bug in the scrubber must never result in unscrubbed content flowing to the LLM. Alternative "fail-open with warning" was rejected because redaction is a security boundary.
+5. **Unconditional scrubbing, optional audit ledger.** `scrub_llm_prompt` runs whether or not a `RedactionLedger` is supplied. The ledger is an optional audit sink threaded in by callers who want an end-of-scan log. The security property (no structural secrets in prompts) does NOT depend on the ledger — it holds even if the ledger is absent. Decoupling scrubbing from auditing means the scrubbing path is simple and unskippable.
+6. **Audit hints name the context, never the secret.** `RedactionEvent.context_hint` carries a string like `evidence[aws.iam_user_access_keys]:0` or `source_file[infra/iam.tf]` — enough for a reviewer to locate the field that contained a match, but with zero information about the secret value beyond the pattern-name classification and the 8-hex-char SHA-256 prefix.
+7. **Source files scrubbed the same way as evidence.** The Remediation Agent loads raw `.tf` files for diff generation; those can legitimately carry heredoc-wrapped IAM policies, KMS key material in module test fixtures, or misplaced comments with real secrets. `format_source_files_for_prompt` runs the same scrubber with a different `context_hint` prefix.
+8. **Ledger-to-disk is a follow-up, NOT a blocker.** The on-disk `.efterlev/redacted.log` (JSONL, 0600) capturing every redaction across a scan is tracked as a small additive commit. The security property is already enforced; the log is audit sugar. Shipping a robust redaction core + follow-up audit log lands cleanly; shipping them together under review pressure risked a half-baked audit surface.
+
+**Rationale:**
+
+- High-confidence structural patterns with low false-positive rates are the right tradeoff for a compliance-reasoning tool. Over-redaction ("this might be a secret — REDACT") destroys the model's ability to reason about resource references, ARNs, and KMS paths that are essential to KSI classification. The patterns shipped here catch the overwhelming majority of real-world secret exposures in Terraform (AWS keys committed in comments, GitHub tokens in variable defaults, PEM blobs in heredocs) without false-positive noise.
+- Preserving the secret *kind* in the redaction token is a deliberate usability call. A model seeing `[REDACTED:aws_access_key_id:...]` can still reason "this field contains a credential" — useful for narrative drafting — without seeing the credential itself. A bare `[REDACTED]` loses that signal.
+- Hooking at `format_*_for_prompt` centralizes the security boundary at one well-known location. The four existing agents (Gap, Documentation, Remediation, plus any future generative agent) all funnel through these helpers; no agent can accidentally bypass redaction by constructing its own prompt.
+- The SHA-256 hash approach came from two constraints: auditability (a reviewer needs to correlate events with matches) and irreversibility (the audit log must not leak the secret). 8 hex chars (32 bits) is the midpoint: enough to distinguish within-scan matches, nowhere near enough for preimage attack. Length chosen conservatively based on real-world scan sizes (typical scan produces <100 redactions; 32-bit prefix makes collision probability negligible).
+
+**Alternatives rejected:**
+
+- **Run trufflehog as a subprocess.** Rejected. Adds a binary dependency, slows every agent call by seconds, produces output we'd have to parse and map back into our pipeline. The reviewer's recommendation was explicit: this pass is defense-in-depth for what reaches the LLM, not a replacement for upstream secret scanning. Users who need trufflehog-level coverage run it in their CI before `efterlev`.
+- **Redact in `Evidence.content` before it's stored.** Rejected. The provenance store is the canonical record; stripping content there loses auditability. The user's disk is out-of-scope for the "secrets leaving the machine" threat; their disk permissions protect it.
+- **Whitelist specific Evidence keys that are safe to transmit.** Rejected. Future detectors could emit any shape, and hardcoding a whitelist creates the exact failure mode the honesty pass was resolving (detectors claim shapes the whitelist doesn't know about). Pattern-match every string value recursively.
+- **Generic high-entropy detection (`re.match(r"[A-Za-z0-9/+=]{32,}")` or similar).** Rejected for now. KMS key ARNs, AWS account IDs concatenated with resource names, and S3 object keys all look high-entropy; matching them would destroy the evidence signal the model needs. A future context-aware pass (detect patterns like `password\s*=\s*"[A-Za-z0-9]{20,}"`) could add this without false-positives; defer to a follow-up.
+- **Named-entity LLM pre-pass to identify secrets.** Rejected. Uses an LLM to protect against LLM exposure — self-referential, adds latency and cost, and we'd have to send the content to the LLM to have it redacted, defeating the purpose.
+- **Stop at redacted-log-to-disk in this commit.** Considered. Decided against because wiring the ledger through every agent's CLI entry point is ~50 lines spread across 3 CLI commands and requires threading scan_id through the agent API. That surface is worth a focused commit with its own tests rather than rushed in the core-redaction commit. Security property ships; audit sugar comes next.
+
+**Implementation landed in this commit sequence:**
+
+- `src/efterlev/llm/scrubber.py` — pattern library (7 patterns with provenance), `scrub_llm_prompt()` pure function, `RedactionEvent` dataclass, `RedactionLedger` collector. 23 unit tests (`tests/test_scrubber.py`) covering every pattern's positive case plus false-positive guards (ARNs, short dot tuples, ordinary base64, KMS ARNs).
+- `src/efterlev/agents/base.py` — `format_evidence_for_prompt` and `format_source_files_for_prompt` now accept an optional `RedactionLedger` and call `scrub_llm_prompt` unconditionally on every body before fencing. 10 integration tests (`tests/test_redaction_integration.py`) proving seeded secrets never reach assembled prompts across evidence and source-file paths.
+- `THREAT_MODEL.md` — "Secrets handling" section rewritten to describe the implemented pass, the pattern library, the audit trail, and the residual limitations (high-entropy detection deferred, trufflehog recommended upstream).
+- `LIMITATIONS.md` — secret-redaction entry marked RESOLVED with a pointer to the two follow-ups (on-disk ledger log + context-aware entropy detection).
+
+**Verification:**
+
+- 381 tests passing (+33 from this pass: 23 scrubber unit + 10 integration). ruff + mypy clean across 95 source files.
+- Dogfood run against govnotes terraform (9 detector evidence records across 3 detectors): 0 false-positive redactions on real infrastructure references (ARNs, resource names, KMS paths all pass through intact). Source-file scan of all 13 govnotes `.tf` files: 0 redactions — govnotes is clean as designed.
+- Seeded-secret positive confirmation: injecting `AKIAIOSFODNN7EXAMPLE` into a govnotes source file → caught, replaced with `[REDACTED:aws_access_key_id:sha256:<prefix>]`, logged to ledger with `context_hint=source_file[iam.tf]`.
+
+**Deferred (ranked):**
+
+- **Ledger-to-disk wiring:** thread `RedactionLedger` from each agent CLI entry point, write `.efterlev/redacted.log` with 0600 perms at end-of-scan. ~50 LOC + tests.
+- **`efterlev redaction review [--scan-id X]` CLI subcommand:** reads the log and pretty-prints. Small, ~30 LOC + tests.
+- **Context-aware high-entropy detection:** `password\s*=\s*"..."` patterns and similar. Genuinely harder; needs per-pattern false-positive fixtures from real-world .tf.
+- **Per-detector redaction regression test:** every detector's should_match fixture also runs through the scrubber to assert no evidence content ever contains a catchable secret. Low-cost insurance.
+- **Pattern library expansion:** as the ICP expands beyond AWS (Azure client secrets, GCP service account keys in JSON form, Heroku tokens, etc.).
+
+---
+
 
 
 ```

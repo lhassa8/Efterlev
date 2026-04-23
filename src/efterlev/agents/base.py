@@ -49,6 +49,7 @@ from pydantic import BaseModel, ValidationError
 
 from efterlev.errors import AgentError
 from efterlev.llm import DEFAULT_MODEL, LLMClient, LLMMessage, LLMResponse, get_default_client
+from efterlev.llm.scrubber import RedactionLedger, scrub_llm_prompt
 from efterlev.models import Evidence
 from efterlev.provenance.context import get_active_store
 
@@ -72,7 +73,12 @@ def new_fence_nonce() -> str:
     return secrets.token_hex(4)
 
 
-def format_evidence_for_prompt(evidence: list[Evidence], *, nonce: str) -> str:
+def format_evidence_for_prompt(
+    evidence: list[Evidence],
+    *,
+    nonce: str,
+    redaction_ledger: RedactionLedger | None = None,
+) -> str:
     """Return a prompt fragment wrapping each Evidence in a nonced XML fence.
 
     Fence format: `<evidence_NONCE id="<evidence_id>">` + JSON-serialized
@@ -90,12 +96,23 @@ def format_evidence_for_prompt(evidence: list[Evidence], *, nonce: str) -> str:
     Callers get the nonce from `new_fence_nonce()` and pass it to both this
     function and the matching `parse_evidence_fence_ids(nonce=...)` call
     that validates the model's output. Records are emitted in input order.
+
+    Secret redaction (2026-04-23): the rendered per-evidence JSON body is
+    scrubbed via `scrub_llm_prompt` before being wrapped in its fence. A
+    pattern library in `efterlev.llm.scrubber` catches high-confidence
+    structural secrets (AWS keys, GitHub tokens, PEM private keys, etc.)
+    and replaces them with `[REDACTED:<kind>:sha256:<8hex>]` tokens. If
+    a `redaction_ledger` is supplied, every redaction is logged against
+    it with `context_hint="evidence[<detector_id>]:<index>"` for later
+    audit via `.efterlev/redacted.log`. Scrubbing is unconditional;
+    the ledger is an optional audit sink. Fail-closed: scrubber errors
+    propagate and prevent prompt transmission.
     """
     if not evidence:
         return "(no evidence records)"
 
     blocks: list[str] = []
-    for ev in evidence:
+    for index, ev in enumerate(evidence):
         payload = {
             "detector_id": ev.detector_id,
             "ksis_evidenced": ev.ksis_evidenced,
@@ -104,7 +121,14 @@ def format_evidence_for_prompt(evidence: list[Evidence], *, nonce: str) -> str:
             "content": ev.content,
         }
         body = json.dumps(payload, sort_keys=True, indent=2)
-        blocks.append(f'<evidence_{nonce} id="{ev.evidence_id}">\n{body}\n</evidence_{nonce}>')
+        scrubbed_body, events = scrub_llm_prompt(
+            body, context_hint=f"evidence[{ev.detector_id}]:{index}"
+        )
+        if redaction_ledger is not None and events:
+            redaction_ledger.extend(events)
+        blocks.append(
+            f'<evidence_{nonce} id="{ev.evidence_id}">\n{scrubbed_body}\n</evidence_{nonce}>'
+        )
     return "\n\n".join(blocks)
 
 
@@ -121,7 +145,12 @@ def parse_evidence_fence_ids(prompt: str, *, nonce: str) -> set[str]:
     return set(pattern.findall(prompt))
 
 
-def format_source_files_for_prompt(source_files: dict[str, str], *, nonce: str) -> str:
+def format_source_files_for_prompt(
+    source_files: dict[str, str],
+    *,
+    nonce: str,
+    redaction_ledger: RedactionLedger | None = None,
+) -> str:
     """Return a prompt fragment wrapping each `.tf` file in a nonced XML fence.
 
     Fence format: `<source_file_NONCE path="<path>">` + raw Terraform +
@@ -134,13 +163,26 @@ def format_source_files_for_prompt(source_files: dict[str, str], *, nonce: str) 
 
     The content is embedded verbatim (no JSON escaping): the model reads
     it as Terraform, not as a JSON payload.
+
+    Secret redaction (2026-04-23): source file content is scrubbed via
+    `scrub_llm_prompt` before being wrapped. Terraform files can legitimately
+    carry heredoc-wrapped IAM policies, KMS key material for module tests,
+    etc. that match structural secret patterns. The redaction ledger records
+    each match with `context_hint="source_file[<path>]"`.
     """
     if not source_files:
         return "(no source files)"
 
     blocks: list[str] = []
     for path, content in source_files.items():
-        blocks.append(f'<source_file_{nonce} path="{path}">\n{content}\n</source_file_{nonce}>')
+        scrubbed_content, events = scrub_llm_prompt(
+            content, context_hint=f"source_file[{path}]"
+        )
+        if redaction_ledger is not None and events:
+            redaction_ledger.extend(events)
+        blocks.append(
+            f'<source_file_{nonce} path="{path}">\n{scrubbed_content}\n</source_file_{nonce}>'
+        )
     return "\n\n".join(blocks)
 
 
