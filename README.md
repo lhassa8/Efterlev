@@ -9,13 +9,19 @@ Built for the VP Eng or DevSecOps lead whose CEO just told them "we need FedRAMP
 Pronounced "EF-ter-lev." From Swedish *efterlevnad* (compliance).
 
 ```bash
-pipx install efterlev
-cd your-repo
-efterlev init --baseline fedramp-20x-moderate
-efterlev scan
+# Repo is private through v1; clone it (see "Install" below for access) and:
+uv sync --extra dev
+cd path/to/your-repo
+uv run efterlev init --baseline fedramp-20x-moderate
+uv run efterlev scan
 ```
 
-> **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 landed; v1 closed-development.**
+`pipx install efterlev` is NOT yet available — the package is at `0.0.1`
+and not published to PyPI. PyPI release is gated on the v1 public-repo
+opening (first customer engagement or month 6, whichever comes first;
+`DECISIONS.md` 2026-04-22).
+
+> **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 + dogfood coverage-followup + Plan JSON support landed; v1 closed-development.**
 > - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports. Phase 6-lite + dogfood coverage-follow-up (landed 2026-04-22) bring the detector count to fourteen — adding s3_public_access_block, rds_encryption_at_rest, kms_key_rotation, cloudtrail_log_file_validation, vpc_flow_logs_enabled, iam_password_policy, encryption_ebs, and iam_user_access_keys.
 > - **v1 Phase 1 (Evidence Manifests):** customers declare procedural attestations in `.efterlev/manifests/*.yml`; they flow into the Gap Agent alongside detector Evidence. Takes scanner-only coverage from ~20% of the FedRAMP Moderate baseline toward 80%+ when paired with detectors.
 > - **v1 Phase 2 (FRMR attestation generator):** `efterlev agent document` now emits an FRMR-compatible attestation JSON artifact alongside the HTML report — the v1 primary production output.
@@ -89,7 +95,7 @@ See [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) for where Efterlev fi
 
 A walk through what happens when you use Efterlev.
 
-**1. You point it at your repo.** Efterlev runs locally on your machine. You install it (`pipx install efterlev`), `cd` into the directory holding your Terraform code, and configure it once.
+**1. You point it at your repo.** Efterlev runs locally on your machine. You install it (today: `uv sync --extra dev` against a cloned private repo; v1 release plan: `pipx install efterlev` once the repo opens), `cd` into the directory holding your Terraform code, and configure it once.
 
 **2. It scans.** A library of small, deterministic rules called *detectors* reads your `.tf` files and looks for compliance-relevant patterns: is this S3 bucket encrypted? does this load balancer enforce TLS? does this IAM policy require MFA? Each finding is a concrete piece of *evidence* — a fact about your code, with a file path and line number you can verify yourself. No AI is involved at this step; the same input always produces the same output.
 
@@ -151,21 +157,28 @@ For deeper architectural detail, see [docs/architecture.md](./docs/architecture.
 
 ### Install
 
-```bash
-pipx install efterlev
-```
-
-Requires Python 3.12+. `uv` is used internally but not required for end users.
-
-While the repository is private (pre-public-tag), install from a cloned checkout or directly from git:
+**v0 (today): install from a cloned private-repo checkout.** The package
+is at `0.0.1` and is NOT published to PyPI yet; `pipx install efterlev`
+will not work. PyPI release is gated on the v1 public-repo opening.
 
 ```bash
-# from a checkout
+# from a cloned checkout:
+git clone https://github.com/lhassa8/Efterlev.git
+cd Efterlev
+uv sync --extra dev
+
+# or with pip, if you can't use uv:
 pip install -e .
 
-# or from git, using a fine-grained PAT with Contents:read on this repo
+# or directly from git with a fine-grained PAT (Contents:read on this repo):
 pip install "git+https://x-access-token:${EFTERLEV_INSTALL_TOKEN}@github.com/lhassa8/Efterlev.git@main"
 ```
+
+Requires Python 3.12+. `uv` is used throughout the repo for dependency
+management; dev, lint, type-check, and test commands run through it.
+
+**v1 plan:** `pipx install efterlev` once the repo opens. See
+`DECISIONS.md` 2026-04-22 for the open-source timing commitment.
 
 The govnotes-demo reference CI uses exactly this pattern — see [its workflow](https://github.com/lhassa8/govnotes-demo/blob/main/.github/workflows/efterlev-scan.yml) for a working install + scan + agent pipeline.
 
@@ -315,7 +328,15 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 **Pipeline.** `init → scan → agent gap → agent document → agent remediate → provenance show` runs end-to-end. Every CLI verb is also an MCP tool.
 
-**Detectors (6).** `aws.encryption_s3_at_rest`, `aws.tls_on_lb_listeners`, `aws.fips_ssl_policies_on_lb_listeners`, `aws.mfa_required_on_iam_policies`, `aws.cloudtrail_audit_logging`, `aws.backup_retention_configured`. All self-contained under `src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml, fixtures/, and README.md. Each detector's README names what it proves and what it does not.
+**Detectors (14).** v0 six plus Phase 6-lite six plus dogfood-followup two (all landed 2026-04-22):
+`aws.encryption_s3_at_rest`, `aws.tls_on_lb_listeners`, `aws.fips_ssl_policies_on_lb_listeners`,
+`aws.mfa_required_on_iam_policies`, `aws.cloudtrail_audit_logging`, `aws.backup_retention_configured`,
+`aws.s3_public_access_block`, `aws.rds_encryption_at_rest`, `aws.kms_key_rotation`,
+`aws.cloudtrail_log_file_validation`, `aws.vpc_flow_logs_enabled`, `aws.iam_password_policy`,
+`aws.encryption_ebs`, `aws.iam_user_access_keys`. All self-contained under
+`src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml, fixtures/
+(including .plan.json equivalence fixtures as of 5895df7), and README.md. Each detector's README
+names what it proves and what it does not.
 
 **Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit per-run-nonced-fence rules and cite-by-fenced-id discipline (see Phase 2 post-review fixup F below).
 
@@ -369,7 +390,7 @@ Designed to not break once opened publicly (or to customers under NDA):
 
 ### Tests
 
-279 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 76 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY`), with a pytest wrapper at `tests/test_e2e_smoke.py` (`pytest -k e2e`) that skips when the key is unset.
+344 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 94 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY`), with a pytest wrapper at `tests/test_e2e_smoke.py` (`pytest -k e2e`) that skips when the key is unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
 
 ### What's NOT in scope right now (per v1 lock)
 

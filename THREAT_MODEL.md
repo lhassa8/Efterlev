@@ -37,23 +37,60 @@ All Efterlev state lives under `.efterlev/` in the user's working directory:
 
 These directories are user-readable only (permissions 0700 / 0600). They are gitignored by default in the initialized working directory.
 
-### Secrets handling
+### Secrets handling — current state and planned redaction
 
-Efterlev may encounter secrets during scanning — in Terraform variables, environment files, CI configurations, and source code. Commitments:
+**Current state (accurate as of 2026-04-23):** Efterlev does **not** have a
+secret-redaction pass. Evidence emitted by detectors is serialized
+verbatim and sent to the LLM when agents are invoked. Concretely:
+`format_evidence_for_prompt` in `src/efterlev/agents/base.py` JSON-serializes
+each `Evidence.content` dict into the prompt, and detector output is
+whatever the detector chose to include. The `detector_id`s shipped at v0
+do not emit secret values (they emit structural facts like
+`encryption_state=absent`, `traffic_type=ALL`, `rotation_status=enabled`
+— see each detector's `evidence.yaml` for the shape), but the tool does
+not actively *prevent* a future detector from leaking a secret value
+into `content`, and the `source_ref.file` path plus resource names are
+always transmitted.
 
-- **Secrets are never logged in plaintext.** If a detector encounters a value that pattern-matches a secret (AWS keys, API tokens, private keys, high-entropy strings adjacent to secret-ish identifiers), the value is hashed (SHA-256) before any logging, storage, or LLM transmission.
-- **Secrets are never sent to the LLM.** The Documentation, Gap, and Remediation agents see redacted evidence records. Raw secret values never leave the local machine.
-- **Secrets are flagged as findings.** Detected secrets produce a separate finding class (`secret_exposure`) that the user sees, with enough context to locate and rotate the secret without the secret itself being in the output.
+**What this means for users today:**
+- Do not point Efterlev at a repo whose Terraform contains unredacted
+  secret literals (AWS keys in variables, database passwords in locals,
+  private keys in heredocs) if you are unwilling for those values to
+  reach the Anthropic API.
+- Resource names, tag values, S3 bucket names, and KMS key ARNs shown
+  in content are transmitted verbatim. For accounts where these encode
+  customer identity or environment posture, review the scan output
+  (`efterlev scan` with no agent step) to see exactly what each detector
+  records *before* running any agent.
+- Every LLM call is logged to the local provenance store with the
+  prompt hash, model name, and timestamp — `efterlev provenance show`
+  walks the chain so you can audit what left your machine. That
+  auditability is implemented; redaction before transmission is not.
 
-Limitation: secret detection is pattern-based. A secret that doesn't match known patterns may pass through. Users should not rely on Efterlev as a secret scanner; tools like `trufflehog`, `gitleaks`, or cloud-provider secret managers are the right primary defense.
+**Planned (v1.x, gated on prospect signal):** a `scrub_for_llm(evidence)`
+pass between detectors and `format_evidence_for_prompt` that runs
+pattern matches for common secret formats (AWS access keys, API
+tokens, private-key headers, high-entropy strings adjacent to
+secret-ish keys), hashes matches to `sha256:…[first8]`, and replaces
+them in `content`. Expected shape: one pure-function helper in
+`efterlev.llm`, a per-detector `should_redact` fixture set, a pre-agent
+primitive hook. See `LIMITATIONS.md` for the deferred-features list.
+
+**Alternative mitigations available today:**
+- Scanner-only mode: run `efterlev scan` and skip every `agent *`
+  command. No LLM transmission at all.
+- Zero-data-retention endpoint: Anthropic offers this for API customers;
+  the local-tool-to-API path doesn't change.
+- Pluggable LLM backend (v1 roadmap): swap to a local model when the
+  Bedrock backend lands and a local-model backend lands after that.
 
 ### LLM request minimization
 
 Efterlev sends the minimum content necessary to the LLM provider for each generative task:
 
-- Evidence records sent to the LLM are redacted (secrets hashed, identifiers tokenized where feasible)
 - Agent system prompts are versioned and auditable in the repo (`agents/*_prompt.md`)
 - Every LLM call is logged to the local provenance store with the prompt hash, model name, and timestamp — users can audit what left their machine
+- Evidence is wrapped in per-run nonced XML fences (`<evidence_NONCE id="sha256:...">...</evidence_NONCE>`, post-review fixup F, 2026-04-22) and every agent runs a post-generation citation validator (`gap.py`, `documentation.py`, `remediation.py` each call `_validate_cited_ids`) that raises `AgentError` if the model cited a sha256 that did not appear in a legitimate fence in the prompt
 
 The LLM provider's data retention policy applies to these requests. Users concerned about this can configure a zero-data-retention endpoint (Anthropic offers this for API customers) or, in v1+, swap to a local model via the pluggable LLM backend.
 
@@ -76,12 +113,12 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 **Threat:** Terraform files, CI configs, or source code sent to the LLM provider contain sensitive information (secrets, internal architecture, customer data).
 
 **Mitigations:**
-- Secrets redacted before transmission (see above)
-- Evidence records are scoped summaries, not raw source dumps — the LLM sees "this S3 bucket has encryption=aes256" not the entire `main.tf`
-- User can configure zero-data-retention endpoints
-- User can opt out of generative agents entirely and use only deterministic scanners
+- Evidence records are scoped structural summaries rather than raw source dumps — detectors emit facts like `{"encryption_state": "absent", "resource_name": "reports"}` not the full `main.tf` byte stream. Each detector's `evidence.yaml` documents the shape it emits; review it before running an agent in security-sensitive environments.
+- User can configure zero-data-retention endpoints (Anthropic offers this for API customers)
+- User can opt out of generative agents entirely and use only deterministic scanners (`efterlev scan` only; skip every `agent *` command)
+- Every LLM call is content-addressed in the local provenance store; `efterlev provenance show` surfaces exactly what left the machine
 
-**Residual risk:** A sufficiently determined attacker with access to LLM provider logs could infer architectural details from redacted evidence records. Users who cannot accept this should run in scanner-only mode or use a local model (v1+).
+**Residual risk at v0:** Secret values captured by a detector's evidence content reach the LLM verbatim — there is no redaction pass today. Users whose Terraform contains unredacted secret literals should run in scanner-only mode until the planned redaction pass lands. See the "Secrets handling" section above for the full state of this gap and the planned mitigation.
 
 ### T2: Compromised detector
 
@@ -96,13 +133,16 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 
 ### T3: Hallucinated evidence accepted as real
 
-**Threat:** An LLM-generated narrative cites evidence that doesn't actually exist, or a mapping claims a control is evidenced when the underlying detector output doesn't support it.
+**Threat:** An LLM-generated narrative cites an `evidence_id` that the model fabricated, or characterizes real evidence inaccurately.
 
-**Mitigations:**
-- Claims cannot be generated without linking to `evidence_ids` that must resolve in the provenance store
-- The `validate_claim_provenance` primitive verifies every cited evidence_id exists before a claim is stored
-- Rendered output always distinguishes Evidence (scanner-derived) from Claim (LLM-derived)
-- Every claim carries a "DRAFT — requires human review" marker
+**Mitigations implemented at v0:**
+- Claims' `derived_from` structure requires explicit citation of `evidence_id`s the model saw in the prompt.
+- **Per-run nonced XML fences** (`agents/base.py:new_fence_nonce` + `format_evidence_for_prompt`) wrap every evidence record with a 32-bit hex nonce the model cannot guess. Content inside a fence cannot forge a matching fence boundary.
+- **Per-agent post-generation citation validators** (`gap._validate_cited_ids`, `documentation._validate_cited_ids`, `remediation._validate_cited_ids`) parse the prompt's fenced regions and reject any Claim whose cited evidence IDs did not appear inside a legitimately-nonced fence. Rejection raises `AgentError` and prevents Claim storage. This enforces the "cite only what you actually saw" property at the agent boundary.
+- Rendered output always distinguishes Evidence (scanner-derived) from Claim (LLM-derived).
+- Every claim carries a "DRAFT — requires human review" marker; `AttestationArtifact.provenance.requires_review` is a `Literal[True]` Pydantic invariant that cannot be downgraded without a type-level change.
+
+**Not implemented at v0 (planned):** a separate `validate_claim_provenance` primitive at the store-write boundary would add defense-in-depth — verifying that every `derived_from` ID on a persisted Claim resolves to a real record in the provenance store, independent of the per-agent validator's fence-based check. The per-agent validators are the primary enforcement; a store-level check would close the gap that a buggy agent or a direct-store-write path could create. See `LIMITATIONS.md` for the deferred-features list.
 
 **Residual risk:** An LLM could cite real evidence IDs but characterize them inaccurately in the narrative. Human review is the final defense; the tool does not claim to be a substitute for human review.
 
@@ -121,13 +161,19 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 
 **Threat:** A compromised Efterlev release transmits scanned content to an attacker.
 
-**Mitigations:**
-- Releases are signed (sigstore / cosign, to be established before v1 release)
-- SBOMs are published per release
-- The codebase is open source and auditable
-- The dependency list is small and justified
+**Current state at v0 (honest):** the repo is private, the package is not yet published to PyPI (version 0.0.1 per `pyproject.toml`), and no release artifacts are signed. The "releases are signed" language previously in this section was aspirational. Users install via `uv sync --extra dev` against a cloned repo, not via a packaged release.
 
-**Residual risk:** Standard supply-chain risk for any open-source tool. Users can verify signatures on releases.
+**Mitigations implemented today:**
+- The codebase is auditable (private-repo-under-NDA for customer security review per the v1 lock, DECISIONS 2026-04-22).
+- The dependency list is small and justified (every non-trivial dep has a DECISIONS entry).
+- Vendored catalogs (`catalogs/frmr/`, `catalogs/nist/`) are SHA-256-pinned at load time — see `src/efterlev/paths.py::verify_catalog_hashes`. A tampered catalog fails `efterlev init`.
+
+**Planned for v1 release:**
+- Sigstore / cosign signing of release artifacts.
+- Published SBOMs per release.
+- Public-repo opening (gated on first customer engagement or month 6).
+
+**Residual risk at v0:** users running Efterlev out of a cloned repo must verify they trust the source. Git commit signing is the closest-available integrity mechanism pending sigstore.
 
 ---
 

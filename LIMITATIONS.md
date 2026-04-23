@@ -91,12 +91,73 @@ Efterlev is a developer tool that runs locally or in CI. It is not an authorized
 
 ---
 
+## Known gaps between documentation and code
+
+A 2026-04-23 external review caught several places where earlier docs
+claimed features that are not implemented. They are resolved in this
+LIMITATIONS document; the fixes are tracked as follow-up items below.
+
+**Secret redaction before LLM transmission (planned for v1.x):** there
+is no redaction pass between detectors and the LLM. Evidence `content`
+dicts are JSON-serialized into the prompt verbatim. The detectors
+shipped at v0 emit structural facts only (no secret values in their
+evidence shapes — see each detector's `evidence.yaml`), but the tool
+does not *enforce* that invariant. Users with Terraform containing
+unredacted secret literals should run in scanner-only mode (`efterlev
+scan` only, skip every `agent *` command) until the planned redaction
+pass lands. See `THREAT_MODEL.md` "Secrets handling — current state
+and planned redaction" for the full state.
+
+**Store-write-time `validate_claim_provenance` primitive (planned for
+v1.x, defense-in-depth):** the per-agent citation validators
+(`_validate_cited_ids` in each agent) DO enforce that Claims cite only
+evidence the model saw in the prompt's nonced fences. They are the
+primary enforcement and they work. What is NOT implemented: a separate
+store-write-time check that verifies every `derived_from` id on a
+persisted Claim resolves to an actual record in the provenance store.
+That would close the gap that a bug in an agent or a direct store-write
+path could create. Tracked as follow-up.
+
+**Retry + Opus-to-Sonnet fallback on transient errors:** the
+`fallback_model` field in `config.py` is written at init time but not
+read anywhere. `AnthropicClient` raises immediately on every
+`anthropic` exception class. A transient 429 or 529 during a 60-KSI
+Gap run fails the whole run. Tracked as follow-up; the config field
+exists but is dead code today.
+
+**Provenance-walk source-ref rendering:** `efterlev provenance show`
+displays `content_ref` (blob path) at leaves but does NOT load the
+blob and pretty-print the Evidence's `source_ref.file:line_start-line_end`.
+The data is there in the store; the walker just doesn't format it.
+Small enhancement tracked as follow-up.
+
+**PyPI release and `pipx install efterlev`:** the package is `0.0.1`,
+the repo is private, and there is no PyPI release. Users install from
+a cloned checkout via `uv sync --extra dev`. `pipx install efterlev`
+will not work until the v1 public-repo opening (first customer
+engagement or month 6, whichever comes first — `DECISIONS.md`
+2026-04-22).
+
+**Sigstore / cosign signing of release artifacts:** planned for v1
+release. Not implemented at v0.
+
+**Standalone `efterlev mcp list` subcommand:** the MCP server is
+launched via `efterlev mcp serve`; a separate `list` subcommand that
+enumerates primitives without starting the server is a deferred
+convenience, tracked as follow-up.
+
 ## Where we are honest and where we are aspirational
 
 **Honest today:**
-- Every claim in this document is true at time of writing.
-- Every feature described in `README.md` is implemented and tested.
-- The provenance chain is walkable for every generated claim.
+- The gaps listed above are named; they are not claimed as implemented.
+- Detector output is real and grounded (see per-detector README for
+  what each does and does not prove).
+- The provenance chain is walkable for every generated claim; the
+  walker's text rendering is minimal but the graph is complete.
+- Per-agent citation validators DO reject fabricated evidence IDs.
+- Per-run nonced XML fences (`<evidence_NONCE>…</evidence_NONCE>`) ARE
+  in place and tested against adversarial content injection
+  (post-review fixup F, 2026-04-22).
 
 **Aspirational / roadmap:**
 - Broader control coverage (tracked in GitHub milestones)
@@ -105,6 +166,8 @@ Efterlev is a developer tool that runs locally or in CI. It is not an authorized
 - CMMC 2.0 overlay
 - Cloud API scanning
 - Runtime agent
+- The gaps listed above (redaction, store-level validator, retry,
+  provenance pretty-print, PyPI, sigstore)
 
 The distinction is maintained in `README.md`: features that are shipped vs. features on the roadmap.
 

@@ -69,14 +69,15 @@ Detector IDs are capability-shaped (what the detector checks), not control-numbe
 ### 1. `detector.py` — the rule
 
 ```python
+from datetime import UTC, datetime
+
 from efterlev.detectors.base import detector
-from efterlev.models.evidence import Evidence
-from efterlev.models.source import TerraformResource
+from efterlev.models import Evidence, TerraformResource
 
 @detector(
     id="aws.encryption_s3_at_rest",
-    ksis=["KSI-SVC-VRI"],             # Validating Resource Integrity; see README for caveat
-    controls=["SC-28", "SC-28(1)"],   # underlying 800-53 controls
+    ksis=[],                           # DECISIONS 2026-04-21 design call #1 (Option C)
+    controls=["SC-28", "SC-28(1)"],    # underlying 800-53 controls
     source="terraform",
     version="0.1.0",
 )
@@ -85,36 +86,50 @@ def detect(tf_resources: list[TerraformResource]) -> list[Evidence]:
     Detect S3 bucket encryption configuration at rest.
 
     Evidences (800-53):  SC-28 (Protection at Rest), SC-28(1) (Cryptographic Protection).
-    Evidences (KSI):     KSI-SVC-VRI (Validating Resource Integrity) — partial.
+    Evidences (KSI):     None — FRMR 0.9.43-beta lists no KSI whose `controls`
+                         array contains SC-28. Per DECISIONS 2026-04-21 design
+                         call #1 (Option C), we declare ksis=[] rather than
+                         fudging a mapping to KSI-SVC-VRI (which is SC-13
+                         integrity, different semantic territory). The Gap
+                         Agent renders such findings as "unmapped to any
+                         current KSI" — the honest representation of the FRMR
+                         mapping gap.
     Does NOT prove:      key management practices, rotation, BYOK. Those belong to
-                         SC-12/SC-13 / KSI-SVC-ASM (Automating Secret Management) and
-                         require procedural evidence beyond the infrastructure layer.
-
-    Note: FRMR 0.9.43-beta does not list SC-28 in any KSI's `controls` array, so
-    KSI-SVC-VRI is the nearest thematic fit rather than a literal mapping. See
-    this detector's README.md for the full provenance of the mapping decision.
+                         SC-12 territory and require procedural evidence beyond
+                         the infrastructure layer.
     """
-    evidences = []
+    now = datetime.now(UTC)
+    evidences: list[Evidence] = []
     for resource in tf_resources:
         if resource.type == "aws_s3_bucket":
             encryption = resource.get_nested("server_side_encryption_configuration")
+            # Evidence.create() is the construction path: it computes the
+            # content-addressed evidence_id from the record's canonical
+            # content. Using Evidence(...) directly would require the caller
+            # to pass evidence_id explicitly — fine on deserialization
+            # (model_validate), but a bug in normal detector code.
             if encryption:
-                evidences.append(Evidence(
+                evidences.append(Evidence.create(
                     detector_id="aws.encryption_s3_at_rest",
-                    ksis_evidenced=["KSI-SVC-VRI"],
+                    ksis_evidenced=[],
                     controls_evidenced=["SC-28", "SC-28(1)"],
                     source_ref=resource.source_ref,
-                    content={"resource": resource.name, "encryption": encryption},
+                    content={"resource_name": resource.name, "encryption_state": "present"},
+                    timestamp=now,
                 ))
             else:
                 # Negative evidence — bucket exists without encryption
-                evidences.append(Evidence(
+                evidences.append(Evidence.create(
                     detector_id="aws.encryption_s3_at_rest",
-                    ksis_evidenced=["KSI-SVC-VRI"],
+                    ksis_evidenced=[],
                     controls_evidenced=["SC-28"],
                     source_ref=resource.source_ref,
-                    content={"resource": resource.name, "encryption": None,
-                             "gap": "bucket defined without server_side_encryption_configuration"},
+                    content={
+                        "resource_name": resource.name,
+                        "encryption_state": "absent",
+                        "gap": "bucket defined without server_side_encryption_configuration",
+                    },
+                    timestamp=now,
                 ))
     return evidences
 ```
@@ -212,7 +227,7 @@ If your fixtures match what the detector produces, tests pass. If not, the harne
 - `@primitive` decorator with `capability`, `side_effects`, `version`, and `deterministic` set correctly
 - Docstring naming intent, side effects, deterministic/generative classification, external dependencies
 - At least one happy-path test and one error-path test
-- MCP server auto-registration verified (run `uv run efterlev mcp list` to see the primitive appear)
+- MCP server auto-registration verified by launching the server (`uv run efterlev mcp serve`) and confirming via an MCP client (e.g. the `scripts/mcp_smoke_client.py` harness) that the new primitive is listed. A standalone `efterlev mcp list` subcommand is not yet implemented — tracked as a follow-up (see `LIMITATIONS.md`).
 
 **New agents specifically:**
 - Open a design issue first. Agents are the product's brain; their system prompts deserve review.

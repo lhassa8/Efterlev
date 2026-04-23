@@ -54,11 +54,11 @@ uv run python scripts/catalogs_crossref.py   # FRMR ↔ 800-53 cross-reference c
 ## Permanent guardrails
 
 - **Evidence vs. Claims is a type distinction, not a convention.** `Claim.requires_review: Literal[True] = True` — enforced at the class boundary, not via config.
-- **Every Claim cites real evidence.** The `validate_claim_provenance` primitive rejects any Claim whose `derived_from` doesn't resolve in the store.
+- **Every Claim cites real evidence.** Per-agent post-generation citation validators (`_validate_cited_ids` in `gap.py`, `documentation.py`, `remediation.py`) reject any Claim citing a sha256 that didn't appear in a legitimately-nonced fence in the prompt. A separate store-write-time `validate_claim_provenance` primitive is a deferred v1.x defense-in-depth item.
 - **Never invent a KSI.** If FRMR doesn't list the control under any KSI, mark the mapping as unmapped and surface the gap honestly. See design call #1.
 - **Agent prompts are product code.** Surface the full diff in chat for human review before committing, per `CLAUDE.md`.
 - **Every non-trivial decision appends to `DECISIONS.md`.** Date, decision, rationale, alternatives considered.
-- **Centralize the LLM client** in `src/efterlev/llm/__init__.py` — do not scatter `anthropic.Anthropic()` calls across agent files. Redaction and provenance logging live here.
+- **Centralize the LLM client** in `src/efterlev/llm/__init__.py` — do not scatter `anthropic.Anthropic()` calls across agent files. Provenance logging happens here at the call boundary; redaction is a planned v1.x addition (not implemented at v0; see `THREAT_MODEL.md` "Secrets handling — current state and planned redaction").
 
 ## One finding worth surfacing now
 

@@ -3,9 +3,18 @@
 Claim is the counterpart to Evidence: everything an agent produces — narrative
 draft, KSI classification, mapping proposal, remediation diff — comes back as a
 Claim. The `requires_review` field is typed `Literal[True]` so the type system
-rejects any attempt to construct a Claim that bypasses human review. The
-`derived_from` list is validated at storage time (`validate_claim_provenance`)
-to ensure every cited id resolves in the provenance store.
+rejects any attempt to construct a Claim that bypasses human review.
+
+The `derived_from` list MUST cite evidence IDs the model actually saw in its
+prompt. This is enforced *per agent* by post-generation fence-citation
+validators (`gap._validate_cited_ids`, `documentation._validate_cited_ids`,
+`remediation._validate_cited_ids`) that parse the nonced prompt fences and
+reject any Claim citing a sha256 that did not appear in a legitimately-nonced
+`<evidence_NONCE id="sha256:...">` region. Defense-in-depth validation at the
+store-write boundary (a `validate_claim_provenance` primitive that additionally
+confirms every derived_from id resolves to a stored record) is a deferred v1.x
+item — see `LIMITATIONS.md`. The per-agent validators are the primary
+enforcement today.
 """
 
 from __future__ import annotations
