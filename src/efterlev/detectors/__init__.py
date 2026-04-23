@@ -26,4 +26,5 @@ from efterlev.detectors.aws import (
     rds_encryption_at_rest,  # noqa: F401
     s3_public_access_block,  # noqa: F401
     tls_on_lb_listeners,  # noqa: F401
+    vpc_flow_logs_enabled,  # noqa: F401
 )

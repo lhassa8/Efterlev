@@ -1,0 +1,19 @@
+detector_id: aws.vpc_flow_logs_enabled
+
+# FRMR 0.9.43-beta lists au-2 and au-12 in KSI-MLA-LET's controls array.
+ksis:
+  - KSI-MLA-LET
+
+controls:
+  - id: AU-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Network-layer event logging is declared. Does NOT evidence log
+      retention, destination security, or whether every VPC in the repo
+      is actually covered (that cross-reference is Gap Agent territory).
+  - id: AU-12
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Audit record generation at the network layer. Same caveats as AU-2.

@@ -1,0 +1,9 @@
+detector_id: aws.vpc_flow_logs_enabled
+
+evidence_shape:
+  resource_type: string           # always "aws_flow_log"
+  resource_name: string           # the Terraform logical name
+  target_kind: enum               # "vpc" | "subnet" | "eni" | "unknown"
+  target_ref: string?             # the ID/ARN/interpolation naming the target; omitted for "unknown"
+  traffic_type: enum              # "ALL" | "ACCEPT" | "REJECT" (AWS default is "ALL")
+  destination_type: enum          # "s3" | "cloud-watch-logs" | "kinesis-data-firehose"
