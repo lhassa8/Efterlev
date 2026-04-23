@@ -878,6 +878,65 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-22 — Design: Terraform Plan JSON support (dogfood P0) `[architecture]` `[source-expansion]` `[phase-plan-json]`
+
+**Context.** The 2026-04-22 dogfood pass surfaced the single highest-leverage item on Efterlev's current backlog: we parse `.tf` files statically via python-hcl2, which means `for_each`/`count`/module expansion is invisible, `jsonencode(data.aws_iam_policy_document…)` bodies are opaque, and any attribute whose value comes from a variable / local / data source appears as an unresolved HCL expression. On govnotes-demo this cost us ground-truth gaps #1, #2 (module-created `user_uploads` bucket), #7, #11 (jsonencode-wrapped IAM policies), and contributed to gap #12 (CloudTrail data-event selectors buried in a data block). Terraform Plan JSON is the native solution: `terraform show -json <plan>` emits a fully-resolved, module-expanded, spec-stable document that makes all of these visible.
+
+Plan JSON support is named in the v1 locked plan (`docs/dual_horizon_plan.md` §3.1 Month 1: "Source expansion: Terraform Plan JSON support") but not yet designed. This entry pins the design calls before implementation starts.
+
+**Decision (nine interlocking design calls):**
+
+1. **Input: user-supplied plan JSON file, not subprocess invocation.** Efterlev does not run `terraform plan` itself. Users generate the JSON via `terraform plan -out=X && terraform show -json X > plan.json` as part of their existing CI pipeline (which already runs plan for review/approval) and pass the resulting file to Efterlev. This cleanly separates concerns: Efterlev stays a pure analyzer with no Terraform CLI dependency, no backend-credential management, no questions about whether data sources need AWS auth to refresh. Deferring auto-invocation to v1.5+ gated on ergonomics feedback.
+2. **CLI surface: `efterlev scan --plan FILE` as an alternate to `--target DIR`.** Mutually exclusive — pick one input shape per scan. If the user supplies both we error with a clear message. HCL-directory mode remains the default for demo/local-dev where no plan file exists; plan-JSON mode is for CI and real-world scanning where the plan is already being generated.
+3. **Detector contract unchanged.** Detectors continue to take `list[TerraformResource]` and declare `source="terraform"`. A plan-JSON translator produces `TerraformResource` objects shape-compatible with what python-hcl2 emits today. This means all 14 existing detectors get plan-JSON support for free — no per-detector migration, no parallel type hierarchy. The pre-existing `source="terraform-plan"` entry in the `Source` literal is RESERVED for future detectors that only make sense against resolved plan values (e.g., a detector that reasons about computed IAM policy strings that only exist post-jsonencode); for the current batch we don't use it.
+4. **Translator: plan-JSON `values` → HCL-shape body.** The translator walks `planned_values.root_module` and all nested `child_modules`, emitting one `TerraformResource` per `mode="managed"` resource. The resource's `body` dict is the plan-JSON `values` dict, post-normalization: single-block attributes that HCL would surface as `[{}]` are already that shape in plan JSON, so minimal translation is needed. Spot-checked on a `aws_s3_bucket_server_side_encryption_configuration` resource; HCL via python-hcl2 and plan-JSON via `terraform show -json` produce identical nested-list-of-dicts shape for the `rule.apply_server_side_encryption_by_default` path. Any detector whose logic depended on python-hcl2 quirks gets a smoke test during the Phase B verification below.
+5. **Source ref: module file path + resource address, no line numbers.** Plan JSON does not carry line info. `source_ref.file` resolves to the primary `.tf` file in the module that declared the resource (derivable from `configuration.root_module.module_calls.<name>.source` for modules, or the root-module path for root resources). `source_ref.line_start` / `line_end` are set to `0` when the source is plan-derived. To preserve debuggability, the full resource address (e.g., `module.storage.aws_s3_bucket.this["user_uploads"]`) goes into `Evidence.content.module_address` as a new optional field. Downstream renderers already show `content` fields verbatim; no renderer change.
+6. **`mode="data"` resources are skipped.** Same posture as today — detectors reason over managed resources only. A future `data`-aware detector would be a separate design call.
+7. **Version-compat posture: best-effort.** Plan JSON's `format_version` field encodes the schema version (1.2 as of Terraform 1.14, the CLI version currently installed). The translator validates the `format_version` is ≥1.0 and warns-but-continues on versions beyond what's been tested. A genuinely unparseable plan JSON raises `ScanError` with a clear message pointing at the file.
+8. **Phased implementation plan:**
+   - **Phase A — Translator + primitive + CLI.** New `efterlev.terraform.plan` module with `parse_plan_json(path) -> list[TerraformResource]`. New `scan_terraform_plan` primitive alongside `scan_terraform`. `efterlev scan --plan FILE` wires them together. ~2–3 days.
+   - **Phase B — Equivalence testing.** For each of the 14 existing detectors, generate plan JSON from the `fixtures/should_{match,not_match}/*.tf` files and verify the plan-sourced and HCL-sourced evidence records match on content (excluding source_ref line-number deltas). Any mismatch is either a translator bug or a genuine semantic difference we document. ~1–2 days.
+   - **Phase C — E2E smoke + dogfood re-run.** Extend `scripts/e2e_smoke.py` to exercise plan-JSON mode. Re-run the govnotes dogfood with `--plan`; expect hit rate to jump from 5/12 to ≥9/12 as gaps #1, #2, #7, #11 light up. Update `docs/dogfood-2026-04-22.md` with the measured lift. ~1 day.
+   - **Phase D — Documentation.** README adds a "CI-first usage" section showing the plan-generate-then-scan pattern. CLAUDE.md "What's shipped" adds a Plan JSON bullet. ~0.5 day.
+   Total: ~5–7 working days.
+9. **Error-handling contract.** Plan file missing → `ScanError: plan file not found at <path>`. Plan JSON malformed JSON → `ScanError: <path> is not valid JSON`. Plan JSON missing `planned_values` (Terraform's `--format=json` without `plan` prefix) → `ScanError: <path> does not look like a `terraform show -json` output; expected 'planned_values' key`. Unknown `format_version` > tested → log warning, continue. Data source resources with provider auth errors at plan time are the user's problem (they got a malformed plan; re-generate with `-refresh=false` if needed) — we report verbatim what's in the file.
+
+**Rationale:**
+
+- User-supplied plan files match how real FedRAMP-focused teams already operate: plan generation is already part of their PR / CI / approval pipeline, often with manual review of `terraform plan` output as a gating step. Efterlev slots into that flow naturally. A subprocess-invocation model would duplicate work the CI already does and introduce a Terraform CLI version-compat surface we don't want to own.
+- Keeping the detector contract unchanged is a tight constraint that preserves the ~14 detectors and ~300 tests worth of work we've already done. The translator is the one place that handles plan-vs-HCL differences; detectors stay pure and easy to write.
+- Not invoking Terraform from inside Efterlev means the tool remains install-and-run (uv installs Python deps; user has already installed Terraform for their own workflow). No "did you configure AWS credentials for data source refresh?" support questions.
+- Line-number loss is a known cost of plan-JSON mode. Renderers already print `source_ref` fields and will just show line 0; human reviewers use `module_address` to locate the resource. Acceptable.
+
+**Alternatives rejected:**
+
+- **Subprocess-invoke `terraform plan` ourselves.** Rejected for the scope reasons above. Adds CLI-version-compat, backend-credential, and PATH-contamination complexity without closing coverage gaps the user-supplied file already closes.
+- **Parse Terraform state files directly.** Rejected. State requires `terraform apply` to exist — plan JSON works off pre-apply configuration, which is the right trust posture (review the *intended* state, not the *actual* state which may include drift we haven't detected yet). Drift detection is Phase 4, not this phase.
+- **Add `source="terraform-plan"` to every existing detector.** Rejected. Doubles the per-detector test surface for essentially zero semantic gain — the translator-to-HCL-shape approach means detectors are input-agnostic. Reserve the new Source value for future detectors that only make sense over resolved values.
+- **Translate plan JSON to a richer, parallel `PlanResource` type.** Rejected. Would require every detector to branch on input shape. A translator that normalizes to the existing shape is strictly simpler and compatible.
+- **Ship all 14 detector enhancements to explicitly handle plan JSON.** Rejected. The Phase B equivalence test will surface any detector that needs translator changes (vs. changes on the detector side). Default: translator problem, not detector problem.
+- **Land Phase A only and stop.** Considered. The value of Phase A alone (translator + primitive, no testing) is low — without Phase B we don't know whether existing detectors actually produce equivalent evidence. Phase B is the phase that proves the design works. Commit to A+B minimum.
+
+**What this does NOT cover (deferred):**
+
+- **Terraform Plan JSON auto-invocation** (e.g., `efterlev scan --target DIR --auto-plan` that shells out to `terraform`). Ergonomics feature, v1.5+ if there's ask.
+- **Plan-JSON diffing for drift** (Phase 4). Plan JSON's byte-stable, canonical nature makes diff-two-plans natural, but drift is month-2 phase-4 work separate from this landing.
+- **`aws_iam_policy_document` inline static parsing** as a fallback for HCL-only mode. Phase 6-full candidate; becomes irrelevant once most users are on plan-JSON mode.
+- **Terraform modules sourced from remote registries (Terraform Registry, git:, S3)** — plan JSON includes these transparently because `terraform init` has fetched them before `plan` runs. User burden unchanged.
+- **OpenTofu plan-JSON compatibility.** OpenTofu's `show -json` output is spec-compatible with Terraform's per their compatibility commitment; we assume it works and fix if a real divergence surfaces.
+- **Plan-JSON-only detectors** (detectors using `source="terraform-plan"` that access resolved values not visible in HCL). Phase-plan-json+1 work, gated on first use case that needs it.
+
+**Implementation branch + first commit:** `plan-json-design` branch holds this DECISIONS entry. Implementation lands on a separate branch (e.g., `plan-json-impl`) once design is sign-off'd. This entry is the sign-off artifact.
+
+**Risk register:**
+
+- **Translator shape mismatches discovered in Phase B.** Medium likelihood. Mitigation: one-test-per-detector against plan-generated fixtures; any mismatch gets either a translator fix or a detector shape-agnostic helper. No detector gets migrated blindly without its equivalence test passing.
+- **Plan JSON schema changes in a future Terraform release.** Low likelihood; HashiCorp's compat posture on this interface is strong, `format_version` is explicitly versioned. Mitigation: warn-but-continue on versions beyond what's tested.
+- **Data sources that require AWS auth at plan time.** User-handled; documented in the CI-first usage section: use `-refresh=false` for static scanning.
+- **Govnotes-like codebases with providers not yet downloaded.** User runs `terraform init -backend=false` once; no Efterlev-side handling needed.
+
+---
+
 
 
 ```
