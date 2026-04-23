@@ -68,14 +68,12 @@ def test_unknown_fields_rejected(tmp_path: Path) -> None:
         load_config(bad)
 
 
-def test_legacy_config_with_fallback_model_rejected(tmp_path: Path) -> None:
-    """Config files from before 2026-04-23 carried an unused `fallback_model`
-    field; it was removed in the docs-vs-code honesty pass. Loading such a
-    file now fails loudly with `does not match schema` — users should
-    re-init. This test locks in the breaking-change contract so a future
-    edit doesn't silently accept the legacy field."""
-    legacy = tmp_path / "legacy.toml"
-    legacy.write_text(
+def test_config_accepts_fallback_model(tmp_path: Path) -> None:
+    """The `fallback_model` field returned 2026-04-23 paired with the
+    retry+fallback implementation. Loading a config that sets it should
+    succeed and round-trip."""
+    toml = tmp_path / "with_fallback.toml"
+    toml.write_text(
         "[llm]\n"
         'backend = "anthropic"\n'
         'model = "claude-opus-4-7"\n'
@@ -86,5 +84,15 @@ def test_legacy_config_with_fallback_model_rejected(tmp_path: Path) -> None:
         "\n[baseline]\n"
         'id = "fedramp-20x-moderate"\n'
     )
-    with pytest.raises(ConfigError, match="does not match schema"):
-        load_config(legacy)
+    config = load_config(toml)
+    assert config.llm.fallback_model == "claude-sonnet-4-6"
+
+
+def test_config_default_fallback_model_is_sonnet(tmp_path: Path) -> None:
+    """A config that omits `fallback_model` picks up the default Sonnet —
+    fallback is on by default, not opt-in. An operator who wants to disable
+    it sets an empty string (documented in the LLMConfig docstring)."""
+    from efterlev.config import DEFAULT_FALLBACK_MODEL, LLMConfig
+
+    cfg = LLMConfig()
+    assert cfg.fallback_model == DEFAULT_FALLBACK_MODEL

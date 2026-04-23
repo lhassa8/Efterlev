@@ -1053,6 +1053,61 @@ Three categories of finding + decisions for each:
 
 ---
 
+## 2026-04-23 — Retry + Opus-to-Sonnet fallback `[reliability]` `[llm]`
+
+**Context.** `AnthropicClient.complete()` previously raised immediately on every `anthropic.*` exception class, including transient ones (429 rate limits, 529 overloaded, connection resets, timeouts). A single hiccup during a 60-KSI Gap classification or a 60-narrative Documentation Agent run lost the whole scan. The `fallback_model` config field was previously written into `.efterlev/config.toml` at init time but read nowhere — dead code that the 2026-04-23 honesty pass removed. This entry records the implementation that brought the field back with real behavior.
+
+**Decision (seven interlocking design calls):**
+
+1. **Retry lives inside `AnthropicClient`, not as a separate wrapper.** Classification of retryable vs non-retryable errors is tightly coupled to the anthropic SDK's exception hierarchy (`RateLimitError`, `APITimeoutError`, `APIConnectionError`, `InternalServerError`, `AuthenticationError`, etc.). Pulling retry into a generic `LLMClient`-decorator wrapper would require re-importing those types outside the one place that already imports them. Pragmatic: keep the coupling where it is.
+2. **Retryable classifier.** Retry on `RateLimitError` (429), `APITimeoutError`, `APIConnectionError`, `InternalServerError` (5xx including 529 overloaded). Fail fast on `AuthenticationError` (401), `BadRequestError` (400), `PermissionDeniedError` (403), `NotFoundError` (404), `UnprocessableEntityError` (422), and our own `AgentError` from response validation (truncated output, no text blocks — these are code-level bugs, not transient).
+3. **Backoff: exponential with full jitter.** `delay = uniform(0, min(cap, initial * 2^attempt))` with `initial = 1s`, `cap = 60s`, `max_retries = 3`. Full jitter (not "equal jitter" or "decorrelated jitter") is the right choice when many clients may hit the same rate-limited resource simultaneously — it synchronizes retries on a thundering-herd-friendly distribution. Reference: AWS Architecture Blog "Exponential Backoff and Jitter."
+4. **Fallback model: one attempt, after retries exhausted.** When all `_MAX_RETRIES` attempts on the primary model fail, if `fallback_model` is set and differs from `model`, try the fallback ONCE. A failing fallback is terminal — raise the last primary error. The short-circuit case (`fallback_model == model`) skips the fallback attempt entirely; there's no point trying the "fallback" that IS the primary.
+5. **Config: bring back `LLMConfig.fallback_model`.** Default: `claude-sonnet-4-6`. Empty string disables fallback. Retry counts stay as in-class constants (`_MAX_RETRIES`, `_INITIAL_DELAY_SECONDS`, `_MAX_DELAY_SECONDS`) per the "keep config small" policy — if real-world ops reveal the need for per-deployment tuning, promote at that time. A new test (`test_config_accepts_fallback_model`) locks the schema contract in.
+6. **Injectable `sleeper` for test determinism.** `AnthropicClient.sleeper: Callable[[float], None] = time.sleep`. Tests pass a `list.append`-shaped sleeper that records delays without actually waiting. This keeps the retry-behavior test suite sub-second. Alternative (patch `time.sleep`) works but is noisier and requires test-level monkeypatching; dataclass-level injection is cleaner.
+7. **Logging.** Every retry and fallback invocation logs at WARNING with model name, attempt number, exception type name (never the exception message — might include content-derived info), and backoff delay. An operator running `efterlev agent gap` sees the retry activity in their stderr; a silent retry would hide the underlying reliability issue. At INFO level we only log the terminal outcome (success or exhausted); at WARNING we log every transient event.
+
+**Rationale:**
+
+- Exponential backoff with full jitter is the standard posture for retrying against a rate-limited API. 3 attempts spans enough of a temporal window (1-2s + 2-4s + 4-8s jittered) to cover typical Anthropic hiccups (most 529s resolve within 10 seconds) without pinning a terminal user for minutes.
+- Fallback to a lower-tier model is the right reliability contract for a compliance-reasoning workload. Opus is the default because the honesty discipline benefits from stronger reasoning, but a partial scan on Sonnet is better than a failed scan. The `LLMResponse.model` carry-through ensures provenance records accurately reflect which model served each call — a 3PAO inspecting the chain would see "Gap classification for KSI-X was served by Sonnet on attempt 4 after Opus rate-limited" — exactly the kind of transparency the evidence-vs-claims discipline commits to.
+- Non-retryable classification is as important as retryable classification. A bad API key surfaces immediately, not after 3 retries with 15 seconds of backoff. A bad model name surfaces immediately too. These are user-config bugs; the user needs to see them as fast as possible so they can fix their setup.
+- Keeping retry counts out of config follows the "keep config small" principle encoded in `config.py`'s own module docstring. Dead / unexposed config fields violate the same principle that got `fallback_model` removed two weeks ago; the new additions are motivated by real behavior.
+
+**Alternatives rejected:**
+
+- **Retry with tenacity / backoff libraries.** Rejected. Each is several hundred lines of dependency for ~30 lines of retry logic that's tightly coupled to our specific SDK. The bespoke implementation is clearer to read and easier to test than decorator-wrapping anthropic calls.
+- **Respect the `Retry-After` header from 429 responses.** Deferred, not rejected. Parsing the header correctly requires handling both seconds-integer and HTTP-date formats; the SDK exposes response headers but the exact shape varies by error class. Exponential backoff with full jitter is the 80/20; Retry-After is a follow-up if we see actual rate-limit issues in real deployments.
+- **Per-agent retry budgets.** Considered. Gap Agent's 88-second single call could reasonably tolerate more retries than Documentation Agent's 60 per-KSI calls. Rejected for now: uniform policy is simpler and the real bottleneck (60-KSI run failing on one call) is addressed by the current budget. Per-agent tuning is a v2 concern.
+- **Fall back to a different backend (e.g. Bedrock) rather than a different model.** Out of scope. Bedrock backend is a locked v1 Phase-3 item gated on customer pull (DECISIONS 2026-04-22 "Lock v1 scope"). When Bedrock lands, multi-backend fallback is a natural addition, but it's a different design concern.
+- **Retry indefinitely with circuit-breaker.** Rejected. Circuit breakers are for service-to-service calls with a clear SLA; for a user-facing CLI tool, a bounded 3-retry budget matches user expectations better ("this should take a minute or two tops").
+- **Leave retry to the anthropic SDK's built-in retry.** The SDK does have some built-in retries but they're limited in scope and don't include the Opus-to-Sonnet fallback we need. Layering our retry on top is additive (the SDK's retries still apply under the hood for specific cases) and correct.
+- **Move retry counts into config at the same time as the field.** Considered. The config docstring's own "keep small" policy explicitly says don't add fields for things that work fine with in-class defaults. Adding three more knobs when nobody has asked for them would be exactly the pattern the 2026-04-23 honesty pass removed. Re-add when there's real-world need.
+
+**Implementation landed in this commit:**
+
+- `src/efterlev/llm/anthropic_client.py` — retry loop with backoff, fallback path, `_is_retryable()` classifier, `_backoff_delay()` math helper. Docstring updated to describe the new control flow.
+- `src/efterlev/llm/factory.py` — `get_default_client()` now constructs `AnthropicClient(fallback_model=DEFAULT_FALLBACK_MODEL)`. `DEFAULT_FALLBACK_MODEL = "claude-sonnet-4-6"` exported for the rare caller that wants to mirror the default.
+- `src/efterlev/config.py` — `LLMConfig.fallback_model: str = DEFAULT_FALLBACK_MODEL`. Docstring describes the disable-with-empty-string behavior and the rationale for keeping retry counts as constants.
+- `tests/test_anthropic_retry_fallback.py` — 13 new tests across retry-on-transient, fail-fast-on-non-retryable, fallback-succeeds, fallback-also-fails, fallback-equal-to-primary short-circuit, and backoff-math properties. Uses a `_FakeSdk` injected into `client._sdk` so no network is touched; `sleeper` records delays for assertion without waiting.
+- `tests/test_config.py` — replaced the previous `test_legacy_config_with_fallback_model_rejected` (which enforced the field's absence) with two new tests: `test_config_accepts_fallback_model` round-trips the value, `test_config_default_fallback_model_is_sonnet` locks the default.
+- `LIMITATIONS.md` — retry+fallback entry marked RESOLVED with pointers to this entry and THREAT_MODEL.md.
+
+**Verification:**
+
+- 395 tests pass (+14 from this pass: 13 retry-fallback + 1 replacement config test). ruff + mypy clean across 95 source files.
+- Retry loop verified to not sleep on success paths (asserted in `test_first_attempt_success_returns_response_no_retries`).
+- Fallback verified to return `LLMResponse(model="claude-sonnet-4-6", ...)` when Opus fails and Sonnet succeeds — provenance accuracy preserved.
+- Non-retryable errors (auth, bad request) verified to bypass both retry and fallback paths entirely.
+
+**Deferred:**
+
+- **`Retry-After` header parsing** on rate-limit responses. Exponential backoff covers the common case; header-honoring is a refinement when we have real-world telemetry showing it matters.
+- **Per-agent retry budgets.** Wait for evidence that uniform policy is wrong.
+- **Multi-backend fallback** (Bedrock-when-Anthropic-fails). Phase-3 territory, gated on customer pull per v1 lock.
+
+---
+
 
 
 ```

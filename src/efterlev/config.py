@@ -22,23 +22,31 @@ from efterlev.errors import ConfigError
 
 DEFAULT_BASELINE = "fedramp-20x-moderate"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-7"
+DEFAULT_FALLBACK_MODEL = "claude-sonnet-4-6"
 
 
 class LLMConfig(BaseModel):
     """Which LLM endpoint and model the generative agents call.
 
-    Per CLAUDE.md "keep it small; don't include settings that don't yet
-    do anything" — the previously-declared `fallback_model` field was
-    written at init but never read, so it was removed on 2026-04-23
-    during the docs-vs-code honesty pass. Retry-with-fallback to Sonnet
-    on transient Opus errors is a planned v1.x feature; the field will
-    return when the behavior lands. See `LIMITATIONS.md`.
+    `fallback_model` returned 2026-04-23 with the retry+fallback
+    implementation in `llm.anthropic_client`. When the primary `model`
+    fails three transient-retry attempts, `AnthropicClient` tries the
+    fallback once before surfacing the error. Set to empty string
+    (`fallback_model = ""`) to disable fallback entirely — useful when
+    the deployment wants a single model identity in every provenance
+    record.
+
+    Retry counts live as in-class constants in `anthropic_client.py`
+    rather than in config, per the "keep it small" policy. If real-
+    world operations reveal they need per-deployment tuning, they
+    promote to config at that time.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     backend: str = "anthropic"
     model: str = DEFAULT_ANTHROPIC_MODEL
+    fallback_model: str = DEFAULT_FALLBACK_MODEL
 
 
 class ScanConfig(BaseModel):
@@ -93,6 +101,7 @@ def save_config(config: Config, path: Path) -> None:
         "[llm]",
         f'backend = "{config.llm.backend}"',
         f'model = "{config.llm.model}"',
+        f'fallback_model = "{config.llm.fallback_model}"',
         "",
         "[scan]",
         f'target_dir = "{config.scan.target_dir}"',

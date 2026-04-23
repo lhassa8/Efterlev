@@ -121,13 +121,16 @@ persisted Claim resolves to an actual record in the provenance store.
 That would close the gap that a bug in an agent or a direct store-write
 path could create. Tracked as follow-up.
 
-**Retry + Opus-to-Sonnet fallback on transient errors:** not
-implemented. `AnthropicClient` raises immediately on every `anthropic`
-exception class. A transient 429 or 529 during a 60-KSI Gap run fails
-the whole run. The `fallback_model` config field that had been written
-(but never read) was removed on 2026-04-23 per the honesty pass; it
-will return when the retry+fallback behavior actually lands. Tracked
-as follow-up.
+**Retry + Opus-to-Sonnet fallback on transient errors:** RESOLVED
+2026-04-23. `AnthropicClient` now retries transient errors
+(`RateLimitError` 429, `APITimeoutError`, `APIConnectionError`,
+`InternalServerError` 5xx/529) up to 3 times with exponential
+backoff and full jitter, then falls back to the `fallback_model`
+(default Sonnet 4.6) for one final attempt. Non-retryable errors
+(401/400/403/404) bypass the retry loop entirely. `LLMConfig.fallback_model`
+returned to the config schema; set it to an empty string to disable
+fallback. See `THREAT_MODEL.md` and `DECISIONS.md` 2026-04-23
+"Retry + Opus-to-Sonnet fallback" for the full design.
 
 **Provenance-walk source-ref rendering:** RESOLVED 2026-04-23
 (commit `69873a0`). The walker now loads the evidence blob at walk
