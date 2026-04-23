@@ -1108,6 +1108,93 @@ Three categories of finding + decisions for each:
 
 ---
 
+## 2026-04-23 — Redaction audit log + `efterlev redaction review` CLI `[security]` `[cli]` `[audit]`
+
+**Context.** The secret-redaction commit landed the security property ("no structural secrets in prompts"). This follow-up adds the audit trail users and reviewers need to confirm what got redacted during any given scan — not a new security property, but a transparency feature.
+
+**Decision (five interlocking calls):**
+
+1. **Active-ledger via contextvar, mirroring `active_store`.** Added `active_redaction_ledger(ledger)` context manager + `get_active_redaction_ledger()` accessor in `efterlev.llm.scrubber`. Matches the existing `efterlev.provenance.context.active_store` pattern. `format_evidence_for_prompt` and `format_source_files_for_prompt` consult the contextvar when their `redaction_ledger=` kwarg is None. Agents don't change — they just call `format_*` as before.
+2. **JSONL on disk at `.efterlev/redacted.log`, 0600 perms.** Append-only across scans, one scan's events share a `scan_id`. Created with `os.open(O_CREAT, 0o600)` — perms are set at create time, not left to umask. Re-chmodded on every append as defense against a prior umask-permissive file. Empty ledger is a no-op; no file touch.
+3. **scan_id is a UTC timestamp.** Second-resolution filesystem-safe string (e.g. `20260423T165200`). Alternative (UUID) considered and rejected — timestamps are human-readable and sort naturally. Collision risk in typical operator cadence is negligible; if two scans launch in the same second, the log interleaves their events but the scan_id carries the same value and review groups them together, which is arguably correct.
+4. **Each agent CLI command owns the ledger lifecycle.** `agent gap`, `agent document`, `agent remediate` each construct a ledger, enter `active_redaction_ledger(ledger)` alongside their existing `active_store` context, and call `_write_scan_redaction_log(ledger, root, scan_id)` at the end. One-line summary echoed to stdout when any redactions fired ("Redacted N secret(s): 2xaws_access_key_id; audit: efterlev redaction review --scan-id 20260423T165200"). Alternative (hook into Agent.__init__) was rejected — CLI owns I/O, agents stay pure.
+5. **`efterlev redaction review` is read-only, tolerates malformed lines.** Default mode: per-scan summary of the last 20 scans (controllable via `--limit`), sorted in insertion order. `--scan-id X` drills into one scan's events showing timestamp, pattern name, sha256 prefix, context hint. Malformed JSONL lines are skipped rather than aborting — the log's integrity isn't cryptographically enforced, only perm-enforced; preferring resilience over strictness in a read-path that's not security-critical.
+
+**Rationale:**
+
+- The contextvar pattern was already established and already tested in the provenance module. Adopting it for redaction keeps the mental model uniform — any contributor reading provenance code immediately understands redaction code.
+- JSONL was the right choice over structured DB: the log is append-only, per-scan, and human-inspectable. A sqlite table would add zero query value and subtract ease-of-inspection.
+- 0600 perms on create (not via umask) closes the real-world edge case where a user's umask is 022 (common default) and the log would be created 0644 — world-readable. The log carries context hints that reveal WHICH fields held secrets (e.g. `evidence[aws.iam_user_access_keys]:0`); a well-formed log is not itself sensitive, but respecting user-only perms is the right posture for any audit file that could be read before its contents are fully understood.
+- The CLI accepts malformed lines because the alternative — refusing to show ANY audit info when ONE line is corrupt — is worse UX. A user running `redaction review` to debug a scan shouldn't hit a cryptic "JSON decode error at line 42" when the answer they need is in line 41.
+
+**Alternatives rejected:**
+
+- **Hook the ledger into Agent.__init__ or _invoke_llm.** Rejected. CLI owns I/O + file paths; agents stay pure. Same discipline as the store: agents accept an active store via contextvar, CLI wraps them with the active-store context.
+- **Use the provenance store as the ledger.** Rejected. Redaction events aren't part of the evidence-claim graph; treating them as provenance records adds noise to chain walks for zero benefit. Separate log is the right separation of concerns.
+- **Real-time streaming to disk.** Rejected. Buffering through the ledger and flushing at end-of-scan means a single file-write per scan (cheap, atomic) instead of N tiny writes. Crash-mid-scan loses the scan's redaction audit, which is acceptable — the security property (no secret in prompt) held; only the audit sugar is lost.
+
+**Implementation landed in this commit:**
+
+- `src/efterlev/llm/scrubber.py` — `active_redaction_ledger` context manager, `get_active_redaction_ledger` accessor, `write_redaction_log(ledger, path, *, scan_id)` helper with 0600-at-create + 0600-reaffirm-on-append semantics.
+- `src/efterlev/agents/base.py` — `format_evidence_for_prompt` + `format_source_files_for_prompt` now consult the contextvar when kwarg is None; explicit kwarg still wins.
+- `src/efterlev/cli/main.py` — `_new_scan_id()`, `_write_scan_redaction_log()` helpers; each agent command threads a RedactionLedger via the context manager; new `redaction_app` Typer with `review` subcommand.
+- `tests/test_redaction_audit_log.py` — 15 new tests across perm semantics, append-preserves-prior, empty-ledger-noop, contextvar set/reset/exception-safe, kwarg-wins-over-active, and CLI (summary, per-scan-id detail, unknown-scan-id exit 1, malformed-line tolerance, --limit).
+
+**Verification:**
+
+- 410 tests pass (+15). ruff + mypy clean across 95 source files.
+- Dogfood against govnotes plan-mode scan: log file created with 0o600 perms, `efterlev redaction review` summary correctly shows per-scan event counts, `--scan-id` drill-down lists events with context hints (and never a raw secret value).
+
+---
+
+## 2026-04-23 — POA&M markdown output primitive + `efterlev poam` CLI `[primitives]` `[output-format]` `[icp]`
+
+**Context.** `docs/icp.md` names POA&M (Plan of Action and Milestones) as a direct ICP need — first-FedRAMP-Moderate SaaS companies must produce one for every authorization package, and today they hand-write it in a spreadsheet. Efterlev already has the underlying data (KSI classifications from the Gap Agent, FRMR indicator catalog, 800-53 control mappings), so emitting a POA&M is a transformation of existing state — no new detector work, no new LLM call.
+
+**Decision (six interlocking design calls):**
+
+1. **Deterministic primitive, no LLM involvement.** `generate_poam_markdown` lives under `efterlev.primitives.generate` alongside `generate_frmr_attestation` and `generate_frmr_skeleton`. Same `@primitive(capability="generate", deterministic=True)` contract. Output is byte-identical across runs for the same inputs — the Input type carries a `generated_at: datetime` field defaulted to now() so callers who want byte-stable diffs can freeze it (same trick as generate_frmr_attestation). Zero per-run LLM cost and no "re-run produces different prose" concern.
+2. **Open items only.** Only `partial` and `not_implemented` classifications produce POA&M rows. `implemented` and `not_applicable` are definitionally closed — zero reason to track a remediation plan. Rejected alternative: a column for every KSI including "implemented" rows (to give the full-baseline picture). Rejected because the POA&M is a remediation-tracking document, not a compliance-state snapshot; the FRMR attestation JSON is the right artifact for the latter.
+3. **Severity heuristic with explicit DRAFT marking.** `not_implemented → HIGH, partial → MEDIUM`. This is a starting point, not an authoritative judgment — the organization's risk framework decides actual severity. Document header carries a line specifically naming this: "Severity is a starting-point heuristic; reviewer must confirm severity per the organization's risk framework." A 3PAO reading the POA&M sees the heuristic attribution, not an Efterlev-authoritative claim.
+4. **Every reviewer-fillable field is a DRAFT placeholder.** Weakness Title, Remediation Plan, Milestones, Target Completion Date, Owner, POC Email, Residual Risk Summary, Risk Accepted — all emitted as literal `DRAFT — SET BEFORE SUBMISSION`. Makes grep-for-unfilled-fields trivial. A developer can't accidentally submit a POA&M with empty fields because the placeholders will stick out in any review diff.
+5. **POA&M Item ID derived from claim_record_id when available.** `POAM-<KSI-id>-<first-8-of-claim-id>` gives the item a provenance-graph anchor: a 3PAO can run `efterlev provenance show <full-claim-id>` to walk from the POA&M item back to the evidence that drove the Gap classification. When no claim_record_id is available (fresh in-memory classifications), fall back to `POAM-<KSI-id>-<000-indexed-position>`. Ids are stable within a run but not across runs — that's correct because different Gap runs produce different claim records.
+6. **Unknown-KSI classifications skipped, not fabricated.** Same posture as `generate_frmr_attestation` (DECISIONS 2026-04-22 Phase 2 design call #4): classifications referencing a KSI not in `indicators` get reported in `skipped_unknown_ksi` and emit no row. Never invent KSI statements or controls.
+
+**Rationale:**
+
+- A deterministic primitive matches the trust model of everything else in the FRMR-output family: scanner-derived + FRMR catalog → output. Making this LLM-backed would introduce a class of "the POA&M changed between runs" bugs that are worthless to pay for — the data-to-markdown transformation genuinely doesn't need reasoning.
+- The severity heuristic is cheap to change and genuinely useful as a starting point. The alternative (no severity at all) forces every reviewer to fill in the field from scratch even for the obvious cases (no evidence at all = clearly a full finding). The heuristic saves a lot of typing for the easy cases while the DRAFT attribution prevents misunderstanding.
+- DRAFT-placeholder-for-every-reviewer-field is a direct application of CLAUDE.md Principle 7 ("Drafts, not authorizations") to a new output format. The FRMR attestation has `requires_review=True` as a Pydantic invariant; the POA&M has literal `DRAFT — SET BEFORE SUBMISSION` strings. Different mechanisms, same contract.
+- Claim-id-anchored POA&M IDs create a cycle back to the provenance graph. A 3PAO reading the POA&M can verify the rationale wasn't cherry-picked — the claim record in the store shows exactly what evidence the model cited, when, using which model version.
+
+**Alternatives rejected:**
+
+- **Render POA&M as a CSV.** Considered. Rejected because markdown tables render natively in GitHub/GitLab issue views and in Jira/Linear's markdown-paste flows, AND the per-item detail sections need paragraph-level formatting that CSV can't carry. A user who wants CSV can markdown-to-csv or ask us for that as a follow-up format.
+- **Include implemented KSIs in the output as a "state snapshot" companion.** Rejected. The POA&M is specifically a remediation-tracking document per FedRAMP convention; adding implemented rows muddles the semantics. Two documents for two jobs: FRMR attestation JSON for state; POA&M markdown for open gaps.
+- **Include "Expected Remediation" from the Remediation Agent's prior output.** Considered. Rejected for now because the Remediation Agent runs per-KSI and not every open KSI has a remediation yet; threading partial coverage through the POA&M creates a "sometimes filled, sometimes not" field. A follow-up could enrich the POA&M from the Remediation Agent's store-persisted claims when present.
+- **Use FedRAMP's canonical POA&M Excel template shape.** Considered; future follow-up. The columns emitted here (ID, KSI, status, severity, controls, evidence, rationale, reviewer fields) cover the same ground but in markdown-first form. A follow-up could emit an XLSX via openpyxl for direct FedRAMP portal upload; deferred until a prospect asks.
+- **LLM-backed severity reasoning.** Rejected. Severity is a property of the *organization's* risk posture, not of the finding in isolation; an LLM can't know the organization's context. The heuristic + DRAFT attribution is the honest posture.
+
+**Implementation landed in this commit:**
+
+- `src/efterlev/primitives/generate/generate_poam_markdown.py` — primitive with `GeneratePoamMarkdownInput`/`Output` Pydantic models, `PoamClassificationInput` decoupling shape so the primitive doesn't import from agents, `_render_document` + `_render_item` internal helpers.
+- `src/efterlev/primitives/generate/__init__.py` — re-export.
+- `src/efterlev/cli/main.py` — new top-level `efterlev poam [--target] [--output]` command. Reads classifications from the store, runs the primitive, writes markdown to `.efterlev/reports/poam-<timestamp>.md` by default.
+- `tests/test_generate_poam_markdown.py` — 18 new tests covering status filtering, severity heuristic, unknown-KSI handling, draft placeholders, provenance wiring, evidence truncation, determinism, summary table shape, FRMR data extraction.
+
+**Verification:**
+
+- 428 tests pass (+18). ruff + mypy clean across 96 source files.
+- Dogfood against the plan-mode govnotes scan produces a 59-item POA&M with correct ID derivation (`POAM-KSI-AFR-ADS-000` etc.), HIGH severity on not_implemented, populated KSI names pulled from FRMR, 8 DRAFT placeholders per item, full rationale from the Gap Agent visible.
+
+**Deferred:**
+
+- **XLSX export via openpyxl** for direct FedRAMP portal upload. Follow-up when a prospect asks.
+- **Integration with Remediation Agent claims**: enrich the "Remediation Plan" field from any prior `efterlev agent remediate` runs. Today the primitive is classification-only.
+- **CSV / JSON output formats**. Markdown covers the Jira/Linear/3PAO-email workflow. Add when asked.
+
+---
+
 
 
 ```

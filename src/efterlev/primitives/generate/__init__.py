@@ -19,12 +19,22 @@ from efterlev.primitives.generate.generate_frmr_skeleton import (
     GenerateFrmrSkeletonOutput,
     generate_frmr_skeleton,
 )
+from efterlev.primitives.generate.generate_poam_markdown import (
+    GeneratePoamMarkdownInput,
+    GeneratePoamMarkdownOutput,
+    PoamClassificationInput,
+    generate_poam_markdown,
+)
 
 __all__ = [
     "GenerateFrmrAttestationInput",
     "GenerateFrmrAttestationOutput",
     "GenerateFrmrSkeletonInput",
     "GenerateFrmrSkeletonOutput",
+    "GeneratePoamMarkdownInput",
+    "GeneratePoamMarkdownOutput",
+    "PoamClassificationInput",
     "generate_frmr_attestation",
     "generate_frmr_skeleton",
+    "generate_poam_markdown",
 ]

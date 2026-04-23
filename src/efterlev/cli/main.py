@@ -265,6 +265,110 @@ def scan(
             typer.echo(f"  {rid}  {short_det:<38}  {resource_name}")
 
 
+@app.command()
+def poam(
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the repo whose `.efterlev/` store will be read. Defaults to cwd.",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help=(
+            "Write the POA&M markdown to this file. "
+            "Defaults to `.efterlev/reports/poam-<timestamp>.md`."
+        ),
+    ),
+) -> None:
+    """Emit a POA&M markdown for every open (partial / not_implemented) KSI.
+
+    Reads the latest Gap Agent classifications from the provenance store,
+    resolves each KSI against the loaded FRMR, and renders a POA&M
+    document with a summary table and per-item detail blocks. The output
+    is deterministic — same inputs produce byte-identical markdown, so
+    re-running is safe and diffable.
+
+    DRAFT — every Reviewer field in each item is emitted as a
+    `DRAFT — SET BEFORE SUBMISSION` placeholder. Severity is a
+    starting-point heuristic (not_implemented → HIGH, partial →
+    MEDIUM); reviewer confirms per internal risk framework before
+    submission.
+
+    Suitable for paste into Jira/Linear (their markdown-paste flows
+    accept tables and per-item sections) or handing to a 3PAO alongside
+    the FRMR attestation JSON.
+    """
+    from efterlev.agents import reconstruct_classifications_from_store
+    from efterlev.frmr.loader import FrmrDocument
+    from efterlev.primitives.generate import (
+        GeneratePoamMarkdownInput,
+        PoamClassificationInput,
+        generate_poam_markdown,
+    )
+    from efterlev.provenance import ProvenanceStore, active_store
+
+    root = target.resolve()
+    if not (root / ".efterlev").is_dir():
+        typer.echo(
+            f"error: no `.efterlev/` directory under {root}. Run `efterlev init` first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    frmr_cache = root / ".efterlev" / "cache" / "frmr_document.json"
+    if not frmr_cache.is_file():
+        typer.echo(
+            f"error: FRMR cache missing at {frmr_cache}. Re-run `efterlev init`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
+
+    with ProvenanceStore(root) as store, active_store(store):
+        rows = store.iter_claims_by_metadata_kind("ksi_classification")
+        classifications = reconstruct_classifications_from_store(rows)
+        if not classifications:
+            typer.echo(
+                "error: no Gap Agent classifications in the store. "
+                "Run `efterlev agent gap` first.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        poam_inputs = [
+            PoamClassificationInput(
+                ksi_id=c.ksi_id,
+                status=c.status,
+                rationale=c.rationale,
+                evidence_ids=list(c.evidence_ids),
+                claim_record_id=None,  # the reconstructed shape doesn't carry record_id
+            )
+            for c in classifications
+        ]
+        result = generate_poam_markdown(
+            GeneratePoamMarkdownInput(
+                classifications=poam_inputs,
+                indicators=frmr_doc.indicators,
+                baseline_id="fedramp-20x-moderate",
+                frmr_version=frmr_doc.version,
+            )
+        )
+
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    output_path = output or (root / ".efterlev" / "reports" / f"poam-{timestamp}.md")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(result.markdown, encoding="utf-8")
+
+    typer.echo(f"POA&M: {output_path}")
+    typer.echo(f"  open items:       {result.item_count}")
+    if result.skipped_unknown_ksi:
+        skipped = ", ".join(result.skipped_unknown_ksi)
+        typer.echo(f"  skipped unknown:  {skipped}")
+
+
 def _new_scan_id() -> str:
     """UTC-timestamped scan identifier. Used to tag redaction-ledger entries
     so a user can later run `efterlev redaction review --scan-id <ts>` to see
