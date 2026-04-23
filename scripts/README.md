@@ -34,6 +34,16 @@ standalone via `uv run python scripts/<name>.py`.
   Requires `ANTHROPIC_API_KEY` — exits 2 if unset (skip semantics),
   exits 0 on pass, exits 1 on any critical failure. Pytest wrapper
   available at `tests/test_e2e_smoke.py` for CI use (`pytest -k e2e`).
+- `ci_pr_summary.py` — formats a `.efterlev/` store as a markdown PR
+  comment for the GitHub Action at
+  `.github/workflows/pr-compliance-scan.yml`. Reads the SQLite DB and
+  content-addressed blob store directly via `sqlite3` (no Efterlev
+  package import required), filters evidence records for finding-
+  shaped content (`gap` field, `encryption_state=absent`, etc.),
+  emits a three-section markdown (Findings table, Detector coverage,
+  optional KSI classifications). `--fail-on-finding` flag for orgs
+  that want the CI to gate on any finding. Invoked as
+  `python scripts/ci_pr_summary.py --efterlev-dir <path>`.
 
 These scripts are expected to be replaced or removed as the real library
 and `src/efterlev/mcp_server/` wiring lands during the hackathon.

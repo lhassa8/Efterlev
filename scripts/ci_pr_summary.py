@@ -1,0 +1,289 @@
+"""Format a `.efterlev/` scan result as a markdown PR comment.
+
+Called from the GitHub Action at `.github/workflows/pr-compliance-scan.yml`
+after `efterlev scan` runs. Reads the provenance store, filters for
+evidence records whose content indicates a gap (`encryption_state=absent`,
+`rotation_status=disabled`, `posture=partial`, etc.), and emits a
+markdown comment suitable for posting via `gh pr comment`.
+
+Deterministic: same store state → same comment body. No LLM calls.
+
+Output contract:
+  - Writes markdown to `--output` (default stdout).
+  - Prints a one-line summary to stderr so the Action log shows what
+    happened at a glance.
+  - Exits 0 unless something genuinely broke (missing store, corrupt
+    evidence). Zero findings is a success, not a failure — the Action's
+    pass/fail behavior is governed by a separate `--fail-on-finding`
+    flag the workflow can set.
+
+Positional signal the PR comment communicates, from highest to lowest
+confidence:
+  1. Explicitly-gap evidence (detector emitted `encryption_state=absent`
+     + a `gap` string) — these are the things the detector says are
+     wrong.
+  2. Per-detector counts — shows what was looked at, even if all
+     findings were positive.
+  3. KSI-level summary (if Gap Agent classifications are in the store
+     — i.e. the workflow ran `agent gap` as an optional step) —
+     aggregate classification counts by status.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+
+
+def build_summary_markdown(efterlev_dir: Path) -> tuple[str, dict[str, int]]:
+    """Load evidence from `.efterlev/` and return `(markdown, stats)`.
+
+    `stats` is a counts summary for the stderr one-liner:
+        {"detectors": int, "findings": int, "classifications": int}
+
+    The markdown is the PR comment body. Its top-level section layout is
+    locked-in so downstream regex/parsers in a future "update comment in
+    place" workflow know what to look for.
+    """
+    records = _load_records(efterlev_dir)
+    evidence = [r for r in records if r.get("record_type") == "evidence"]
+    claims_by_kind = _group_claims_by_metadata_kind(records)
+
+    per_detector: dict[str, list[dict]] = defaultdict(list)
+    findings: list[dict] = []
+    for ev in evidence:
+        payload = ev.get("payload", {})
+        detector_id = payload.get("detector_id")
+        if not detector_id or detector_id == "manifest":
+            # Manifest evidence is attestation-shaped, not detector findings.
+            continue
+        per_detector[detector_id].append(payload)
+        if _is_finding(payload):
+            findings.append(payload)
+
+    lines: list[str] = []
+    lines.append("## 🧪 Efterlev compliance scan")
+    lines.append("")
+    lines.append(
+        f"_Scanned {sum(len(v) for v in per_detector.values())} "
+        f"evidence record(s) across {len(per_detector)} detector(s)._"
+    )
+    lines.append("")
+
+    # Findings section (the headline).
+    if findings:
+        lines.append(f"### Findings ({len(findings)})")
+        lines.append("")
+        lines.append("| Detector | Resource | Gap | Source |")
+        lines.append("|---|---|---|---|")
+        for f in findings:
+            detector_short = _short_detector(f.get("detector_id", ""))
+            resource = f.get("content", {}).get("resource_name", "—")
+            gap = f.get("content", {}).get("gap", "—")
+            source = _format_source_ref(f.get("source_ref", {}))
+            lines.append(f"| `{detector_short}` | `{resource}` | {gap} | `{source}` |")
+        lines.append("")
+    else:
+        lines.append("### Findings")
+        lines.append("")
+        lines.append("_No gap-shaped evidence emitted. Detectors ran clean._")
+        lines.append("")
+
+    # Per-detector summary — shows breadth of coverage.
+    lines.append("### Detector coverage")
+    lines.append("")
+    lines.append("| Detector | Evidence records |")
+    lines.append("|---|---|")
+    for detector_id in sorted(per_detector.keys()):
+        lines.append(f"| `{_short_detector(detector_id)}` | {len(per_detector[detector_id])} |")
+    lines.append("")
+
+    # Gap Agent classifications — only present if the Action ran `agent gap`.
+    ksi_claims = claims_by_kind.get("ksi_classification", [])
+    if ksi_claims:
+        status_counts: dict[str, int] = defaultdict(int)
+        for claim in ksi_claims:
+            status = claim.get("payload", {}).get("content", {}).get("status", "unknown")
+            status_counts[status] += 1
+        lines.append("### KSI classifications (Gap Agent)")
+        lines.append("")
+        lines.append("| Status | Count |")
+        lines.append("|---|---|")
+        for status in ("implemented", "partial", "not_implemented", "not_applicable"):
+            count = status_counts.get(status, 0)
+            lines.append(f"| `{status}` | {count} |")
+        lines.append("")
+
+    lines.append("---")
+    lines.append(
+        "_Generated by Efterlev — draft findings; a qualified reviewer must "
+        "confirm before submission to any authorizing body._"
+    )
+
+    stats = {
+        "detectors": len(per_detector),
+        "findings": len(findings),
+        "classifications": len(ksi_claims),
+    }
+    return "\n".join(lines), stats
+
+
+def _load_records(efterlev_dir: Path) -> list[dict[str, Any]]:
+    """Load every record + its payload blob from `.efterlev/store/`.
+
+    Uses the on-disk layout directly rather than importing the Efterlev
+    package. Keeps this script runnable in a CI shell even if the
+    package install is in a different virtualenv than the script.
+    """
+    db_path = efterlev_dir / "store.db"
+    if not db_path.is_file():
+        raise FileNotFoundError(
+            f"no provenance DB at {db_path}; did `efterlev scan` run?"
+        )
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT record_id, record_type, content_ref, metadata "
+            "FROM provenance_records ORDER BY timestamp"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    blob_dir = efterlev_dir / "store"
+    records: list[dict[str, Any]] = []
+    for record_id, record_type, content_ref, metadata in rows:
+        blob_path = blob_dir / content_ref
+        try:
+            payload = json.loads(blob_path.read_bytes())
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        records.append(
+            {
+                "record_id": record_id,
+                "record_type": record_type,
+                "metadata": json.loads(metadata) if metadata else {},
+                "payload": payload,
+            }
+        )
+    return records
+
+
+def _group_claims_by_metadata_kind(
+    records: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Group `record_type=claim` records by their metadata's `kind` field."""
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for rec in records:
+        if rec.get("record_type") != "claim":
+            continue
+        kind = rec.get("metadata", {}).get("kind", "unknown")
+        grouped[kind].append(rec)
+    return grouped
+
+
+def _is_finding(payload: dict[str, Any]) -> bool:
+    """True if the evidence payload indicates a gap the reviewer should see.
+
+    Looks at common gap-signal fields across detectors. Not every
+    detector uses identical naming; we accept several known shapes.
+    """
+    content = payload.get("content", {})
+    # Explicit `gap:` field — set by most detectors when they find something.
+    if "gap" in content:
+        return True
+    # Known status-field negative values.
+    encryption_state = content.get("encryption_state")
+    if encryption_state == "absent":
+        return True
+    rotation_status = content.get("rotation_status")
+    if rotation_status == "disabled":
+        return True
+    validation_status = content.get("validation_status")
+    if validation_status == "disabled":
+        return True
+    mfa_required = content.get("mfa_required")
+    if mfa_required == "absent":
+        return True
+    posture = content.get("posture")
+    if posture in ("partial", "weak"):
+        return True
+    if content.get("tls_state") == "absent":
+        return True
+    return content.get("fips_state") == "absent"
+
+
+def _short_detector(detector_id: str) -> str:
+    """Strip the `aws.` namespace for display; keeps the table readable."""
+    if "." in detector_id:
+        return detector_id.split(".", 1)[1]
+    return detector_id
+
+
+def _format_source_ref(source_ref: dict[str, Any]) -> str:
+    """Render a source_ref dict as `file:start-end` or `file:line`."""
+    file_ref = source_ref.get("file", "—")
+    line_start = source_ref.get("line_start")
+    line_end = source_ref.get("line_end")
+    if line_start is None:
+        return str(file_ref)
+    if line_end is None or line_end == line_start:
+        return f"{file_ref}:{line_start}"
+    return f"{file_ref}:{line_start}-{line_end}"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Format Efterlev scan results as a PR comment markdown."
+    )
+    parser.add_argument(
+        "--efterlev-dir",
+        type=Path,
+        default=Path(".efterlev"),
+        help="Path to the `.efterlev/` directory (default: ./.efterlev).",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Write the comment markdown to this file. Default: stdout.",
+    )
+    parser.add_argument(
+        "--fail-on-finding",
+        action="store_true",
+        help="Exit code 1 if any gap-shaped evidence is present.",
+    )
+    args = parser.parse_args()
+
+    try:
+        markdown, stats = build_summary_markdown(args.efterlev_dir)
+    except FileNotFoundError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(markdown, encoding="utf-8")
+    else:
+        sys.stdout.write(markdown)
+        sys.stdout.write("\n")
+
+    print(
+        f"[ci_pr_summary] {stats['detectors']} detector(s), "
+        f"{stats['findings']} finding(s), "
+        f"{stats['classifications']} KSI classification(s)",
+        file=sys.stderr,
+    )
+
+    if args.fail_on_finding and stats["findings"] > 0:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

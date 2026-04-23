@@ -1195,6 +1195,57 @@ Three categories of finding + decisions for each:
 
 ---
 
+## 2026-04-23 — GitHub Action for PR-level compliance scan `[ci]` `[distribution]` `[icp]`
+
+**Context.** The 2026-04-23 external review called out a GitHub Action for PR-level scans as the single biggest "continuous-compliance" lever for ICP A — the reviewer's "should be month 1" item. The CLI already runs end-to-end against real repos; wrapping it in a workflow that posts a sticky PR comment is the bridge between "Efterlev scans" and "Efterlev enforces." This entry records the first landing.
+
+**Decision (six interlocking calls):**
+
+1. **Workflow file, not a composite action.** `.github/workflows/pr-compliance-scan.yml` as a drop-in workflow consumer repos copy + adapt. Rejected alternative: composite action at repo root (`action.yml`). The repo is private through v1 per the lock, so `uses: lhassa8/Efterlev@v1` doesn't work for external consumers. A workflow they copy does work — their own repo's CI runs the workflow with whatever install path they configure. Post-v1-public-repo-opening this migrates to a composite action; the drop-in workflow remains available as a fallback.
+2. **Install via `uv sync --extra dev` today; annotate the swap-point for PyPI.** The workflow's install step explicitly says "change this line to `pipx install efterlev` once it's on PyPI." Consumer repos copying this workflow today install from the Efterlev git repo; post-v1 they install from PyPI. One-line change, not an architectural one.
+3. **Scanner-only by default; Gap Agent gated on `ANTHROPIC_API_KEY` secret.** `if: env.ANTHROPIC_API_KEY != ''` — the Gap Agent step runs only when the secret is set. Consumer repos that don't want LLM-backed classifications leave the secret unset and get scanner-only summaries. The workflow documents this gate explicitly so it's not a surprise.
+4. **Sticky comment: edit in place on rebuild.** The post-comment step finds prior Efterlev comments by searching for the `## 🧪 Efterlev compliance scan` header and PATCHes them. New-comment-per-push would bury the latest findings under churn; sticky comments keep the reviewer's eye on the current state. Marker-based detection (header string) is simple and robust to comment-content changes over time.
+5. **ci_pr_summary.py reads the store directly via sqlite3 + blob-file reads.** Does NOT import the Efterlev package. Reason: the workflow runs the script from the repo's scripts/ directory; the package install might be in a different virtualenv (uv's project-local .venv) and Python import resolution across those boundaries is fragile. Direct sqlite3 is robust to that split. Added cost: script must track the on-disk layout (`.efterlev/store.db`, `.efterlev/store/<hash-prefix>/...`); documented in the script's module docstring.
+6. **No regression detection in this commit.** Current version surfaces ALL findings on the PR branch. True regression detection (diff vs base branch) requires scanning both branches and diffing evidence content — significant scope. Tracked as follow-up; current version is still valuable as a surface-findings surface.
+
+**Rationale:**
+
+- Workflow-as-file, not composite action, matches where the project IS today (private repo, pre-PyPI). A composite action published to the Marketplace lands post-public-opening. Landing a drop-in workflow today means a prospect's security team can review the workflow source, adapt it, and run it in their own CI without waiting on our PyPI timeline.
+- Scanner-only default aligns with the ICP's likely comfort posture: "we'll try the scanner; we'll add LLM integration after legal signs off on the API data-flow." Gating on secret presence gives them a binary switch without touching the workflow.
+- Sticky comment edit-in-place was the clear best choice. GitHub PR review threading has no concept of "this comment supersedes that one"; if we pushed a new comment per push, the reviewer sees the old findings at the top of the thread and has to scroll. Edit-in-place keeps the latest view front-and-center. Prior-comment detection by header-string is resilient to individual finding changes and to output-format adjustments (as long as we don't change the header).
+- Script reading the store directly: the alternative (`from efterlev.provenance import ProvenanceStore`) would require the install to be on the script's sys.path. In a CI shell where `uv run efterlev scan` runs under `.venv/bin/python` but `python scripts/ci_pr_summary.py` might run under system Python, the imports fail confusingly. Direct sqlite3 is boring and always works.
+
+**Alternatives rejected:**
+
+- **Composite action + marketplace listing.** Right end-state, wrong timing. Lands when the repo opens.
+- **Regression detection in this commit.** Requires scanning two branches, diffing JSON evidence content, and displaying diffs in the comment. Each piece is a small-to-moderate task; together they're more than fits cleanly alongside the baseline feature. Scope-cut.
+- **Per-line PR annotations via the Checks API.** GitHub's annotation surface would mark each finding on the specific `.tf` line. Genuinely nicer UX for developers. Rejected for first commit because the annotation schema requires careful line-number mapping (which our detector evidence already has via `source_ref.line_start`) but the API plumbing is more boilerplate than the core feature. Tracked as follow-up.
+- **Use `actions/github-script` for the comment posting.** Rejected. The `gh` CLI + bash heredoc approach is more readable and doesn't require embedding Node.js code in a YAML string.
+- **Make the summarizer a subcommand of the main CLI (`efterlev ci-summary`).** Considered. Rejected because the summarizer reads the store directly; putting it in the CLI would tempt future maintainers to make it use the Python API, which defeats the robustness point. Keeping it as `scripts/ci_pr_summary.py` signals "this is a CI-shell tool, not a primary API."
+- **`--fail-on-finding` default-on.** Rejected. Failing the PR on any finding is a policy call every org makes differently; forcing it as default would frustrate adopters who want the scan to run but not gate. Flag exists and is documented; default is "surface, don't gate."
+
+**Implementation landed in this commit:**
+
+- `.github/workflows/pr-compliance-scan.yml` — full workflow: checkout, uv setup, Efterlev install, init, scan, optional Gap Agent, summary, post/update PR comment, upload reports artifact. Concurrency cancel-in-progress so superseded runs don't waste CI minutes.
+- `scripts/ci_pr_summary.py` — reads `.efterlev/store.db` + blobs directly via sqlite3, classifies evidence as finding-or-not via a `_is_finding` heuristic (explicit `gap` field, known negative status values), renders markdown with three sections (Findings, Detector coverage, optional KSI classifications). `--fail-on-finding` flag for orgs that want gating. Draft-disclaimer line at bottom.
+- `docs/ci-integration.md` — consumer-facing docs: what the workflow does, how to drop it in, how to enable the Gap Agent, failing-on-finding, roadmap.
+- `tests/test_ci_pr_summary.py` — 21 tests across the finding classifier, the short-detector helper, end-to-end markdown generation (findings table, coverage grouping, no-findings marker, KSI classifications section, manifest-evidence exclusion, missing-store error, draft-disclaimer presence).
+
+**Verification:**
+
+- 449 tests pass (+21). ruff + mypy clean on 96 source files. (Two pre-existing mypy warnings in unrelated scripts — trestle_smoke.py, catalogs_crossref.py — not addressed; not introduced by this commit.)
+- `ci_pr_summary.py` dry-run against the existing dogfood store produced the expected 17-finding markdown: user_uploads bucket encryption, bastion_scratch EBS, kms_key assets rotation, etc. — every real govnotes gap surfaces.
+
+**Deferred:**
+
+- **Regression detection** (scan both branches, diff evidence). Next-highest-value CI enhancement.
+- **Per-line PR annotations** via the Checks API.
+- **Composite action / Marketplace listing** (gated on v1 public-repo opening).
+- **Scheduled scans** (nightly / weekly) as a separate workflow.
+- **Custom severity-to-fail-level mapping** — today `--fail-on-finding` is binary; a future version could take a severity threshold.
+
+---
+
 
 
 ```

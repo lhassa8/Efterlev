@@ -1,0 +1,141 @@
+name: Efterlev compliance scan
+
+# Triggers on any PR — the `paths` filter below skips the expensive steps when
+# the PR doesn't touch Terraform. The workflow itself still starts so required-
+# status-check configurations see it.
+on:
+  pull_request:
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '.efterlev/manifests/**'
+      - '.github/workflows/pr-compliance-scan.yml'
+  # Allow manual runs against any branch (useful for one-off scans of non-PR work).
+  workflow_dispatch:
+    inputs:
+      scan_target:
+        description: "Directory (relative to repo root) containing .tf files to scan."
+        required: false
+        default: "."
+
+# One run per PR — cancel in-flight runs when a new commit arrives so we don't
+# waste CI minutes on superseded code.
+concurrency:
+  group: efterlev-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan + Gap Agent (if API key available)
+    runs-on: ubuntu-latest
+    # Generous timeout: scan is fast, but Gap Agent calls Anthropic with
+    # max_tokens=16384 — can take ~2min on a 60-KSI baseline.
+    timeout-minutes: 10
+    permissions:
+      # Required for `gh pr comment` to post the summary back.
+      pull-requests: write
+      # Checkout is a read — default contents:read is enough.
+      contents: read
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          # Manifest support: Evidence manifests under .efterlev/manifests/
+          # live alongside the Terraform and contribute procedural evidence
+          # to the scan. We fetch the full file tree so they're visible.
+          fetch-depth: 1
+
+      - name: Set up uv + Python 3.12
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install Efterlev
+        run: |
+          # Install Efterlev from the same SHA the Action source repo is
+          # pinned to. When this workflow is copied into a consumer repo,
+          # swap this line for `pipx install efterlev` (post-PyPI release)
+          # or `pip install "git+https://github.com/lhassa8/Efterlev.git@main"`.
+          uv sync --extra dev
+
+      - name: Determine scan target
+        id: target
+        run: |
+          # Default target is the repo root (scans every .tf file the
+          # parser finds, recursively). Manual-dispatch input overrides.
+          TARGET="${{ inputs.scan_target || '.' }}"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "Scanning target: $TARGET"
+
+      - name: Initialize Efterlev workspace
+        run: |
+          uv run efterlev init \
+            --target "${{ steps.target.outputs.target }}" \
+            --baseline fedramp-20x-moderate \
+            --force
+
+      - name: Run deterministic scan
+        run: |
+          uv run efterlev scan --target "${{ steps.target.outputs.target }}"
+
+      - name: Run Gap Agent (if ANTHROPIC_API_KEY is available)
+        # Gap Agent is gated on the secret being present. Consumer repos
+        # that don't want LLM-backed classification leave the secret
+        # unset; the workflow still produces a scanner-only summary.
+        if: env.ANTHROPIC_API_KEY != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          uv run efterlev agent gap --target "${{ steps.target.outputs.target }}" || {
+            echo "::warning::Gap Agent failed; continuing with scanner-only summary."
+            exit 0
+          }
+
+      - name: Format PR comment
+        id: summary
+        run: |
+          uv run python scripts/ci_pr_summary.py \
+            --efterlev-dir "${{ steps.target.outputs.target }}/.efterlev" \
+            --output /tmp/efterlev-pr-comment.md
+          echo "comment_path=/tmp/efterlev-pr-comment.md" >> "$GITHUB_OUTPUT"
+
+      - name: Post / update PR comment
+        # Only run on PRs (workflow_dispatch won't have github.event.pull_request).
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # If a prior Efterlev comment exists on the PR, edit it in place.
+          # Otherwise create a new one. Identification marker: the
+          # `## 🧪 Efterlev compliance scan` header the summarizer emits.
+          COMMENT_BODY=$(cat /tmp/efterlev-pr-comment.md)
+          EXISTING_ID=$(
+            gh api \
+              "/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+              --jq '[.[] | select(.body | startswith("## 🧪 Efterlev compliance scan"))][0].id'
+          )
+          if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+            echo "Updating existing comment $EXISTING_ID"
+            gh api --method PATCH \
+              "/repos/${{ github.repository }}/issues/comments/$EXISTING_ID" \
+              -f body="$COMMENT_BODY"
+          else
+            echo "Creating new PR comment"
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --body "$COMMENT_BODY"
+          fi
+
+      - name: Upload reports as artifact
+        # Always upload — useful for workflow_dispatch runs that don't
+        # post a PR comment.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: efterlev-reports-${{ github.run_id }}
+          path: |
+            ${{ steps.target.outputs.target }}/.efterlev/reports/
+            /tmp/efterlev-pr-comment.md
+          if-no-files-found: ignore
+          retention-days: 14
