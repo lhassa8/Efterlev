@@ -38,7 +38,7 @@ The non-negotiable principles below remain authoritative. Where they mention tim
 v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, have landed on `claude/review-github-access-6XZIA`:
 
 **v0 (main, commit `6fb7e75`):**
-- 6 AWS-Terraform detectors: `encryption_s3_at_rest`, `tls_on_lb_listeners`, `fips_ssl_policies_on_lb_listeners`, `mfa_required_on_iam_policies`, `cloudtrail_audit_logging`, `backup_retention_configured`.
+- 6 AWS-Terraform detectors: `encryption_s3_at_rest`, `tls_on_lb_listeners`, `fips_ssl_policies_on_lb_listeners`, `mfa_required_on_iam_policies`, `cloudtrail_audit_logging`, `backup_retention_configured`. Phase 6-lite (see below) brings the total to 12.
 - 3 agents: Gap, Documentation, Remediation. All use Opus 4.7 (Documentation on Sonnet 4.6). All three enforce XML-fenced evidence + post-generation citation validation.
 - MCP stdio server exposing every primitive.
 - Provenance graph: SQLite + content-addressed blob store + receipt log.
@@ -57,11 +57,21 @@ v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, h
 - E: Gap Report + Remediation Report both carry the manifest "attestation" badge when passed `evidence=`; CSS consolidated in the shared stylesheet.
 - F: Per-run fence nonce (`secrets.token_hex(4)`) prevents content-injected forged fences. `<evidence_NONCE id="...">` and `<source_file_NONCE path="...">`; parse helpers take the nonce and ignore any fence with a different one. Full design call: DECISIONS 2026-04-22 "Post-review fixups A–F."
 
-**E2E smoke harness (`b3014e7`, `5913af7`):** `scripts/e2e_smoke.py` shells out to `uv run efterlev …` across init → scan → agent gap → agent document → agent remediate against an embedded Terraform fixture exercising all six v0 detectors plus one KSI-AFR-FSI Evidence Manifest. Results land in `.e2e-results/<UTC-ISO-TS>/` with captured stdio, copied artifacts, `checks.json`, and `summary.md`. Checks split into critical (13, fail the run), quality (5, warn), and info (per-stage). Gated on `ANTHROPIC_API_KEY` — exits 2 if unset. Pytest wrapper at `tests/test_e2e_smoke.py` for `pytest -k e2e`. First real-Opus run: all five CLI stages exited 0, 60/60 classifications produced (no truncation at 16384 max_tokens), fence validator held, FRMR artifact parsed clean with no absolute-path leaks, manifest-KSI narrative grounded in the attestor's keywords. Full design call: DECISIONS 2026-04-22 "E2E smoke harness landed + first real-Opus run."
+**E2E smoke harness (`b3014e7`, `5913af7`):** `scripts/e2e_smoke.py` shells out to `uv run efterlev …` across init → scan → agent gap → agent document → agent remediate against an embedded Terraform fixture exercising every registered detector plus one KSI-AFR-FSI Evidence Manifest. Results land in `.e2e-results/<UTC-ISO-TS>/` with captured stdio, copied artifacts, `checks.json`, and `summary.md`. Checks split into critical (13, fail the run), quality (5, warn), and info (per-stage). Gated on `ANTHROPIC_API_KEY` — exits 2 if unset. Pytest wrapper at `tests/test_e2e_smoke.py` for `pytest -k e2e`. First real-Opus run: all five CLI stages exited 0, 60/60 classifications produced (no truncation at 16384 max_tokens), fence validator held, FRMR artifact parsed clean with no absolute-path leaks, manifest-KSI narrative grounded in the attestor's keywords. Full design call: DECISIONS 2026-04-22 "E2E smoke harness landed + first real-Opus run."
+
+**Phase 6-lite — 6 additional detectors (batch on `phase-6-lite`):** Doubles the detector count from 6 to 12, moving toward the v1 target of 30. New detectors:
+- `aws.s3_public_access_block` — AC-3, `ksis=[]` (no KSI in FRMR maps AC-3).
+- `aws.rds_encryption_at_rest` — SC-28 / SC-28(1), `ksis=[]` (mirrors encryption_s3_at_rest).
+- `aws.kms_key_rotation` — SC-12 / SC-12(2), `ksis=[]` (no KSI maps SC-12). Distinguishes symmetric CMKs (rotation applies) from asymmetric (rotation_status=not_applicable).
+- `aws.cloudtrail_log_file_validation` — AU-9, `ksis=[KSI-MLA-OSM]` (FRMR lists au-9 in that KSI). Runs alongside the existing cloudtrail_audit_logging detector; different control family.
+- `aws.vpc_flow_logs_enabled` — AU-2 / AU-12, `ksis=[KSI-MLA-LET]`. Records target_kind (vpc/subnet/eni), traffic_type, destination_type.
+- `aws.iam_password_policy` — IA-5 / IA-5(1), `ksis=[]`. Does NOT claim KSI-IAM-MFA despite IA-5 appearing in that KSI's controls array — password policy does not evidence phishing-resistant MFA. Control membership is necessary but not sufficient for claiming a KSI.
+4 of 6 declare `ksis=[]` per the SC-28 precedent (DECISIONS 2026-04-21 design call #1, Option C). Full design call: DECISIONS 2026-04-22 "Phase 6-lite: 6 additional detectors."
 
 **End state at 2026-04-22:**
-- 279 tests passing (+ 1 E2E skipped by default without `ANTHROPIC_API_KEY`).
-- ruff clean; mypy strict-clean on 76 source files (strict on `efterlev.{primitives,detectors,oscal,manifests}.*`).
+- 305 tests passing (+ 1 E2E skipped by default without `ANTHROPIC_API_KEY`).
+- ruff clean; mypy strict-clean on 88 source files (strict on `efterlev.{primitives,detectors,oscal,manifests}.*`).
+- 12 detectors registered (6 v0 + 6 Phase 6-lite); 7 declare a KSI mapping and 5 surface at the 800-53 level only per the SC-28 Option-C precedent (DECISIONS 2026-04-21 design call #1). The ksis=[] posture is the honest default when no FRMR KSI maps the relevant control, and Phase 6-lite formalized a second discipline: control membership in a KSI's FRMR `controls` array is necessary but not sufficient for claiming that KSI — the detector must also evidence what the KSI's *statement* commits to.
 - Full pipeline verified end-to-end against a real Opus 4.7 call: Gap (60-KSI classification, 88s), Documentation (per-KSI Sonnet 4.6 narratives, ~7min), Remediation (diff-shaped output, 13s). 12/13 critical checks pass, 5/5 quality checks pass.
 - `generate_frmr_attestation` produces canonical, byte-stable JSON with typed-Pydantic validation at construction.
 
@@ -375,14 +385,26 @@ These detection areas were chosen because the infrastructure layer is genuinely 
 
 **Explicitly deferred to v1+ as detectors:**
 
-- AC-2, AC-3, AC-6, AC-17 (identity/access controls requiring procedural evidence)
+- AC-2, AC-6, AC-17 (identity/access controls requiring procedural evidence)
 - AU-3 (audit record content — requires log schema inspection)
 - CM-2, CM-6 (baseline configuration — requires procedural evidence)
 - RA-5, SI-2, SI-4 (vulnerability management and monitoring)
 - SC-7 (boundary protection — partially detectable but complex)
-- IA-5 (authenticator management — partially detectable)
 - All AT-\*, PL-\*, PS-\*, PM-\* (pure policy/procedural controls)
 - Any control requiring runtime cloud API calls (v1+)
+
+**Partially covered by Phase 6-lite (landed 2026-04-22):**
+
+- AC-3 — `aws.s3_public_access_block` evidences infrastructure-layer
+  public-access-block posture on S3 buckets; broader access-enforcement
+  coverage (IAM Access Analyzer, bucket policies, etc.) is Phase 6-full.
+- IA-5, IA-5(1) — `aws.iam_password_policy` evidences the account-level
+  password-policy declaration; per-user MFA is the separate
+  `mfa_required_on_iam_policies` detector.
+- SC-12, SC-12(2) — `aws.kms_key_rotation` evidences automatic CMK
+  rotation on symmetric keys.
+- AU-9 — `aws.cloudtrail_log_file_validation` evidences CloudTrail
+  log-file-integrity digests.
 
 Phase 1 Evidence Manifests (`.efterlev/manifests/*.yml`, landed 2026-04-22) are the complement: procedural controls in this list that have no Terraform-detectable surface can be covered by customer-authored, human-signed attestations that flow into the Gap Agent as `Evidence(detector_id="manifest")` alongside detector Evidence. Manifests do NOT replace detectors where a detector is practical (IAM policy MFA, CloudTrail scope, etc.) — they cover the procedural layer detectors cannot see. See DECISIONS 2026-04-22 "Phase 1: Evidence Manifests" for the full design call.
 

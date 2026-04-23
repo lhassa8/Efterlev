@@ -10,8 +10,9 @@ narrative grounding in evidence are ALL unmeasured until this script runs.
 What it does:
 
   1. Lays down a synthetic Terraform fixture under a scratch workspace
-     that exercises all six v0 detectors plus one Evidence Manifest
-     attestation for KSI-AFR-FSI (FedRAMP Security Inbox).
+     that exercises every registered detector (12 as of Phase 6-lite) plus
+     one Evidence Manifest attestation for KSI-AFR-FSI (FedRAMP Security
+     Inbox).
   2. Runs `efterlev init → scan → agent gap → agent document → agent
      remediate` as subprocess invocations via `uv run efterlev …`, so the
      whole Typer/CLI layer is exercised (not just Python-level primitives).
@@ -142,7 +143,8 @@ resource "aws_cloudtrail" "main" {
   }
 }
 """,
-    # RDS with backup retention — should match backup_retention_configured.
+    # RDS with backup retention AND storage encryption — should match
+    # backup_retention_configured and rds_encryption_at_rest.
     "infra/rds.tf": """\
 resource "aws_db_instance" "primary" {
   identifier              = "app-primary"
@@ -151,6 +153,8 @@ resource "aws_db_instance" "primary" {
   allocated_storage       = 20
   backup_retention_period = 14
   skip_final_snapshot     = false
+  storage_encrypted       = true
+  kms_key_id              = "arn:aws:kms:us-east-1:123:key/abc-123"
 }
 """,
     # IAM policy WITH MFA gate — heredoc-style literal JSON, per the
@@ -193,6 +197,48 @@ resource "aws_iam_policy" "admin_no_mfa" {
       ]
     }
   EOT
+}
+""",
+    # S3 public-access-block covering reports bucket — all four flags true.
+    # Exercises aws.s3_public_access_block.
+    "infra/s3_pab.tf": """\
+resource "aws_s3_bucket_public_access_block" "reports" {
+  bucket                  = aws_s3_bucket.reports.id
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = true
+  restrict_public_buckets = true
+}
+""",
+    # Symmetric KMS CMK with rotation enabled. Exercises aws.kms_key_rotation.
+    "infra/kms.tf": """\
+resource "aws_kms_key" "app_data" {
+  description             = "Application-data encryption key"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+}
+""",
+    # VPC flow log capturing ALL traffic to S3. Exercises
+    # aws.vpc_flow_logs_enabled.
+    "infra/flow_log.tf": """\
+resource "aws_flow_log" "main" {
+  vpc_id               = "vpc-0abc123"
+  traffic_type         = "ALL"
+  log_destination_type = "s3"
+  log_destination      = "arn:aws:s3:::flow-logs-bucket"
+}
+""",
+    # Account-level IAM password policy meeting the FedRAMP Moderate
+    # baseline. Exercises aws.iam_password_policy.
+    "infra/password_policy.tf": """\
+resource "aws_iam_account_password_policy" "strict" {
+  minimum_password_length      = 14
+  require_uppercase_characters = true
+  require_lowercase_characters = true
+  require_numbers              = true
+  require_symbols              = true
+  max_password_age             = 60
+  password_reuse_prevention    = 24
 }
 """,
     # Evidence Manifest for KSI-AFR-FSI (FedRAMP Security Inbox) — a

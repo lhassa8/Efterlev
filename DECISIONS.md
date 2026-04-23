@@ -812,6 +812,72 @@ These came out of the review and need explicit decisions, not just implementatio
 
 ---
 
+## 2026-04-22 — Phase 6-lite: 6 additional detectors (6 → 12) `[detectors]` `[phase-6]` `[coverage]`
+
+**Context.** The v1 locked plan (2026-04-22 "Lock v1 scope") pulled Phase 6 — detector-library breadth — forward into month 2, in parallel with Phase 4 (drift). The 30-detector target was the original v1 brief; this entry records the first batch landing: 6 new detectors, taking the registry from 6 to 12. Selection is archetype-only per the lock, revisable once a real prospect surfaces.
+
+**Decision — the six detectors chosen:**
+
+| # | Detector | KSIs | 800-53 | Signal |
+|---|---|---|---|---|
+| 1 | `aws.s3_public_access_block` | `[]` | AC-3 | `aws_s3_bucket_public_access_block` four-flag posture |
+| 2 | `aws.rds_encryption_at_rest` | `[]` | SC-28, SC-28(1) | `aws_db_instance.storage_encrypted` + `kms_key_id` |
+| 3 | `aws.kms_key_rotation` | `[]` | SC-12, SC-12(2) | `aws_kms_key.enable_key_rotation`; asymmetric-aware |
+| 4 | `aws.cloudtrail_log_file_validation` | `[KSI-MLA-OSM]` | AU-9 | `aws_cloudtrail.enable_log_file_validation` |
+| 5 | `aws.vpc_flow_logs_enabled` | `[KSI-MLA-LET]` | AU-2, AU-12 | `aws_flow_log` target_kind + traffic_type + destination_type |
+| 6 | `aws.iam_password_policy` | `[]` | IA-5, IA-5(1) | `aws_iam_account_password_policy` baseline comparison |
+
+**Rationale for this batch over the other Phase-6 candidates:**
+
+- Each is a first-class Terraform resource (or sub-attribute on one already scanned) — implementation cost is ~0.5–1 day each, matching the established one-folder-per-detector contract.
+- All six address concerns that appear in essentially every real SaaS FedRAMP Moderate package, and four of them (#1, #4, #5, #6) close gaps in control families the v0 detectors already started — AC-3 adjacent to IAM, AU-9 adjacent to AU-2/AU-12, IA-5 adjacent to IA-2.
+- Two detectors (#4, #5) land clean KSI mappings. That's meaningfully better coverage at the KSI layer, which is the user-facing surface.
+
+**Deferred from this batch (and why):**
+
+- **Security groups / ingress-rules detector.** Evidence semantics are messy: count/for_each, nested rules, dynamic blocks, and any "finds 0.0.0.0/0 on port 22" check overclaims for most real SGs. Worth its own design pass, not a drive-by detector.
+- **GuardDuty, AWS Config, IAM Access Analyzer enablement detectors.** Each is a single-boolean "is-it-enabled" resource. Easy wins but low evidence-value per detector; better clustered as a batch in Phase 6-full when we add multiple single-boolean detectors at once.
+- **Secrets Manager usage.** "Proves they use secrets management" from Terraform alone is weak — Manifest territory (procedural attestation).
+
+**Two interlocking discipline calls made during the batch:**
+
+1. **`ksis=[]` as the honest default for controls with no FRMR KSI mapping.** 4 of 6 detectors in this batch declare `ksis=[]`, following the SC-28 precedent from DECISIONS 2026-04-21 design call #1 (Option C). FRMR 0.9.43-beta lists neither AC-3 nor SC-12 in any KSI's `controls` array; claiming a "closest fit" KSI would conflate different semantic territory (e.g. KSI-SVC-VRI is SC-13 integrity, not SC-28 confidentiality or SC-12 key management). The Gap Agent already renders ksis=[] findings as "unmapped to any current KSI" per the 2026-04-21 design call; this batch formalizes that posture as the default.
+
+2. **Control membership is necessary but not sufficient for a detector to claim a KSI.** `aws.iam_password_policy` triggered this call: IA-5 appears in KSI-IAM-MFA's `controls` array in FRMR, which at first glance would license the detector to claim KSI-IAM-MFA. But KSI-IAM-MFA's *statement* is specifically about phishing-resistant MFA (FIDO2/WebAuthn tier per CLAUDE.md's detection-scope note), and a password policy does not evidence MFA at all — claiming the KSI would conflate "have password requirements" with "enforce phishing-resistant MFA." The detector declares `ksis=[]` and surfaces at IA-5 only. This discipline applies going forward: a detector can claim a KSI only when it evidences what the KSI's statement commits to, not just when it touches a control the KSI references. The detector README and docstring must name the layer evidenced and the layer not.
+
+**Rationale for these disciplines:**
+
+- Without discipline #1, every new detector pressures us toward inventing or stretching KSI mappings. The FRMR vocabulary is authoritative; our detectors surface honest facts about infrastructure regardless of whether FRMR has caught up.
+- Without discipline #2, the KSI-control bipartite graph becomes noise. A 3PAO reading our attestation sees "KSI-IAM-MFA: evidenced by password policy" and loses trust — password policy is not MFA. The discipline protects the Claim side of the evidence-vs-claims line at the mapping layer.
+- Both disciplines are additive to the non-negotiable principles in CLAUDE.md (Principle 1 "Evidence before claims" and the "Never claim a detector proves more than it actually does" rule in the Never-do list). They don't change what the principles say; they operationalize how to apply them in mapping decisions.
+
+**Alternatives rejected:**
+
+- **Claim KSI-SVC-VRI for s3_public_access_block, rds_encryption_at_rest, and kms_key_rotation** (all nearest-thematic-fit to the Service Configuration theme). Rejected — KSI-SVC-VRI's statement is cryptographic validation of resource *integrity*, which is SC-13 territory. Bucket exposure, at-rest encryption, and key rotation are distinct concerns. Better to report at the 800-53 layer honestly than fudge KSI claims.
+- **Claim KSI-IAM-MFA for iam_password_policy.** Rejected per discipline #2 above.
+- **Build 30 detectors in one batch (v1-full).** Rejected — the batch size that matches quality review and catches discipline issues like #2 is 4–8 detectors. Phase 6-lite is a deliberate smaller step with room for a second batch (Phase 6-full) once we have customer signal on which detectors to prioritize next.
+- **Defer all 6 until a named prospect surfaces.** Rejected — archetype-only is the v1-lock commitment, and the detectors picked are staple-infrastructure coverage every ICP-A prospect will need regardless of which specific company signs first. Phase 6-lite is safe pre-prospect work; Phase 6-full's detector selection (SGs, GuardDuty, Access Analyzer specifics, etc.) is where prospect signal matters.
+
+**Implementation landed in this commit sequence (branch `phase-6-lite`):**
+
+- One commit per detector (6 commits), each adding the six-file folder (`detector.py`, `mapping.yaml`, `evidence.yaml`, `README.md`, `__init__.py`, fixtures/) plus 4–5 tests in `tests/detectors/test_aws_<name>.py`.
+- `src/efterlev/detectors/__init__.py` — each commit adds one import line (alphabetical).
+- `scripts/e2e_smoke.py` — fixture extended to exercise all 12 detectors (RDS encryption added to the existing rds.tf; four new .tf files for PAB, KMS, flow log, password policy).
+- CLAUDE.md, README.md, docs/dual_horizon_plan.md — synced to the 12-detector state.
+
+**Verification:**
+
+- 305 tests passing (+26 from Phase 6-lite). ruff + mypy clean across 88 source files.
+- E2E smoke against real Opus verified the full pipeline still works with the expanded fixture and detector set. See summary.md under `.e2e-results/<latest>/`.
+- 12 detectors registered; 7 with KSI mappings, 5 with `ksis=[]` per the SC-28 / control-membership disciplines.
+
+**Deferred:**
+
+- Phase 6-full (remaining 18 toward the 30 target): security-group semantics design pass, GuardDuty/Config/Access-Analyzer enablement batch, ECR image scanning, Secrets Manager usage, additional VPC detail (subnets, NAT, default routes). Gated on prospect signal per the v1-lock.
+- Re-evaluating KSI mappings when FRMR GA ships (0.9.43-beta is the current baseline; AC-3 / SC-12 / SC-28 may pick up KSI coverage in a future release).
+
+---
+
 
 
 ```
