@@ -16,7 +16,7 @@ efterlev scan
 ```
 
 > **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 landed; v1 closed-development.**
-> - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports. Phase 6-lite (landed 2026-04-22) brings the detector count to twelve — adding s3_public_access_block, rds_encryption_at_rest, kms_key_rotation, cloudtrail_log_file_validation, vpc_flow_logs_enabled, and iam_password_policy.
+> - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports. Phase 6-lite + dogfood coverage-follow-up (landed 2026-04-22) bring the detector count to fourteen — adding s3_public_access_block, rds_encryption_at_rest, kms_key_rotation, cloudtrail_log_file_validation, vpc_flow_logs_enabled, iam_password_policy, encryption_ebs, and iam_user_access_keys.
 > - **v1 Phase 1 (Evidence Manifests):** customers declare procedural attestations in `.efterlev/manifests/*.yml`; they flow into the Gap Agent alongside detector Evidence. Takes scanner-only coverage from ~20% of the FedRAMP Moderate baseline toward 80%+ when paired with detectors.
 > - **v1 Phase 2 (FRMR attestation generator):** `efterlev agent document` now emits an FRMR-compatible attestation JSON artifact alongside the HTML report — the v1 primary production output.
 >

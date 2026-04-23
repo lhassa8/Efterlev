@@ -68,10 +68,14 @@ v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, h
 - `aws.iam_password_policy` — IA-5 / IA-5(1), `ksis=[]`. Does NOT claim KSI-IAM-MFA despite IA-5 appearing in that KSI's controls array — password policy does not evidence phishing-resistant MFA. Control membership is necessary but not sufficient for claiming a KSI.
 4 of 6 declare `ksis=[]` per the SC-28 precedent (DECISIONS 2026-04-21 design call #1, Option C). Full design call: DECISIONS 2026-04-22 "Phase 6-lite: 6 additional detectors."
 
+**Dogfood pass + coverage follow-up (`74d56e1` + branch `coverage-followup`):** First end-to-end run against real Terraform (govnotes-demo) rather than hand-crafted fixtures. Ground-truth hit rate: 3/12 → 5/12 full-catch after the two P1 detectors below landed; 5/12 → 7/12 counting partials. Headline finding: Terraform module `for_each` blind spot — parser sees 1 bucket where govnotes declares 5 through a storage module's map, invisible until Plan JSON support lands. Full report + P0/P1/P2/P3 follow-up backlog in `docs/dogfood-2026-04-22.md`.
+- `aws.encryption_ebs` — SC-28 / SC-28(1), `ksis=[]`. Scans `aws_ebs_volume` + `aws_instance.{root,ebs}_block_device`, emits per-block Evidence so mixed postures (encrypted root + unencrypted data) are visible.
+- `aws.iam_user_access_keys` — IA-2 / AC-2, `ksis=[KSI-IAM-MFA]`. Flags every declared `aws_iam_access_key` as a posture gap; claims KSI-IAM-MFA because access keys bypass MFA by design (applying the Phase 6-lite discipline: control membership AND statement-evidencing).
+
 **End state at 2026-04-22:**
-- 305 tests passing (+ 1 E2E skipped by default without `ANTHROPIC_API_KEY`).
-- ruff clean; mypy strict-clean on 88 source files (strict on `efterlev.{primitives,detectors,oscal,manifests}.*`).
-- 12 detectors registered (6 v0 + 6 Phase 6-lite); 7 declare a KSI mapping and 5 surface at the 800-53 level only per the SC-28 Option-C precedent (DECISIONS 2026-04-21 design call #1). The ksis=[] posture is the honest default when no FRMR KSI maps the relevant control, and Phase 6-lite formalized a second discipline: control membership in a KSI's FRMR `controls` array is necessary but not sufficient for claiming that KSI — the detector must also evidence what the KSI's *statement* commits to.
+- 315 tests passing (+ 1 E2E skipped by default without `ANTHROPIC_API_KEY`).
+- ruff clean; mypy strict-clean on 92 source files (strict on `efterlev.{primitives,detectors,oscal,manifests}.*`).
+- 14 detectors registered (6 v0 + 6 Phase 6-lite + 2 coverage-followup); 8 declare a KSI mapping and 6 surface at the 800-53 level only per the SC-28 Option-C precedent (DECISIONS 2026-04-21 design call #1). The ksis=[] posture is the honest default when no FRMR KSI maps the relevant control, and Phase 6-lite formalized a second discipline: control membership in a KSI's FRMR `controls` array is necessary but not sufficient for claiming that KSI — the detector must also evidence what the KSI's *statement* commits to.
 - Full pipeline verified end-to-end against a real Opus 4.7 call: Gap (60-KSI classification, 88s), Documentation (per-KSI Sonnet 4.6 narratives, ~7min), Remediation (diff-shaped output, 13s). 12/13 critical checks pass, 5/5 quality checks pass.
 - `generate_frmr_attestation` produces canonical, byte-stable JSON with typed-Pydantic validation at construction.
 
