@@ -52,9 +52,12 @@ for the design record.
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from re import Pattern
@@ -263,3 +266,82 @@ class RedactionLedger:
         for ev in self.events:
             counts[ev.pattern_name] = counts.get(ev.pattern_name, 0) + 1
         return counts
+
+
+# Context-var plumbing so CLI wrappers can set an active ledger and agents
+# pick it up automatically — same pattern as `efterlev.provenance.context.active_store`.
+# `format_*_for_prompt` consults this when no explicit `redaction_ledger` is
+# passed, keeping the agent code agnostic of how audit-logging is wired.
+_active_redaction_ledger: contextvars.ContextVar[RedactionLedger | None] = (
+    contextvars.ContextVar("efterlev_active_redaction_ledger", default=None)
+)
+
+
+def get_active_redaction_ledger() -> RedactionLedger | None:
+    """Return the currently-activated RedactionLedger, or None."""
+    return _active_redaction_ledger.get()
+
+
+@contextmanager
+def active_redaction_ledger(ledger: RedactionLedger) -> Iterator[RedactionLedger]:
+    """Scope-bind `ledger` so format_*_for_prompt helpers record into it automatically.
+
+    Example:
+        ledger = RedactionLedger()
+        with active_redaction_ledger(ledger):
+            agent.run(input)
+        # `ledger.events` now holds every redaction that happened during
+        # the agent's prompt assembly, even though the agent never knew
+        # a ledger was involved.
+    """
+    token = _active_redaction_ledger.set(ledger)
+    try:
+        yield ledger
+    finally:
+        _active_redaction_ledger.reset(token)
+
+
+def write_redaction_log(
+    ledger: RedactionLedger,
+    log_path: Any,  # Path — typed as Any to avoid an import cycle in the scrubber module
+    *,
+    scan_id: str,
+) -> int:
+    """Append the ledger's events to `log_path` as JSONL with 0600 perms.
+
+    Creates the parent directory if needed. File mode 0o600 (user read/write
+    only) is set on create AND reaffirmed on append — a previous scan that
+    created the file with different perms still ends up 0600 after we append.
+
+    Returns the number of events written. Appending an empty ledger is a
+    no-op (the file isn't touched if there's nothing to write).
+    """
+    from pathlib import Path
+
+    path = Path(log_path) if not isinstance(log_path, Path) else log_path
+    if ledger.count == 0:
+        return 0
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = ledger.as_jsonl(scan_id=scan_id)
+
+    # Create-if-missing with restrictive perms; append to existing.
+    if not path.exists():
+        # Create with 0600 in one shot via os.open + O_CREAT, then wrap.
+        import os
+
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            os.write(fd, content.encode("utf-8"))
+        finally:
+            os.close(fd)
+    else:
+        # Existing file: append and reaffirm mode (defense against a prior
+        # umask-permissive create).
+        with path.open("a", encoding="utf-8") as f:
+            f.write(content)
+        import os
+
+        os.chmod(path, 0o600)
+
+    return ledger.count

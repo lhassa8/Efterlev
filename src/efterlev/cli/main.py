@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -51,6 +52,13 @@ mcp_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(mcp_app, name="mcp")
+
+redaction_app = typer.Typer(
+    name="redaction",
+    help="Inspect the LLM-prompt redaction audit log.",
+    no_args_is_help=True,
+)
+app.add_typer(redaction_app, name="redaction")
 
 
 def _stub(phase: str, command: str) -> None:
@@ -257,6 +265,36 @@ def scan(
             typer.echo(f"  {rid}  {short_det:<38}  {resource_name}")
 
 
+def _new_scan_id() -> str:
+    """UTC-timestamped scan identifier. Used to tag redaction-ledger entries
+    so a user can later run `efterlev redaction review --scan-id <ts>` to see
+    what got redacted on a specific run. Filesystem-safe, second-resolution
+    (race-safe for typical operator cadence).
+    """
+    return datetime.now().astimezone().strftime("%Y%m%dT%H%M%S")
+
+
+def _write_scan_redaction_log(ledger_obj: Any, root: Path, scan_id: str) -> None:
+    """Dump a RedactionLedger to `.efterlev/redacted.log` and echo a summary.
+
+    The log is opened with 0600 perms at create time and re-chmodded to
+    0600 on every append. An empty ledger is a no-op. See DECISIONS
+    2026-04-23 "Redaction audit log + review CLI" for the full design.
+    """
+    from efterlev.llm.scrubber import write_redaction_log
+
+    count = write_redaction_log(
+        ledger_obj, root / ".efterlev" / "redacted.log", scan_id=scan_id
+    )
+    if count > 0:
+        pattern_counts = ledger_obj.pattern_counts()
+        summary = ", ".join(f"{n}x{name}" for name, n in sorted(pattern_counts.items()))
+        typer.echo(
+            f"Redacted {count} secret(s) from prompt content ({summary}); "
+            f"audit: `efterlev redaction review --scan-id {scan_id}`."
+        )
+
+
 @agent_app.command("gap")
 def agent_gap(
     target: Path = typer.Option(
@@ -269,6 +307,7 @@ def agent_gap(
     from efterlev.agents import GapAgent, GapAgentInput
     from efterlev.errors import AgentError
     from efterlev.frmr.loader import FrmrDocument
+    from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
     from efterlev.models import Evidence
     from efterlev.provenance import ProvenanceStore, active_store
 
@@ -291,6 +330,9 @@ def agent_gap(
     frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
     indicators = list(frmr_doc.indicators.values())
 
+    scan_id = _new_scan_id()
+    ledger = RedactionLedger()
+
     try:
         with ProvenanceStore(root) as store:
             evidence = [Evidence.model_validate(p) for _rid, p in store.iter_evidence()]
@@ -301,7 +343,7 @@ def agent_gap(
                 )
                 raise typer.Exit(code=1)
 
-            with active_store(store):
+            with active_store(store), active_redaction_ledger(ledger):
                 agent = GapAgent()
                 report = agent.run(GapAgentInput(indicators=indicators, evidence=evidence))
     except AgentError as e:
@@ -340,6 +382,8 @@ def agent_gap(
     typer.echo("")
     typer.echo(f"HTML report: {html_path}")
 
+    _write_scan_redaction_log(ledger, root, scan_id)
+
 
 @agent_app.command("document")
 def agent_document(
@@ -362,6 +406,7 @@ def agent_document(
     )
     from efterlev.errors import AgentError
     from efterlev.frmr.loader import FrmrDocument
+    from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
     from efterlev.models import Evidence
     from efterlev.primitives.generate import (
         GenerateFrmrAttestationInput,
@@ -394,8 +439,15 @@ def agent_document(
     # the store twice (as this command did before Phase 2 polish) would put
     # the two primitives' records in different active-store contexts, which
     # is observable through the provenance walker and wasted SQLite opens.
+    scan_id = _new_scan_id()
+    ledger = RedactionLedger()
+
     try:
-        with ProvenanceStore(root) as store, active_store(store):
+        with (
+            ProvenanceStore(root) as store,
+            active_store(store),
+            active_redaction_ledger(ledger),
+        ):
             evidence = [Evidence.model_validate(p) for _rid, p in store.iter_evidence()]
             classification_rows = store.iter_claims_by_metadata_kind("ksi_classification")
             classifications = reconstruct_classifications_from_store(classification_rows)
@@ -483,6 +535,8 @@ def agent_document(
         skipped = ", ".join(attestation_result.skipped_unknown_ksi)
         typer.echo(f"  skipped unknown:  {skipped}")
 
+    _write_scan_redaction_log(ledger, root, scan_id)
+
 
 @agent_app.command("remediate")
 def agent_remediate(
@@ -505,6 +559,7 @@ def agent_remediate(
     )
     from efterlev.errors import AgentError
     from efterlev.frmr.loader import FrmrDocument
+    from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
     from efterlev.models import Evidence
     from efterlev.provenance import ProvenanceStore, active_store
 
@@ -532,6 +587,9 @@ def agent_remediate(
             err=True,
         )
         raise typer.Exit(code=1)
+
+    scan_id = _new_scan_id()
+    ledger = RedactionLedger()
 
     try:
         with ProvenanceStore(root) as store:
@@ -625,7 +683,7 @@ def agent_remediate(
                     rel = str(tf_path.relative_to(root))
                     source_files[rel] = tf_path.read_text(encoding="utf-8")
 
-            with active_store(store):
+            with active_store(store), active_redaction_ledger(ledger):
                 agent = RemediationAgent()
                 proposal = agent.run(
                     RemediationAgentInput(
@@ -669,6 +727,8 @@ def agent_remediate(
     html_path.write_text(html_body, encoding="utf-8")
     typer.echo("")
     typer.echo(f"HTML report: {html_path}")
+
+    _write_scan_redaction_log(ledger, root, scan_id)
 
 
 @provenance_app.command("show")
@@ -719,6 +779,100 @@ def mcp_serve() -> None:
     except KeyboardInterrupt:
         # Clean shutdown on Ctrl-C; Typer already swallows but be explicit.
         raise typer.Exit(code=0) from None
+
+
+@redaction_app.command("review")
+def redaction_review(
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the repo whose `.efterlev/redacted.log` to read. Defaults to cwd.",
+    ),
+    scan_id: str | None = typer.Option(
+        None,
+        "--scan-id",
+        help="Show only redactions from a specific scan-id (e.g. 20260423T163045).",
+    ),
+    limit: int = typer.Option(
+        20,
+        "--limit",
+        help="Maximum number of recent scans to summarize. Only applies when --scan-id is not set.",
+    ),
+) -> None:
+    """Summarize the redaction audit log written during agent runs.
+
+    Every agent invocation (`efterlev agent gap`, `document`, `remediate`)
+    opens a `RedactionLedger` context that captures every secret the
+    scrubber removed from a prompt. The ledger is appended to
+    `.efterlev/redacted.log` (JSONL, 0600 perms). This command reads the
+    log and prints a per-scan summary: how many secrets of which kinds
+    were redacted in each scan, in field-location terms (NOT the secrets
+    themselves — the log is audit-safe and never writes secret material).
+
+    Without `--scan-id`, shows the most recent `limit` scans. With
+    `--scan-id`, drills into one scan's events.
+    """
+    import json
+
+    root = target.resolve()
+    log_path = root / ".efterlev" / "redacted.log"
+    if not log_path.is_file():
+        typer.echo(
+            f"No redaction log at {log_path}. "
+            f"This means either no agent has run under this target, or no "
+            f"redactions have occurred during any run.",
+        )
+        raise typer.Exit(code=0)
+
+    # Load events, grouped by scan_id, in the order they appear.
+    by_scan: dict[str, list[dict]] = {}
+    scan_order: list[str] = []
+    with log_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                # Skip malformed lines rather than abort — audit log integrity
+                # isn't cryptographically enforced, only perm-enforced.
+                continue
+            sid = record.get("scan_id", "<unknown>")
+            if sid not in by_scan:
+                by_scan[sid] = []
+                scan_order.append(sid)
+            by_scan[sid].append(record)
+
+    if scan_id is not None:
+        events = by_scan.get(scan_id)
+        if events is None:
+            typer.echo(f"No redactions recorded for scan-id {scan_id!r}.")
+            raise typer.Exit(code=1)
+        typer.echo(f"Scan {scan_id} — {len(events)} redactions:")
+        for ev in events:
+            typer.echo(
+                f"  {ev['timestamp']}  {ev['pattern_name']:<28}  "
+                f"sha256:{ev['sha256_prefix']}  @ {ev['context_hint']}"
+            )
+        return
+
+    # Default: per-scan summary, most recent `limit` scans.
+    recent = scan_order[-limit:]
+    typer.echo(f"Redaction audit log: {log_path} ({len(scan_order)} scan(s) total)")
+    typer.echo("")
+    typer.echo(f"{'scan_id':<18}  {'n':>4}  pattern counts")
+    for sid in recent:
+        events = by_scan[sid]
+        counts: dict[str, int] = {}
+        for ev in events:
+            counts[ev["pattern_name"]] = counts.get(ev["pattern_name"], 0) + 1
+        summary = ", ".join(f"{n}x{name}" for name, n in sorted(counts.items()))
+        typer.echo(f"{sid:<18}  {len(events):>4}  {summary}")
+    if len(scan_order) > limit:
+        typer.echo(f"... {len(scan_order) - limit} earlier scan(s) not shown (--limit).")
+    typer.echo("")
+    typer.echo("Run `efterlev redaction review --scan-id <id>` for per-event detail.")
 
 
 if __name__ == "__main__":

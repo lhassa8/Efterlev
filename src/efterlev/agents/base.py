@@ -49,7 +49,11 @@ from pydantic import BaseModel, ValidationError
 
 from efterlev.errors import AgentError
 from efterlev.llm import DEFAULT_MODEL, LLMClient, LLMMessage, LLMResponse, get_default_client
-from efterlev.llm.scrubber import RedactionLedger, scrub_llm_prompt
+from efterlev.llm.scrubber import (
+    RedactionLedger,
+    get_active_redaction_ledger,
+    scrub_llm_prompt,
+)
 from efterlev.models import Evidence
 from efterlev.provenance.context import get_active_store
 
@@ -101,16 +105,21 @@ def format_evidence_for_prompt(
     scrubbed via `scrub_llm_prompt` before being wrapped in its fence. A
     pattern library in `efterlev.llm.scrubber` catches high-confidence
     structural secrets (AWS keys, GitHub tokens, PEM private keys, etc.)
-    and replaces them with `[REDACTED:<kind>:sha256:<8hex>]` tokens. If
-    a `redaction_ledger` is supplied, every redaction is logged against
-    it with `context_hint="evidence[<detector_id>]:<index>"` for later
-    audit via `.efterlev/redacted.log`. Scrubbing is unconditional;
-    the ledger is an optional audit sink. Fail-closed: scrubber errors
-    propagate and prevent prompt transmission.
+    and replaces them with `[REDACTED:<kind>:sha256:<8hex>]` tokens.
+
+    Audit ledger: the CLI layer activates a `RedactionLedger` via
+    `active_redaction_ledger(...)` context manager before invoking an
+    agent; when no explicit `redaction_ledger` kwarg is passed, this
+    helper reads the contextvar and logs into whatever ledger the CLI
+    activated. Explicit `redaction_ledger=...` still wins (useful in
+    unit tests). Scrubbing is unconditional; the ledger is an optional
+    audit sink. Fail-closed: scrubber errors propagate and prevent
+    prompt transmission.
     """
     if not evidence:
         return "(no evidence records)"
 
+    effective_ledger = redaction_ledger or get_active_redaction_ledger()
     blocks: list[str] = []
     for index, ev in enumerate(evidence):
         payload = {
@@ -124,8 +133,8 @@ def format_evidence_for_prompt(
         scrubbed_body, events = scrub_llm_prompt(
             body, context_hint=f"evidence[{ev.detector_id}]:{index}"
         )
-        if redaction_ledger is not None and events:
-            redaction_ledger.extend(events)
+        if effective_ledger is not None and events:
+            effective_ledger.extend(events)
         blocks.append(
             f'<evidence_{nonce} id="{ev.evidence_id}">\n{scrubbed_body}\n</evidence_{nonce}>'
         )
@@ -167,19 +176,21 @@ def format_source_files_for_prompt(
     Secret redaction (2026-04-23): source file content is scrubbed via
     `scrub_llm_prompt` before being wrapped. Terraform files can legitimately
     carry heredoc-wrapped IAM policies, KMS key material for module tests,
-    etc. that match structural secret patterns. The redaction ledger records
-    each match with `context_hint="source_file[<path>]"`.
+    etc. that match structural secret patterns. Active-ledger context-var
+    plumbing matches `format_evidence_for_prompt`: explicit kwarg wins,
+    otherwise `get_active_redaction_ledger()` is consulted.
     """
     if not source_files:
         return "(no source files)"
 
+    effective_ledger = redaction_ledger or get_active_redaction_ledger()
     blocks: list[str] = []
     for path, content in source_files.items():
         scrubbed_content, events = scrub_llm_prompt(
             content, context_hint=f"source_file[{path}]"
         )
-        if redaction_ledger is not None and events:
-            redaction_ledger.extend(events)
+        if effective_ledger is not None and events:
+            effective_ledger.extend(events)
         blocks.append(
             f'<source_file_{nonce} path="{path}">\n{scrubbed_content}\n</source_file_{nonce}>'
         )
