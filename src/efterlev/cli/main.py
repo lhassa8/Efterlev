@@ -592,12 +592,38 @@ def agent_remediate(
             source_files: dict[str, str] = {}
             for ev in terraform_evidence:
                 rel_path = Path(str(ev.source_ref.file))
+                # Non-.tf files (e.g. the plan JSON in plan-mode scans where
+                # root-module resources land with `source_ref.file` pointing
+                # at the plan file itself) are skipped here — a diff against
+                # generated JSON doesn't change infrastructure. Fallback
+                # below loads the .tf tree under target_root so the agent
+                # still has source to reason about. Dogfood-2026-04-22
+                # plan-mode finding.
+                if rel_path.suffix != ".tf":
+                    continue
                 full = resolve_within_root(rel_path, root)
                 if full is None or not full.is_file():
                     continue
                 key = str(ev.source_ref.file)
                 if key not in source_files:
                     source_files[key] = full.read_text(encoding="utf-8")
+
+            # Plan-mode fallback: root-module resources' source_refs point
+            # at the plan JSON, not the owning .tf file, because plan JSON
+            # doesn't carry per-resource file info (only module-call
+            # `source` hints). When evidence-walk produced no loadable .tf
+            # content, sweep target_root for .tf files so the agent sees
+            # the actual infrastructure source rather than refusing with
+            # "no terraform surface to remediate" on a file that IS there.
+            if not source_files:
+                for tf_path in sorted(root.rglob("*.tf")):
+                    # Skip anything inside .efterlev/ (tool state) or
+                    # vendor-y hidden dirs. `relative_to(root)` preserves
+                    # the repo-relative-path contract.
+                    if any(part.startswith(".") for part in tf_path.relative_to(root).parts):
+                        continue
+                    rel = str(tf_path.relative_to(root))
+                    source_files[rel] = tf_path.read_text(encoding="utf-8")
 
             with active_store(store):
                 agent = RemediationAgent()
