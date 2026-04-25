@@ -72,3 +72,9 @@
 # controlled unclassified"). This is upstream NIST content, not a
 # document-confidentiality marker.
 ^catalogs/nist/.*\.json:.*[Cc]onfidential
+
+# The grep-scrub-checklist.md file documents what the script checks
+# for, so it legitimately mentions the very strings the
+# internal_only_markers pattern is hunting (e.g., "confidential",
+# "internal only", "do not distribute") inside its own description.
+^docs/launch/grep-scrub-checklist\.md:
