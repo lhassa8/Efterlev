@@ -7,8 +7,10 @@ Hour-by-hour sequence for flipping Efterlev public. Tick each checkbox as you go
 - [ ] Run `bash scripts/launch-grep-scrub.sh` — must exit 0.
 - [ ] Run `uv run pytest -m "not e2e" -q` — must pass.
 - [ ] Run `uv run mkdocs build --strict` — must build clean.
-- [ ] `gh repo view lhassa8/Efterlev` — confirm repo is still private; you haven't flipped accidentally.
-- [ ] All A1-A7 maintainer-action queues worked through (Docker Hub org, npm namespace, repo transfer, branch protection, DCO app, security review filled in, GovCloud walkthrough if maintainer has access).
+- [ ] Repo transfer from `lhassa8/Efterlev` → `efterlev/efterlev` complete (see SPEC-01.62 maintainer-action). The destination repo exists and is **still private**.
+- [ ] `gh repo view efterlev/efterlev` — confirm visibility is `private`; you haven't flipped accidentally.
+- [ ] **Enable GitHub Pages now (while still private).** GitHub Settings → Pages → Source: "GitHub Actions". Pages config is required before `docs-deploy.yml` can deploy. Doing this now (not at hour 0) avoids panic-troubleshooting at the launch moment.
+- [ ] All other A1-A7 maintainer-action queues worked through (Docker Hub org, npm namespace, branch protection apply, DCO app install, security review §8 sign-off, GovCloud walkthrough if maintainer has access).
 - [ ] Sleep on it. The 24-hour pause is a feature; surprises tend to surface when fresh-eyes look at the same thing.
 
 ## Launch hour 0 — The flip
@@ -22,9 +24,10 @@ Hour-by-hour sequence for flipping Efterlev public. Tick each checkbox as you go
 - [ ] Wait for release-smoke.yml matrix to complete green.
 - [ ] Approve the `pypi` GitHub-environment deployment (manual gate per SPEC-05) once smoke is green.
 - [ ] Confirm artifacts: `pip index versions efterlev`, `docker manifest inspect ghcr.io/efterlev/efterlev:v0.1.0`.
-- [ ] **Flip repo visibility:** GitHub → Settings → Danger Zone → Change visibility → Public.
-- [ ] Confirm the docs site builds + deploys (docs-deploy.yml fires on the push that flipped main; check the run).
-- [ ] Confirm `efterlev.com` resolves to the docs site.
+- [ ] **Flip repo visibility:** `efterlev/efterlev` → GitHub → Settings → Danger Zone → Change visibility → Public.
+- [ ] Trigger the docs deploy: `gh workflow run docs-deploy.yml --ref main --repo efterlev/efterlev`. (A visibility flip is a settings change, not a push, so it does NOT auto-fire `docs-deploy.yml`. The workflow has a `workflow_dispatch` trigger for exactly this case.)
+- [ ] Watch the run: `gh run watch --repo efterlev/efterlev`. Build + deploy must succeed.
+- [ ] Confirm `efterlev.com` resolves to the docs site (DNS-propagation can lag — give it up to 10 min).
 - [ ] Enable GitHub Security Advisories on the now-public repo (Settings → Security → Code security and analysis).
 
 ## Launch hour 1 — Hacker News post
@@ -49,8 +52,8 @@ Slack posts are different from HN/Reddit — they're seen by communities of prac
 
 ## Day 1 — Blog post
 
-- [ ] Publish "Why we built Efterlev" on the docs site (`docs/blog/why-efterlev.md` or wherever the blog plugin lives).
-- [ ] Cross-post to dev.to and Medium.
+- [ ] Publish "Why we built Efterlev" on dev.to and Medium (use the long-form draft from `docs/launch/announcement-copy.md` § dev.to/Medium).
+- [ ] Link both cross-posts from a pinned GitHub Discussion on the repo. (mkdocs-material's blog plugin is a v0.2.0 follow-up — a pinned Discussion is the v0.1.0 substitute and keeps the docs-site nav uncluttered for now.)
 
 ## Day 2 — Design-partner outreach
 

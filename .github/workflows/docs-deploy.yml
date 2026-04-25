@@ -20,6 +20,11 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - '.github/workflows/docs-deploy.yml'
+  # Manual trigger — used at public-flip time. A visibility change is
+  # a settings event, not a push, so without workflow_dispatch the
+  # first post-flip deploy would require a no-op commit. See the
+  # launch runbook (`docs/launch/runbook.md`) hour-0 step.
+  workflow_dispatch:
 
 permissions:
   contents: read

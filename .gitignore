@@ -16,6 +16,8 @@ build/
 *.egg-info/
 *.egg
 .eggs/
+# mkdocs build output — `mkdocs build --strict` writes here.
+site/
 
 # Type-checking and lint caches
 .mypy_cache/

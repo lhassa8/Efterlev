@@ -14,7 +14,12 @@
 
 # docs/launch/* are the launch-rehearsal artifacts. They legitimately
 # reference the pre-launch state and historical context.
-^docs/launch/.*\.md:.*(closed-source|closed-development|NDA|lhassa8|private)
+# NOTE: `lhassa8` deliberately NOT in this broad pattern. The runbook is
+# operational — once the repo transfer happens, any lhassa8 reference in
+# the runbook is a bug, not a historical note. The grep-scrub-checklist
+# legitimately mentions lhassa8 (it documents what to look for) but is
+# allowlisted by file path further down.
+^docs/launch/.*\.md:.*(closed-source|closed-development|NDA|private)
 
 # CONTRIBUTING.md historical CoC formal-process note legitimately
 # discusses what's coming pre-launch.
@@ -78,3 +83,9 @@
 # internal_only_markers pattern is hunting (e.g., "confidential",
 # "internal only", "do not distribute") inside its own description.
 ^docs/launch/grep-scrub-checklist\.md:
+
+# docs/security-review-2026-04.md legitimately references the
+# pending repo transfer from `lhassa8/Efterlev` → `efterlev/efterlev`
+# in §6 (public-repo posture) as a maintainer-action callout. This
+# is forward-looking historical context, not a stale reference.
+^docs/security-review-2026-04\.md:.*lhassa8
