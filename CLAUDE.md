@@ -98,15 +98,36 @@ v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, h
 - **Secret redaction before LLM transmission is implemented and unconditional**: 7 pattern families, fail-closed, audit log at `.efterlev/redacted.log` with `efterlev redaction review` CLI for review.
 - **Reliability: transient Anthropic errors are retried (3x, exponential+jitter) with Opus-to-Sonnet fallback** on exhaustion. Non-retryable errors still surface immediately.
 
-**What's next (per v1 locked plan + 2026-04-23 review deferred items):**
+**End state at 2026-04-25 — all eight pre-launch readiness gates closed at the spec level (DECISIONS 2026-04-25 "A1-A8 buildout"):**
+- 602 tests passing (+142 from the A1-A8 sweep). ruff clean; mypy strict-clean on 129 source files. mkdocs strict build exit 0; `scripts/launch-grep-scrub.sh` clean; `pip-audit` clean (runtime + dev).
+- A1 (identity & licensing) — Apache-2.0, CODE_OF_CONDUCT, GOVERNANCE (BDFL-now / collective-later), PyPI name held, GitHub org `efterlev` claimed, `efterlev.com` reserved.
+- A2 (distribution & packaging) — `pyproject.toml` PyPI metadata, Dockerfile + `release-container.yml` (Sigstore keyless OIDC + cosign), `release-pypi.yml` (trusted publishing), `release-smoke.yml` install matrix, `scripts/verify-release.sh`, `docs/RELEASE.md` template.
+- A3 (Bedrock backend, SPEC-10) — `LLMClient` protocol with `AnthropicClient` + `AnthropicBedrockClient` via Converse API; `[bedrock]` extra opt-in; `tests/test_e2e_smoke_bedrock.py` covers the Bedrock pipeline; GovCloud regional-endpoint walkthrough at `docs/deploy-govcloud-ec2.md`.
+- A4 (30 detectors, SPEC-14) — 16 net-new AWS detectors landed under `src/efterlev/detectors/aws/<capability>/` (each five-file: detector.py, mapping.yaml, evidence.yaml, fixtures/, README.md), bringing the catalog from 14 to 30.
+- A5 (trust surface, SPEC-30) — CODEOWNERS + BRANCH_PROTECTION.md + SIGNING_KEYS.md, dependabot for pip + actions + docker, ISSUE_TEMPLATE/* + PR template, `ci-security.yml` (pip-audit + bandit + semgrep + CodeQL), and `docs/security-review-2026-04.md` populated through §7 awaiting maintainer §8 sign-off.
+- A6 (docs site, SPEC-38) — Material strict-mode mkdocs config, full nav (concepts/tutorials/comparisons/reference), `docs-deploy.yml` GitHub Pages workflow with `workflow_dispatch` for the post-flip first-deploy.
+- A7 (deployment-mode matrix, SPEC-53) — 15-mode green/yellow/white-circle matrix with manual-verification runbook template.
+- A8 (launch rehearsal, SPEC-56) — `scripts/launch-grep-scrub.sh` + allowlist (clean), `docs/launch/runbook.md` (fresh-eyes-walked 2026-04-25, four operational papercuts fixed), `docs/launch/failure-response.md`, `docs/launch/announcement-copy.md`, `docs/launch/design-partner-outreach.md`.
+
+**What's left before the public flip (maintainer-action queue):**
+- Repo transfer `lhassa8/Efterlev` → `efterlev/efterlev`.
+- Apply branch protection per `.github/BRANCH_PROTECTION.md` on the destination repo.
+- Enable GitHub Pages (Source: GitHub Actions) on the destination while still private.
+- Docker Hub `efterlev` org claim, npm namespace hold, DCO bot install on the org.
+- PyPI Trusted Publishing config pointed at `efterlev/efterlev`.
+- Maintainer §8 sign-off on `docs/security-review-2026-04.md`.
+- 24-hour pause + fresh-eyes walk through `docs/launch/runbook.md` (one human, one read).
+- GovCloud walkthrough by a maintainer with hands-on AWS GovCloud access (one of the 15 deployment modes that needs hands-on verification before promoting from ⚪ → 🟡).
+
+**What's next (post-launch, Phase C — written just-in-time per the hybrid spec policy):**
 - CI regression detection (scan PR + base branch, diff evidence) — biggest follow-up to the GitHub Action.
-- Unify `derived_from` semantics on `record_id` only (the dual-keyed lookup is a pragmatic bridge; long-term cleaner to refactor Gap Agent's citation plumbing to use record_ids directly).
+- Unify `derived_from` semantics on `record_id` only (the dual-keyed lookup is a pragmatic bridge).
 - Context-aware high-entropy redaction patterns (`password\s*=\s*"..."` shapes) as a second-pass secret detection layer.
 - POA&M integration with Remediation Agent output (enrich Remediation Plan field from prior `agent remediate` runs).
-- Phase 4 (runtime + drift) — gated on having enough scans-over-time data to make drift meaningful; may wait for first prospect usage.
-- Phase 5 (review workflow, sigstore signing, manifest-staleness prompt-layer treatment).
-- Phase 3 (multi-backend LLM: commercial Bedrock → GovCloud Bedrock) — gated on customer pull.
-- Phase 6-full (remaining ~18 detectors toward the 30 target) — gated on prospect signal per v1 lock.
+- Phase 4 (runtime + drift) — gated on having enough scans-over-time data; may wait for first prospect usage.
+- Phase 5 (review workflow, manifest-staleness prompt-layer treatment).
+- Real PR creation against real repos (Drift Agent / `--apply` flag — explicit and opt-in).
+- mkdocs-material blog plugin enable (the "Why we built Efterlev" docs-site post is on dev.to + Medium for v0.1.0; docs-site blog is v0.2.0).
 
 ---
 

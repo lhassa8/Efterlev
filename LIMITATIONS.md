@@ -140,16 +140,26 @@ evidence leaves. Non-Evidence evidence-typed records (init receipts,
 mcp_tool_call records) cleanly omit the line.
 
 **PyPI release and `pipx install efterlev`:** the package is `0.0.1`
-and there is no PyPI release yet. Users install from a cloned checkout
-via `uv sync --extra dev`. Per the open-source-first posture locked
-2026-04-23, PyPI release (along with container images on ghcr.io and a
-composite GitHub Action on the Marketplace) lands as pre-launch
-readiness gate A2. The repo flips public and `pipx install efterlev`
-begins working in a single coordinated launch event; no incremental
-opening. See `DECISIONS.md` 2026-04-23 "Rescind closed-source lock."
+and there is no PyPI release yet. The PyPI name is held by an inert
+`0.0.0` placeholder (DECISIONS 2026-04-23 "PyPI name held"). Users
+install from a cloned checkout via `uv sync --extra dev`. Per the
+open-source-first posture locked 2026-04-23, PyPI release (along with
+container images on ghcr.io and a composite GitHub Action on the
+Marketplace) lands as pre-launch readiness gate A2 — the trusted-
+publishing pipeline (`release-pypi.yml`) and Sigstore-signed container
+pipeline (`release-container.yml`) are checked in and gate-closed at
+the spec level (DECISIONS 2026-04-25). The repo flips public and
+`pipx install efterlev` begins working in a single coordinated launch
+event; no incremental opening. See `DECISIONS.md` 2026-04-25 "A1-A8
+buildout" for the readiness state and the maintainer-action queue
+that remains.
 
-**Sigstore / cosign signing of release artifacts:** planned for v1
-release. Not implemented at v0.
+**Sigstore / cosign signing of release artifacts:** wired and gate-closed
+at the spec level (A2 / SPEC-08); first signed artifacts are produced
+by the `release-pypi.yml` and `release-container.yml` workflows on the
+`v0.1.0` tag push at public-flip time. `scripts/verify-release.sh`
+runs the verification triplet (Sigstore signature + SLSA provenance +
+content hash) for users.
 
 **Standalone `efterlev mcp list` subcommand:** the MCP server is
 launched via `efterlev mcp serve`; a separate `list` subcommand that

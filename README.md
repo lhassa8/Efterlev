@@ -23,7 +23,7 @@ published to PyPI because PyPI release is part of the pre-launch
 distribution-readiness gate. See the "Status" block below for where that
 sits.
 
-> **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 + Plan JSON + dogfood coverage-followup + prompt hardening + GitHub Action + POA&M generator landed. Open-source-first posture locked; pre-launch readiness gates in progress.**
+> **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 + Plan JSON + dogfood coverage-followup + prompt hardening + GitHub Action + POA&M generator landed. Open-source-first posture locked; all eight pre-launch readiness gates closed at the spec level (2026-04-25) — repo flips public after the maintainer-action queue (transfer, branch protection, Pages, security-review sign-off, GovCloud walkthrough) completes.**
 > - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports. Phase 6-lite + dogfood coverage-follow-up + A4 detector-breadth gate bring the detector count to **30** (16 added in A4 covering SC-7 network-boundary, SI-4/AU-2 monitoring, SC-12/SC-28 key management, IA-2/AC-6 IAM-depth, and AU-2/AU-12 ELB-logging families).
 > - **v1 Phase 1 (Evidence Manifests):** customers declare procedural attestations in `.efterlev/manifests/*.yml`; they flow into the Gap Agent alongside detector Evidence. Takes scanner-only coverage from ~20% of the FedRAMP Moderate baseline toward 80%+ when paired with detectors.
 > - **v1 Phase 2 (FRMR attestation generator):** `efterlev agent document` emits an FRMR-compatible attestation JSON artifact alongside the HTML report — the v1 primary production output.
@@ -357,7 +357,7 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 ## Project status
 
-**Current state (2026-04-22): v0 shipped; v1 Phases 1 & 2, Plan JSON mode, prompt hardening, POA&M generator, and the PR GitHub Action landed. Repository private through v1 development.**
+**Current state (2026-04-25): v0 shipped; v1 Phases 1 & 2, Plan JSON mode, prompt hardening, POA&M generator, and the PR GitHub Action landed. All eight pre-launch readiness gates closed at the spec level (A1 identity → A8 launch rehearsal). Repository pre-launch private; the public Apache-2.0 flip happens once the maintainer-action queue (repo transfer to `efterlev/efterlev`, branch protection apply, Pages enable, security-review §8 sign-off, GovCloud walkthrough) completes.**
 
 ### What v0 contains
 

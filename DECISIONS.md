@@ -1384,6 +1384,40 @@ The 2026-04-22 lock was internally consistent given what we knew then (no named 
 
 ---
 
+## 2026-04-25 — A1-A8 buildout: all eight pre-launch readiness gates closed at the spec level `[launch]` `[milestone]` `[pre-launch]`
+
+**Decision:** Land the full A1-A8 readiness buildout in main and declare every gate closed at the spec level. The remaining work to flip the repo public is the maintainer-action queue (repo transfer, branch protection apply, Pages enable, security-review §8 sign-off, GovCloud walkthrough, fresh-eyes runbook rehearsal) — none of which can be done from inside the codebase.
+
+**Scope of the buildout:**
+- **A1 (identity & licensing):** Apache-2.0 license, CODE_OF_CONDUCT (Contributor Covenant 2.1 by reference), GOVERNANCE (BDFL-now / collective-later), DECISIONS / CLAUDE / COMPETITIVE_LANDSCAPE / LIMITATIONS / SECURITY / THREAT_MODEL hardened. PyPI name `efterlev` held (entry 2026-04-23 above), GitHub org `efterlev` claimed, `efterlev.com` reserved.
+- **A2 (distribution & packaging):** `pyproject.toml` with PyPI metadata + `[bedrock]` extra; Dockerfile + `.dockerignore`; `release-pypi.yml` (trusted publishing via `pypa/gh-action-pypi-publish@release/v1`, TestPyPI smoke first then real PyPI gated on the `pypi` GitHub-environment manual approval); `release-container.yml` (Sigstore keyless OIDC + cosign sign-by-digest + SLSA provenance); `release-smoke.yml` install-verification matrix; `scripts/verify-release.sh`; `docs/RELEASE.md` template.
+- **A3 (Bedrock backend, SPEC-10):** `LLMClient` protocol with `AnthropicClient` + `AnthropicBedrockClient` via the Converse API; `[bedrock]` opt-in extra; `tests/test_e2e_smoke_bedrock.py`; `docs/deploy-govcloud-ec2.md` walkthrough for the GovCloud regional endpoint.
+- **A4 (30 detectors, SPEC-14):** 16 net-new AWS detectors landed under `src/efterlev/detectors/aws/<capability>/` covering SC-7 network-boundary, SI-4/AU-2 monitoring, SC-12/SC-28 key management, IA-2/AC-6 IAM-depth, AU-2/AU-12 ELB-logging families. Each detector follows the five-file contract (detector.py, mapping.yaml, evidence.yaml, fixtures/, README.md). Catalog goes from 14 → 30.
+- **A5 (trust surface, SPEC-30):** `.github/CODEOWNERS`, `BRANCH_PROTECTION.md`, `SIGNING_KEYS.md`, `dependabot.yml` (pip + actions + docker, weekly); `ISSUE_TEMPLATE/*` (bug, detector_proposal, documentation, config.yml); PR template; `ci-security.yml` (pip-audit + bandit + semgrep + CodeQL); `docs/security-review-2026-04.md` populated through §7 with evidence rows for T1-T10, awaiting maintainer §8 sign-off.
+- **A6 (docs site, SPEC-38):** Material strict-mode mkdocs config; full nav (concepts, tutorials, comparisons, reference); `docs-deploy.yml` GitHub Pages workflow with `workflow_dispatch` for the post-flip first-deploy; `docs/CNAME` for `efterlev.com`.
+- **A7 (deployment-mode matrix, SPEC-53):** 15-mode `docs/deployment-modes.md` (9 CI-verified, 6 documented-but-unverified) + `docs/manual-verification-runbook.md` template. Mode graduations from ⚪ → 🟡 happen as maintainers + customers walk modes.
+- **A8 (launch rehearsal, SPEC-56):** `scripts/launch-grep-scrub.sh` + `.allowlist` (clean as of `ae75770`); `docs/launch/runbook.md` (fresh-eyes-walked 2026-04-25, four operational papercuts fixed: stale `lhassa8` reference in pre-launch check, missing `workflow_dispatch` for docs-deploy at flip time, missing Pages-enable step in pre-launch list, nonexistent `docs/blog/` path for Day-1 blog post); `docs/launch/failure-response.md`; `docs/launch/announcement-copy.md`; `docs/launch/design-partner-outreach.md`.
+
+**Verification at SHA `ae75770`:**
+- 602 unit + integration tests passing (`uv run --extra dev pytest -m "not e2e"`).
+- ruff clean, mypy strict-clean on 129 source files.
+- mkdocs strict build exit 0.
+- `bash scripts/launch-grep-scrub.sh` exits clean.
+- `pip-audit` clean against runtime deps and against runtime + dev.
+
+**Why one omnibus DECISIONS entry instead of eight per-gate entries:** the gates were built in sequence over a single conversation, each gate's spec lives in `docs/specs/SPEC-NN.md` already, and per-gate DECISIONS entries would just restate the spec. The spec-driven discipline (hybrid policy from DECISIONS 2026-04-23) means the spec is the design record; DECISIONS captures the meta-decision (we built the whole readiness buildout, here's how we knew it was done).
+
+**What's NOT decided here:**
+- The actual launch date. Launch remains gate-driven, not date-driven (DECISIONS 2026-04-23 "Rescind closed-source lock"). The maintainer flips the repo when the maintainer-action queue is genuinely complete and a 24-hour fresh-eyes pause has occurred — not on a calendar trigger.
+- Phase C scope. Per-launch-plan post-flip work (CI regression detection, Drift Agent, real PR creation, non-AWS detectors, first-user feedback window) gets specs written just-in-time when each gate approaches, per the hybrid spec policy.
+
+**Cross-references:**
+- `docs/specs/README.md` is the master index of all specs (A1-A8 indexed).
+- `docs/security-review-2026-04.md` §1 has spot-check evidence for every named threat in `THREAT_MODEL.md` at this SHA.
+- `docs/launch/runbook.md` is the hour-by-hour launch sequence; the maintainer walks it end-to-end before the flip.
+
+---
+
 
 
 ```

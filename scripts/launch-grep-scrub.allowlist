@@ -10,7 +10,7 @@
 # legitimate references to the pre-2026-04-23 state of the project.
 ^DECISIONS\.md:.*(closed-source|closed-development|NDA|external contributions paused|v1 public-repo opening|lhassa8)
 ^docs/specs/.*\.md:.*(closed-source|closed-development|NDA|external contributions paused|v1 public-repo opening|lhassa8)
-^CLAUDE\.md:.*(closed-source|closed-development|NDA)
+^CLAUDE\.md:.*(closed-source|closed-development|NDA|lhassa8)
 
 # docs/launch/* are the launch-rehearsal artifacts. They legitimately
 # reference the pre-launch state and historical context.
