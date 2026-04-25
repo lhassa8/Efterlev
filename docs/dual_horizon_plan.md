@@ -289,14 +289,16 @@ The deliberate gaps are what the Gap Agent flags and the Remediation Agent fixes
 
 This is where Efterlev stops being a hackathon demo and becomes a useful tool that people depend on.
 
-### 3.1 The coverage roadmap (v1 locked 2026-04-22)
+### 3.1 The coverage roadmap (v1 locked 2026-04-22, amended 2026-04-23)
 
-This section reflects the v1 locked plan from `DECISIONS.md` 2026-04-22 "Lock v1 scope." Four commitments shape the phasing:
+This section reflects the v1 locked plan from `DECISIONS.md` 2026-04-22 "Lock v1 scope," with the 2026-04-23 amendment that rescinds the closed-source commitment and reorders Phases 3/6 into pre-launch readiness gates. See `DECISIONS.md` 2026-04-23 "Rescind closed-source lock; open-source-first, gate-driven launch" for the full amendment rationale.
 
-1. **Archetype-only.** No named design partner; we design against the primary ICP from `docs/icp.md`.
-2. **Commercial AWS first.** Deployment modes 1 (developer laptop) and 2 (CI runner) cover the initial base; GovCloud + Bedrock are gated on prospect pull.
+Three commitments survive from the 2026-04-22 lock; a fourth was rescinded:
+
+1. **Archetype-first.** No named design partner; we design against the primary ICP from `docs/icp.md`. First real user likely surfaces through public GitHub discovery post-launch rather than private outreach.
+2. **Commercial AWS + GovCloud both first** *(amended 2026-04-23)*. AWS Bedrock backend — originally Phase 3 gated on prospect pull — is now pre-launch readiness gate A3. The "runs where the customer wants" promise of the OSS launch depends on this.
 3. **20x-native output first.** FRMR-attestation generator is the only v1 production output format; OSCAL SSP/AR/POA&M generators defer to v1.5+ gated on Rev5-transition or OSCAL-Hub-consuming customer demand.
-4. **Closed-source through v1.** Private repo, no public announcement, customer security-review access via private-repo invite under NDA.
+4. **~~Closed-source through v1~~** — rescinded 2026-04-23. Efterlev ships as a public Apache-2.0 repository when the eight pre-launch readiness gates pass. Monetization posture: pure OSS, no commercial tier, no paid layer — ever.
 
 Expansion still happens along three axes — **input sources** (what Efterlev can scan), **KSI coverage** (what it can find at the user-facing layer), and **output formats** (how it speaks to downstream tooling) — but the priorities are reordered: procedural coverage (Evidence Manifests) lifts the KSI ceiling from ~20% (scanner-only) toward the 80% needed for a real FedRAMP Moderate package; detector breadth is how the remaining scanner-visible layer fills in; runtime + drift is how the tool becomes load-bearing in CI.
 

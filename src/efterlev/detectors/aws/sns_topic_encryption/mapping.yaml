@@ -1,0 +1,15 @@
+detector_id: aws.sns_topic_encryption
+
+# FRMR 0.9.43-beta does not list SC-28 in any KSI's `controls` array.
+# Same precedent as `aws.encryption_s3_at_rest`: `ksis=[]` and the
+# README names the FRMR mapping gap explicitly.
+ksis: []
+
+controls:
+  - id: SC-28
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      SNS topics encrypt messages at rest with either AWS-managed or
+      customer-managed KMS keys. Customer-managed is preferred; the
+      detector emits the distinction so the Gap Agent can render it.

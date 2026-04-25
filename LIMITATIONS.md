@@ -139,12 +139,14 @@ time and the renderer appends `source=<file>:<start>-<end>` at
 evidence leaves. Non-Evidence evidence-typed records (init receipts,
 mcp_tool_call records) cleanly omit the line.
 
-**PyPI release and `pipx install efterlev`:** the package is `0.0.1`,
-the repo is private, and there is no PyPI release. Users install from
-a cloned checkout via `uv sync --extra dev`. `pipx install efterlev`
-will not work until the v1 public-repo opening (first customer
-engagement or month 6, whichever comes first — `DECISIONS.md`
-2026-04-22).
+**PyPI release and `pipx install efterlev`:** the package is `0.0.1`
+and there is no PyPI release yet. Users install from a cloned checkout
+via `uv sync --extra dev`. Per the open-source-first posture locked
+2026-04-23, PyPI release (along with container images on ghcr.io and a
+composite GitHub Action on the Marketplace) lands as pre-launch
+readiness gate A2. The repo flips public and `pipx install efterlev`
+begins working in a single coordinated launch event; no incremental
+opening. See `DECISIONS.md` 2026-04-23 "Rescind closed-source lock."
 
 **Sigstore / cosign signing of release artifacts:** planned for v1
 release. Not implemented at v0.

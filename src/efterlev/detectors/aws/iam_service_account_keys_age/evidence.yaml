@@ -1,0 +1,9 @@
+detector_id: aws.iam_service_account_keys_age
+
+evidence_shape:
+  resource_type: string         # always "aws_iam_access_key"
+  resource_name: string
+  user_ref: string              # Terraform reference value to the IAM user
+  profile_kind: enum            # "service_account" | "human_user_with_keys"
+  rotation_visibility: enum     # "iac_cannot_show_age"
+  gap: string

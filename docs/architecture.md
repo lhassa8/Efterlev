@@ -8,7 +8,7 @@ This document is the architectural overview. It does not re-state the full build
 
 The codebase has three first-class abstractions, each with a different contract, a different rate of change, and different contribution ergonomics.
 
-**Detectors** read source material (Terraform files, CI configs, application source) and emit `Evidence` records. They are rule-like and deterministic: given the same input, a detector produces the same evidence every time. Each detector lives as a self-contained folder at `src/efterlev/detectors/<cloud>/<capability>/` with five files — `detector.py`, `mapping.yaml`, `evidence.yaml`, `fixtures/`, and `README.md`. A contributor can add a new detector without reading or touching the rest of the codebase, which is the #1 design commitment for long-term project health. Detector IDs are capability-shaped (`encryption_s3_at_rest`) rather than control-numbered (`sc_28_s3_encryption`) because KSIs think in capabilities and capability-shaped IDs age better as the KSI ↔ 800-53 mapping evolves. See [`CONTRIBUTING.md`](../CONTRIBUTING.md) for the full detector contract.
+**Detectors** read source material (Terraform files, CI configs, application source) and emit `Evidence` records. They are rule-like and deterministic: given the same input, a detector produces the same evidence every time. Each detector lives as a self-contained folder at `src/efterlev/detectors/<cloud>/<capability>/` with five files — `detector.py`, `mapping.yaml`, `evidence.yaml`, `fixtures/`, and `README.md`. A contributor can add a new detector without reading or touching the rest of the codebase, which is the #1 design commitment for long-term project health. Detector IDs are capability-shaped (`encryption_s3_at_rest`) rather than control-numbered (`sc_28_s3_encryption`) because KSIs think in capabilities and capability-shaped IDs age better as the KSI ↔ 800-53 mapping evolves. See [`CONTRIBUTING.md`](https://github.com/efterlev/efterlev/blob/main/CONTRIBUTING.md) for the full detector contract.
 
 **Primitives** are typed Python functions that represent agent-legible capabilities — `scan_terraform`, `load_frmr`, `map_ksi_to_controls`, `generate_attestation`, `validate_frmr`. There will be on the order of 15–25 primitives at v1. Every primitive is exposed via the MCP server the moment it exists; external agents can discover and call every one. A primitive's contract is two Pydantic models (one input, one output), a docstring naming side-effects and determinism, and a decorator that handles registration plus provenance emission. Primitives are the stable surface; they change deliberately and infrequently.
 
@@ -58,14 +58,14 @@ A detector declares both:
 
 Its evidence records carry `ksis_evidenced` and `controls_evidenced` in parallel. Gap reports, attestation drafts, and HTML outputs all show the KSI as the primary organizing surface with the underlying controls shown alongside — because that is the distinction a user actually needs to see. An auditor wants to know both "is this KSI evidenced" and "which underlying 800-53 control has a mapped artifact." The data model answers both. When a control evidenced by a detector has no FRMR KSI mapping (SC-28 today), the Gap Agent surfaces those records in an explicit "Unmapped findings" section rather than shoehorning them into a thematically-adjacent KSI.
 
-One subtlety on `ksis_evidenced`: per [DECISIONS 2026-04-21](../DECISIONS.md) — "Evidence.ksis_evidenced is default attribution, not authoritative" — the field represents the detector's *default* attribution, not the complete set of KSIs this evidence can inform. Agents may cite a given evidence record across additional KSIs through reasoning (e.g., a CloudTrail record attributed to KSI-MLA-LET also speaking to KSI-CMT-LMC's change-monitoring semantics). The Documentation Agent honors whatever evidence the Gap Agent cited; the fence-citation validator bounds this to "evidence the scanner actually produced."
+One subtlety on `ksis_evidenced`: per [DECISIONS 2026-04-21](https://github.com/efterlev/efterlev/blob/main/DECISIONS.md) — "Evidence.ksis_evidenced is default attribution, not authoritative" — the field represents the detector's *default* attribution, not the complete set of KSIs this evidence can inform. Agents may cite a given evidence record across additional KSIs through reasoning (e.g., a CloudTrail record attributed to KSI-MLA-LET also speaking to KSI-CMT-LMC's change-monitoring semantics). The Documentation Agent honors whatever evidence the Gap Agent cited; the fence-citation validator bounds this to "evidence the scanner actually produced."
 
 Two catalogs are vendored and loaded at startup:
 
 - **FRMR** (`catalogs/frmr/FRMR.documentation.json`) from `FedRAMP/docs` — 11 KSI themes, 60 indicators, plus the FRR (FedRAMP Requirements and Recommendations) and FRD (Definitions) sections. Loaded with Pydantic directly; validated against the vendored `FedRAMP.schema.json`.
 - **NIST SP 800-53 Rev 5** (`catalogs/nist/`) from `usnistgov/oscal-content` — the full 20-family catalog with enhancements. Loaded via `compliance-trestle`.
 
-Both translate immediately into our internal Pydantic model. FRMR and OSCAL are output formats; the internal model is neither. See [`catalogs/README.md`](../catalogs/README.md) for the full provenance of each vendored file.
+Both translate immediately into our internal Pydantic model. FRMR and OSCAL are output formats; the internal model is neither. See [`catalogs/README.md`](https://github.com/efterlev/efterlev/blob/main/catalogs/README.md) for the full provenance of each vendored file.
 
 ## FRMR attestation output (v1 Phase 2, landed 2026-04-22)
 
@@ -94,7 +94,7 @@ This makes two things true. First, our own agents consume primitives through an 
 - [`docs/dual_horizon_plan.md`](./dual_horizon_plan.md) — what ships when; the 4-day hackathon plan and the post-hackathon roadmap
 - [`docs/scope.md`](./scope.md) — the crisp v0 MVP contract, in and out of scope
 - [`docs/icp.md`](./icp.md) — who this is for and how that shapes the product
-- [`COMPETITIVE_LANDSCAPE.md`](../COMPETITIVE_LANDSCAPE.md) — honest positioning against Comp AI, RegScale OSCAL Hub, and others
-- [`THREAT_MODEL.md`](../THREAT_MODEL.md) — the tool's own security posture
-- [`DECISIONS.md`](../DECISIONS.md) — append-only record of non-trivial choices made while building this
-- [`CONTRIBUTING.md`](../CONTRIBUTING.md) — the detector and primitive contracts, in contributor-facing form
+- [`COMPETITIVE_LANDSCAPE.md`](https://github.com/efterlev/efterlev/blob/main/COMPETITIVE_LANDSCAPE.md) — honest positioning against Comp AI, RegScale OSCAL Hub, and others
+- [`THREAT_MODEL.md`](https://github.com/efterlev/efterlev/blob/main/THREAT_MODEL.md) — the tool's own security posture
+- [`DECISIONS.md`](https://github.com/efterlev/efterlev/blob/main/DECISIONS.md) — append-only record of non-trivial choices made while building this
+- [`CONTRIBUTING.md`](https://github.com/efterlev/efterlev/blob/main/CONTRIBUTING.md) — the detector and primitive contracts, in contributor-facing form

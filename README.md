@@ -9,24 +9,31 @@ Built for the VP Eng or DevSecOps lead whose CEO just told them "we need FedRAMP
 Pronounced "EF-ter-lev." From Swedish *efterlevnad* (compliance).
 
 ```bash
-# Repo is private through v1; clone it (see "Install" below for access) and:
+# Install (once PyPI release lands — pre-launch today):
+pipx install efterlev
+# Until then, from a cloned repo checkout:
 uv sync --extra dev
 cd path/to/your-repo
 uv run efterlev init --baseline fedramp-20x-moderate
 uv run efterlev scan
 ```
 
-`pipx install efterlev` is NOT yet available — the package is at `0.0.1`
-and not published to PyPI. PyPI release is gated on the v1 public-repo
-opening (first customer engagement or month 6, whichever comes first;
-`DECISIONS.md` 2026-04-22).
+`pipx install efterlev` will be the primary install path; it is not yet
+published to PyPI because PyPI release is part of the pre-launch
+distribution-readiness gate. See the "Status" block below for where that
+sits.
 
-> **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 + dogfood coverage-followup + Plan JSON support landed; v1 closed-development.**
-> - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports. Phase 6-lite + dogfood coverage-follow-up (landed 2026-04-22) bring the detector count to fourteen — adding s3_public_access_block, rds_encryption_at_rest, kms_key_rotation, cloudtrail_log_file_validation, vpc_flow_logs_enabled, iam_password_policy, encryption_ebs, and iam_user_access_keys.
+> **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 + Plan JSON + dogfood coverage-followup + prompt hardening + GitHub Action + POA&M generator landed. Open-source-first posture locked; pre-launch readiness gates in progress.**
+> - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports. Phase 6-lite + dogfood coverage-follow-up + A4 detector-breadth gate bring the detector count to **30** (16 added in A4 covering SC-7 network-boundary, SI-4/AU-2 monitoring, SC-12/SC-28 key management, IA-2/AC-6 IAM-depth, and AU-2/AU-12 ELB-logging families).
 > - **v1 Phase 1 (Evidence Manifests):** customers declare procedural attestations in `.efterlev/manifests/*.yml`; they flow into the Gap Agent alongside detector Evidence. Takes scanner-only coverage from ~20% of the FedRAMP Moderate baseline toward 80%+ when paired with detectors.
-> - **v1 Phase 2 (FRMR attestation generator):** `efterlev agent document` now emits an FRMR-compatible attestation JSON artifact alongside the HTML report — the v1 primary production output.
+> - **v1 Phase 2 (FRMR attestation generator):** `efterlev agent document` emits an FRMR-compatible attestation JSON artifact alongside the HTML report — the v1 primary production output.
+> - **Plan JSON scan mode:** `efterlev scan --plan plan.json` reads `terraform show -json` output, giving detectors ~60% more evidence in `for_each`/module-heavy codebases than static `.tf` parsing.
+> - **Secret redaction + retry/fallback:** every LLM prompt is unconditionally scrubbed for 7 secret families (AWS, GCP, GitHub, Slack, Stripe, PEM, JWT) before egress; `efterlev redaction review` audits what was redacted per scan. Anthropic calls retry with exponential backoff + full jitter and fall back from Opus to Sonnet once before surfacing a failure.
+> - **POA&M generator:** `efterlev poam` emits a reviewer-ready Plan of Action & Milestones markdown for every open KSI. OSCAL-shaped POA&M JSON remains v1.5+.
+> - **CI integration:** `.github/workflows/pr-compliance-scan.yml` is a drop-in GitHub Action that scans PRs, posts a sticky markdown comment with findings + detector coverage, and uploads the `.efterlev/` artifact. See [docs/ci-integration.md](./docs/ci-integration.md).
+> - **Open-source-first posture (2026-04-23):** rescinds the 2026-04-22 closed-source-through-v1 lock. Efterlev will be a pure-OSS Apache-2.0 public repository. Launch is gate-driven — eight pre-launch readiness gates cover identity/governance, distribution (PyPI + container + GitHub Action marketplace), AWS Bedrock backend for GovCloud deployability, detector breadth to 30, trust surface, documentation site, deployment-mode verification, and launch rehearsal. No managed tier, no paid layer, no commercial edition — the project stays pure OSS. See `DECISIONS.md` 2026-04-23 "Rescind closed-source lock."
 >
-> The repository is private through v1 development (closed-source, no public announcement); security-team review access for evaluating customers is granted via private-repo invite under NDA. License is Apache 2.0; public-release timing is revisited at first customer engagement or Month 6. See `DECISIONS.md` 2026-04-22 for the v1 scope lock and `CLAUDE.md` for the current-state summary.
+> The repository is pre-launch private today; the launch commitment is public Apache-2.0 once every readiness gate passes. License is Apache 2.0 throughout; private-repo visibility is purely a pre-launch staging posture, not a reversible distribution model. See `DECISIONS.md` 2026-04-23 for the open-source commitment and `CLAUDE.md` for the current-state summary.
 
 Efterlev is **KSI-native**: its primary abstraction is the Key Security Indicator from FedRAMP 20x, with 800-53 Rev 5 controls as the underlying reference. Agent outputs (gap classifications, attestation narratives, remediation diffs) render as self-contained HTML reports; the Documentation Agent additionally emits an FRMR-compatible attestation JSON artifact consumable by 3PAOs and downstream tooling. OSCAL output for Rev5-transition submissions is deferred to v1.5+, gated on customer pull (see `DECISIONS.md` 2026-04-22).
 
@@ -135,7 +142,11 @@ See [DECISIONS.md](./DECISIONS.md) for the full rationale. Callers override per-
 
 This split — **deterministic for evidence, AI for reasoning, different model weights for different cognitive loads** — is the most important design decision in the project. It's what lets us tell auditors and 3PAOs the truth: scanner findings are verifiable facts about your code; AI claims are drafts you can audit but should not blindly trust.
 
-**Hallucination defenses are structural, not advisory.** Every AI-generated claim links explicitly to the evidence records it was reasoning over via content-addressed IDs. Every agent prompt wraps evidence in `<evidence id="sha256:...">...</evidence>` XML fences; a post-generation validator rejects any output that cites evidence IDs not present as fences in the prompt the model actually saw (see [DECISIONS 2026-04-21 design call #3](./DECISIONS.md)). Every claim carries a "DRAFT — requires human review" marker that cannot be removed by a configuration flag — it's a `Literal[True]` at the type level, not a string. This is enforced at the type-system level, not by convention.
+**Hallucination defenses are structural, not advisory.** Every AI-generated claim links explicitly to the evidence records it was reasoning over via content-addressed IDs. Every agent prompt wraps evidence in `<evidence id="sha256:...">...</evidence>` XML fences; a post-generation validator rejects any output that cites evidence IDs not present as fences in the prompt the model actually saw (see [DECISIONS 2026-04-21 design call #3](./DECISIONS.md)). Defense-in-depth runs at the store layer too: `ProvenanceStore.write_record` refuses to persist a Claim whose `derived_from` cites ids not resolvable against the store, so a buggy agent or direct write path cannot create a citation that doesn't land. Every claim carries a "DRAFT — requires human review" marker that cannot be removed by a configuration flag — it's a `Literal[True]` at the type level, not a string. This is enforced at the type-system level, not by convention.
+
+**Secrets never leave the machine unredacted.** Before every LLM call, Efterlev scrubs the prompt for seven secret families — AWS access keys, GCP API keys, GitHub tokens, Slack tokens, Stripe keys, PEM private keys, JWTs — replacing matches with `[REDACTED:family:sha256-prefix]` placeholders. The scrubber is unconditional (no feature flag, no way for an agent author to disable it) and runs on detector Evidence, source-file fences, and free-text narratives alike. Each redaction writes a line to `.efterlev/redactions/<scan_id>.jsonl` (mode `0o600`) with the family, a truncated preview, and the record id it came from; `efterlev redaction review` renders that log. The failure mode is conservative over-redaction, not silent leakage.
+
+**LLM calls degrade predictably.** Transient Anthropic errors (rate-limit, timeout, overloaded, connection reset) retry with exponential backoff plus full jitter, up to three attempts on the primary model. If the primary model exhausts its retries, the client falls back once to a configured secondary (Opus 4.7 → Sonnet 4.6 by default) before surfacing the failure. Non-retryable errors (authentication, invalid request) fail immediately. The retry loop is unit-tested with an injectable sleeper so the behaviour is verifiable without waiting on real clock time.
 
 ### Provenance is automatic and complete
 
@@ -147,7 +158,7 @@ Every detector finding, every AI claim, every remediation suggestion is stored a
 
 ### The stack
 
-Python 3.12, Pydantic v2 for typed I/O, Typer for the CLI, `compliance-trestle` for loading the NIST 800-53 catalog, `python-hcl2` for parsing Terraform, the official MCP Python SDK for the server, the Anthropic Python SDK for Claude calls. AWS Bedrock as a second LLM backend is committed for v1 (so the tool can run inside FedRAMP-authorized GovCloud environments). Apache 2.0 throughout.
+Python 3.12, Pydantic v2 for typed I/O, Typer for the CLI, `compliance-trestle` for loading the NIST 800-53 catalog, `python-hcl2` for parsing Terraform, the official MCP Python SDK for the server, the Anthropic Python SDK for direct Claude calls, and `boto3` for the AWS Bedrock backend (so the tool runs inside FedRAMP-authorized GovCloud environments without egress to `anthropic.com`). The Bedrock backend opts in via `pipx install 'efterlev[bedrock]'` or the container image; default install stays lean for non-GovCloud users. Apache 2.0 throughout.
 
 For deeper architectural detail, see [docs/architecture.md](./docs/architecture.md). For the design history and reversals, see [DECISIONS.md](./DECISIONS.md).
 
@@ -157,28 +168,31 @@ For deeper architectural detail, see [docs/architecture.md](./docs/architecture.
 
 ### Install
 
-**v0 (today): install from a cloned private-repo checkout.** The package
-is at `0.0.1` and is NOT published to PyPI yet; `pipx install efterlev`
-will not work. PyPI release is gated on the v1 public-repo opening.
+**Pre-launch today: install from a cloned checkout.** The package is at
+`0.0.1` and is not yet published to PyPI; `pipx install efterlev` will
+be the primary install path once the pre-launch distribution-readiness
+gate (A2 in the open-source launch plan) passes. Until then:
 
 ```bash
 # from a cloned checkout:
-git clone https://github.com/lhassa8/Efterlev.git
-cd Efterlev
+git clone https://github.com/efterlev/efterlev.git
+cd efterlev
 uv sync --extra dev
 
 # or with pip, if you can't use uv:
 pip install -e .
-
-# or directly from git with a fine-grained PAT (Contents:read on this repo):
-pip install "git+https://x-access-token:${EFTERLEV_INSTALL_TOKEN}@github.com/lhassa8/Efterlev.git@main"
 ```
 
 Requires Python 3.12+. `uv` is used throughout the repo for dependency
 management; dev, lint, type-check, and test commands run through it.
 
-**v1 plan:** `pipx install efterlev` once the repo opens. See
-`DECISIONS.md` 2026-04-22 for the open-source timing commitment.
+**Launch plan:** `pipx install efterlev` from PyPI; `ghcr.io/efterlev/efterlev`
+container image for Docker / Kubernetes / GovCloud-EC2 runs; composite
+GitHub Action at `efterlev/scan-action` for CI. All artifacts will be
+Sigstore-signed. The repo flips to public Apache-2.0 once every launch
+readiness gate passes — no scheduled date, launch is gate-driven. See
+`DECISIONS.md` 2026-04-23 "Rescind closed-source lock" for the posture
+commitment and the eight readiness gates.
 
 The govnotes-demo reference CI uses exactly this pattern — see [its workflow](https://github.com/lhassa8/govnotes-demo/blob/main/.github/workflows/efterlev-scan.yml) for a working install + scan + agent pipeline.
 
@@ -232,7 +246,7 @@ efterlev agent document                     # all classified KSIs
 efterlev agent document --ksi KSI-SVC-SNT   # one KSI
 ```
 
-The Documentation Agent (Claude Sonnet 4.6 by default — see [DECISIONS.md](./DECISIONS.md) for the per-agent model-selection rationale) drafts an attestation narrative per classified KSI, grounded in the evidence the Gap Agent cited. Every narrative cites evidence by ID, names what the scanner proved and what it did not. Output is `.efterlev/reports/documentation-<timestamp>.html` with one card per KSI. Cost is typically ~$1-2 for a full baseline; at ~$0.02 per KSI narrative. FRMR-compatible JSON serialization is a v1 deliverable — the internal `AttestationDraft` model is already FRMR-shaped, it's the serializer that's next.
+The Documentation Agent (Claude Sonnet 4.6 by default — see [DECISIONS.md](./DECISIONS.md) for the per-agent model-selection rationale) drafts an attestation narrative per classified KSI, grounded in the evidence the Gap Agent cited. Every narrative cites evidence by ID, names what the scanner proved and what it did not. Output is `.efterlev/reports/documentation-<timestamp>.html` with one card per KSI plus an FRMR-compatible `.efterlev/reports/attestation-<timestamp>.json` artifact for 3PAO ingestion and downstream tooling. Cost is typically ~$1-2 for a full baseline; at ~$0.02 per KSI narrative.
 
 ### Propose remediation
 
@@ -242,6 +256,16 @@ efterlev agent remediate --ksi KSI-SVC-SNT
 
 The Remediation Agent (Claude Opus 4.7) proposes a `git apply`-ready Terraform diff that closes the gap for one KSI, reading the `.tf` files the evidence referenced. Output is `.efterlev/reports/remediation-<ksi>-<timestamp>.html` with the diff in a monospace block, the explanation of what it changes and what it does NOT cover, and step-by-step "how to apply" guidance. Efterlev never modifies your code; a human reviews the diff and decides.
 
+### Draft a POA&M
+
+```bash
+efterlev poam                               # every open KSI
+efterlev poam --ksi KSI-SVC-SNT             # one KSI
+efterlev poam --output poam.md              # write to a specific path
+```
+
+Emits a Plan of Action & Milestones markdown for every KSI the Gap Agent classified as `partial` or `not_implemented`. Deterministic — no LLM call. Severity is heuristically derived (not_implemented → HIGH, partial → MEDIUM); reviewer fields (milestones, resources, scheduled completion) are explicit `DRAFT` placeholders the human owner fills in. POA&M IDs derive from the underlying Claim record_id so the document is provenance-linked. OSCAL-shaped POA&M JSON is a v1.5+ deliverable, gated on first OSCAL-Hub-consuming customer.
+
 ### Walk the provenance
 
 ```bash
@@ -249,6 +273,19 @@ efterlev provenance show <record_id>
 ```
 
 Every generated claim traces back through the reasoning step, the evidence records cited, to the Terraform file and line that produced the evidence. Record IDs are printed by every command for exactly this purpose.
+
+### Review redacted secrets
+
+```bash
+efterlev redaction review                   # all scans
+efterlev redaction review --scan <scan_id>  # one scan
+```
+
+Every LLM prompt Efterlev sends is unconditionally scrubbed for secret-shaped substrings (AWS access keys, GCP API keys, GitHub tokens, Slack tokens, Stripe keys, PEM private keys, JWTs). A per-scan audit log at `.efterlev/redactions/<scan_id>.jsonl` (mode `0o600`) records each redaction's family, a truncated preview, and the record it came from. `efterlev redaction review` renders that log so you can audit what Efterlev did and did not send upstream. The scrubber is conservative and may over-redact; false positives are the safe failure mode.
+
+### Wire it into CI
+
+A drop-in GitHub Action at `.github/workflows/pr-compliance-scan.yml` runs the scanner on every PR, posts a sticky markdown comment with findings + detector coverage, and uploads the `.efterlev/` store as a workflow artifact. The Gap Agent step is opt-in (requires `ANTHROPIC_API_KEY`). See [docs/ci-integration.md](./docs/ci-integration.md) for the full setup, including the `--fail-on-finding` flag for orgs that want CI to gate on any finding.
 
 ### Run over MCP
 
@@ -293,13 +330,11 @@ Every detector's `README.md` inside `src/efterlev/detectors/` names what it prov
 
 Expansion happens along two axes in parallel: **input sources** (what Efterlev can scan) and **KSI / control coverage** (what it can find). Source-type expansion matters more for adoption; coverage expansion matters more for depth.
 
-- **Month 1:** Terraform Plan JSON support (scans resolved plans including computed values); OpenTofu declared as first-class alongside Terraform; **OSCAL output generators** for users transitioning Rev5 submissions (Assessment Results, partial SSP, POA&M) — this is the primary deliverable beyond the KSI-native v0
-- **Month 1–2:** +15 detectors for Terraform covering additional KSIs in the IAM, CMT, MLA, and SVC themes; AWS Bedrock as a second LLM backend for FedRAMP-authorized deployments (GovCloud)
-- **Month 2:** CloudFormation and AWS CDK support (CDK compiles to CloudFormation; one parser covers both)
-- **Month 3:** First external contributor detector merged; Kubernetes manifests + Helm (network policies, pod security, RBAC — different control set, high value)
-- **Month 4:** GitHub Action for PR-level compliance checks; Pulumi support
-- **Month 5:** CMMC 2.0 overlay
-- **Month 6:** Drift Agent — watches a repo over time, flags regressions in evidenced KSIs
+- **Shipped (2026-04):** Terraform Plan JSON scan mode (`--plan`); POA&M markdown generator (`efterlev poam`); drop-in GitHub Action for PR compliance checks (`.github/workflows/pr-compliance-scan.yml`); unconditional LLM-prompt secret redaction (7 families) with per-scan audit log; Anthropic retry + Opus→Sonnet fallback.
+- **Next:** +16 detectors toward the 30-detector Phase 6 target (IAM, CMT, MLA, SVC themes); OpenTofu declared as first-class alongside Terraform
+- **Shipped (2026-04-24):** AWS Bedrock LLM backend for FedRAMP-authorized deployments (GovCloud + commercial). Opt-in via `[bedrock]` extra; container image bakes it in.
+- **Mid-term:** CloudFormation and AWS CDK support (CDK compiles to CloudFormation; one parser covers both); Kubernetes manifests + Helm; Pulumi support
+- **Later:** CMMC 2.0 overlay; Drift Agent (watches a repo over time, flags regressions in evidenced KSIs); OSCAL-shaped output generators (SSP, AR, POA&M JSON) for Rev5-transition submissions
 - **v1.5+:** Runtime cloud API scanning (different threat model, needs its own design pass)
 
 See [docs/dual_horizon_plan.md](./docs/dual_horizon_plan.md) for the full roadmap.
@@ -322,21 +357,26 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 ## Project status
 
-**Current state (2026-04-22): v0 shipped; v1 Phase 1 + Phase 2 landed. Repository private through v1 development.**
+**Current state (2026-04-22): v0 shipped; v1 Phases 1 & 2, Plan JSON mode, prompt hardening, POA&M generator, and the PR GitHub Action landed. Repository private through v1 development.**
 
 ### What v0 contains
 
 **Pipeline.** `init → scan → agent gap → agent document → agent remediate → provenance show` runs end-to-end. Every CLI verb is also an MCP tool.
 
-**Detectors (14).** v0 six plus Phase 6-lite six plus dogfood-followup two (all landed 2026-04-22):
+**Detectors (30).** Six v0 + Phase 6-lite six + dogfood-followup two (all 2026-04-22) + A4 detector-breadth sixteen (2026-04-24 → 2026-04-25):
 `aws.encryption_s3_at_rest`, `aws.tls_on_lb_listeners`, `aws.fips_ssl_policies_on_lb_listeners`,
 `aws.mfa_required_on_iam_policies`, `aws.cloudtrail_audit_logging`, `aws.backup_retention_configured`,
 `aws.s3_public_access_block`, `aws.rds_encryption_at_rest`, `aws.kms_key_rotation`,
 `aws.cloudtrail_log_file_validation`, `aws.vpc_flow_logs_enabled`, `aws.iam_password_policy`,
-`aws.encryption_ebs`, `aws.iam_user_access_keys`. All self-contained under
-`src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml, fixtures/
-(including .plan.json equivalence fixtures as of 5895df7), and README.md. Each detector's README
-names what it proves and what it does not.
+`aws.encryption_ebs`, `aws.iam_user_access_keys`,
+`aws.security_group_open_ingress`, `aws.rds_public_accessibility`, `aws.s3_bucket_public_acl`, `aws.nacl_open_egress`,
+`aws.cloudwatch_alarms_critical`, `aws.guardduty_enabled`, `aws.config_enabled`, `aws.access_analyzer_enabled`,
+`aws.kms_customer_managed_keys`, `aws.secrets_manager_rotation`, `aws.sns_topic_encryption`, `aws.sqs_queue_encryption`,
+`aws.iam_inline_policies_audit`, `aws.iam_admin_policy_usage`, `aws.iam_service_account_keys_age`, `aws.elb_access_logs`.
+All self-contained under `src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml,
+fixtures/ (including .plan.json equivalence fixtures), and README.md. Each detector's README names what it proves
+and what it does not. KSI coverage spans 9 of 11 FRMR-Moderate themes; SC-28 detectors carry `ksis=[]` per the
+existing precedent because FRMR 0.9.43-beta has no KSI whose `controls` array contains SC-28.
 
 **Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit per-run-nonced-fence rules and cite-by-fenced-id discipline (see Phase 2 post-review fixup F below).
 
@@ -371,16 +411,27 @@ Full design call in `DECISIONS.md` 2026-04-22 "Phase 2: FRMR attestation generat
 - **E:** Gap Report + Remediation Report now carry the manifest attestation badge when passed `evidence=`. CSS consolidated in the shared stylesheet.
 - **F:** Per-run fence nonce (`<evidence_NONCE id="...">` / `<source_file_NONCE path="...">`) hardens the prompt-injection defense against content-injected forged fences. All three agents pass a fresh nonce from `new_fence_nonce()` to every format/parse call in a `run()`. Adversarial test locks in that content-embedded fake fences with mismatching nonces are rejected.
 
+### What external-review honesty pass + hardening added (2026-04-22, subsequent commits)
+
+Four interlocking tranches landed after an external-review pass flagged docs-vs-code discipline gaps. Each carries a DECISIONS entry with rejected alternatives.
+
+- **Secret redaction (`src/efterlev/llm/scrubber.py`).** Regex pattern library for 7 secret families, `scrub_llm_prompt()` called unconditionally by the shared evidence and source-file fence formatters, a `RedactionLedger` contextvar threaded through every agent run, and `.efterlev/redactions/<scan_id>.jsonl` written at mode `0o600` via `os.open`. Auditable via `efterlev redaction review`.
+- **Retry + fallback (`src/efterlev/llm/anthropic_client.py`).** Classifier for retryable vs non-retryable Anthropic errors; exponential backoff with full jitter (1s → 60s cap); three attempts on primary then one fallback to `claude-sonnet-4-6`. Injectable sleeper for deterministic tests.
+- **POA&M markdown generator (`src/efterlev/primitives/generate/generate_poam_markdown.py`).** Deterministic — severity heuristic only, no LLM. POA&M IDs derive from the Claim `record_id` prefix so the document is provenance-linked. CLI at `efterlev poam`. OSCAL-shaped JSON POA&M remains a v1.5+ deliverable gated on first OSCAL-consuming customer.
+- **GitHub Action + CI summary script.** `.github/workflows/pr-compliance-scan.yml` runs scan + optional Gap Agent and posts a sticky PR comment via `scripts/ci_pr_summary.py`, which reads `.efterlev/store.db` + the content-addressed blob store directly through `sqlite3` (no Efterlev package import required, so the CI-shell Python need not share a venv with the Efterlev install). Consumer docs at [docs/ci-integration.md](./docs/ci-integration.md).
+- **Store-level `validate_claim_provenance`.** Defense-in-depth: `ProvenanceStore.write_record` rejects a Claim whose `derived_from` cites ids that resolve neither as `ProvenanceRecord.record_id` nor as `Evidence.evidence_id` in a stored evidence payload. Dual-keyed lookup so both calling conventions work; the full unify-on-record_id refactor is deferred.
+
 ### Current stable surface
 
-Designed to not break once opened publicly (or to customers under NDA):
+Designed to not break once the repo flips public (per the 2026-04-23 open-source-first posture):
 
 - `@detector` and `@primitive` decorator contracts
-- Evidence / Claim / ProvenanceRecord / AttestationDraft / AttestationArtifact / EvidenceManifest Pydantic models
-- CLI verb names and argument shapes
+- Evidence / Claim / ProvenanceRecord / AttestationDraft / AttestationArtifact / EvidenceManifest / PoamClassificationInput Pydantic models
+- CLI verb names and argument shapes (including `poam` and `redaction review`)
 - MCP tool names and JSON Schemas
-- `.efterlev/` on-disk layout (carved-out: `.efterlev/manifests/` is customer-authored and committed; rest is tool state and gitignored)
+- `.efterlev/` on-disk layout — carved-out: `.efterlev/manifests/` is customer-authored and committed; `.efterlev/redactions/` is audit log at mode `0o600`; rest is tool state and gitignored
 - FRMR attestation JSON top-level shape (`info`, `KSI`, `provenance`)
+- POA&M markdown section ordering and per-item heading shape
 
 ### Changing surface
 
@@ -390,12 +441,12 @@ Designed to not break once opened publicly (or to customers under NDA):
 
 ### Tests
 
-344 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 94 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY`), with a pytest wrapper at `tests/test_e2e_smoke.py` (`pytest -k e2e`) that skips when the key is unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
+602 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 129 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
 
 ### What's NOT in scope right now (per v1 lock)
 
-- **OSCAL SSP / AR / POA&M generators.** v1.5+ gated on first Rev5-transition or OSCAL-Hub-consuming customer.
-- **AWS Bedrock backend** (commercial + GovCloud). v1 Phase 3, pulled on GovCloud prospect demand.
+- **OSCAL-shaped SSP / AR / POA&M JSON generators.** A reviewer-ready POA&M markdown ships today via `efterlev poam`; the OSCAL-shaped JSON form is v1.5+, gated on first Rev5-transition or OSCAL-Hub-consuming customer.
+- ~~**AWS Bedrock backend** (commercial + GovCloud). v1 Phase 3, pulled on GovCloud prospect demand.~~ **Shipped 2026-04-24** as pre-launch readiness gate A3 — see SPEC-10.
 - **Non-Terraform input sources** (CloudFormation, CDK, Pulumi, Kubernetes manifests, runtime cloud APIs). v1.5+.
 - **CMMC 2.0 overlay.** v1.5+ when ICP B becomes primary.
 - **Public package on PyPI.** Deferred until repo opens at first customer engagement or Month 6.
@@ -406,7 +457,7 @@ Designed to not break once opened publicly (or to customers under NDA):
 
 We want contributors. The detector library is designed to make the common contribution — "here's a new KSI indicator I can evidence from Terraform" — a self-contained folder that doesn't touch the rest of the codebase.
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the five-minute path from `git clone` to running tests, and the hour path from idea to open PR.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the five-minute path from `git clone` to running tests, and the hour path from idea to open PR. Community conduct is governed by the [Code of Conduct](./CODE_OF_CONDUCT.md) (Contributor Covenant 2.1, with an Efterlev-specific interpretation section).
 
 Good first issues are labeled `good first issue` on GitHub. The most valuable contributions right now are new detectors covering KSIs on the roadmap.
 
@@ -414,7 +465,7 @@ Good first issues are labeled `good first issue` on GitHub. The most valuable co
 
 ## Governance
 
-Benevolent-dictator model during v0–v1 (the author), with an explicit commitment to move to a technical steering committee at 10 active contributors. See [DECISIONS.md](./DECISIONS.md) for the governance record and [CONTRIBUTING.md](./CONTRIBUTING.md) for how maintainer status works.
+Benevolent-dictator model today (`@lhassa8`), transitioning to a technical steering committee when the project has 10 contributors with sustained activity (at least one merged PR in each of the prior 3 calendar months, sustained for 6 months). The full model — roles, decision-making, maintainer invitation, SC trigger, and the change process for governance itself — lives in [GOVERNANCE.md](./GOVERNANCE.md). See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution path and [DECISIONS.md](./DECISIONS.md) for the architectural-decision log.
 
 This project may be donated to a neutral foundation (OpenSSF, Linux Foundation, CNCF) at maturity if contributor diversity warrants. That decision is not made and not time-boxed.
 
@@ -450,3 +501,7 @@ Built on [compliance-trestle](https://github.com/IBM/compliance-trestle) for OSC
 - [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) — honest positioning against Comp AI, RegScale OSCAL Hub, and others
 - [DECISIONS.md](./DECISIONS.md) — architectural decision log
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — contributor onboarding
+- [docs/RELEASE.md](./docs/RELEASE.md) — release process, verification contract, and release-notes template
+- [docs/deploy-govcloud-ec2.md](./docs/deploy-govcloud-ec2.md) — running Efterlev inside an AWS GovCloud boundary using the Bedrock backend
+- [GOVERNANCE.md](./GOVERNANCE.md) — decision-making and maintainer roles
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — Contributor Covenant 2.1 with project-specific interpretation

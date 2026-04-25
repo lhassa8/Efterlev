@@ -1,0 +1,9 @@
+detector_id: aws.s3_bucket_public_acl
+
+evidence_shape:
+  resource_type: string         # "aws_s3_bucket_acl" | "aws_s3_bucket_policy"
+  resource_name: string
+  exposure_state: enum          # "public_acl" | "anonymous_allow" | "unparseable"
+  acl: string?                  # populated for public_acl: "public-read" | "public-read-write"
+  reason: string?               # populated for unparseable
+  gap: string?                  # finding-shape marker

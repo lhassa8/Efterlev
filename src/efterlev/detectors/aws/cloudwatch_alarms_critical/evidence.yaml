@@ -1,0 +1,11 @@
+detector_id: aws.cloudwatch_alarms_critical
+
+evidence_shape:
+  resource_type: string         # always "aws_cloudwatch_metric_alarm"
+  resource_name: string
+  alarm_state: enum             # "declared"
+  metric_name: string?          # AWS metric name being alarmed on
+  namespace: string?            # AWS namespace (e.g., "AWS/EC2", "CWLogs")
+  comparison_operator: string?  # GreaterThanOrEqualToThreshold, etc.
+  threshold: any?               # threshold value (number or string)
+  has_alarm_action: bool        # true iff alarm_actions list is non-empty

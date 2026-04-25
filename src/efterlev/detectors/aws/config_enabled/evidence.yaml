@@ -1,0 +1,9 @@
+detector_id: aws.config_enabled
+
+evidence_shape:
+  resource_type: string                 # always "aws_config_configuration_recorder"
+  resource_name: string
+  recorder_state: enum                  # "recording"
+  coverage: enum                        # "all_supported" | "custom_subset" | "default"
+  include_global_resource_types: bool?  # null when attribute absent or unparseable
+  delivery_channel_count: int           # how many channels accompany the recorder

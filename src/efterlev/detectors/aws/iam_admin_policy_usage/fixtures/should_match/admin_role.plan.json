@@ -1,0 +1,21 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_role_policy_attachment.break_glass",
+          "mode": "managed",
+          "type": "aws_iam_role_policy_attachment",
+          "name": "break_glass",
+          "values": {
+            "role": "break-glass",
+            "policy_arn": "arn:aws:iam::aws:policy/AdministratorAccess"
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

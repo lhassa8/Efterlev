@@ -1,0 +1,10 @@
+detector_id: aws.kms_customer_managed_keys
+
+evidence_shape:
+  resource_type: string                 # always "aws_kms_key"
+  resource_name: string
+  key_state: enum                       # "declared"
+  description: string?
+  key_usage: enum                       # "ENCRYPT_DECRYPT" | "SIGN_VERIFY" | "GENERATE_VERIFY_MAC"
+  deletion_window_in_days: int?
+  is_enabled: bool                      # AWS default: true

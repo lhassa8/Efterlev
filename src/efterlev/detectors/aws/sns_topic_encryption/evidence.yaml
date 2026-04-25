@@ -1,0 +1,7 @@
+detector_id: aws.sns_topic_encryption
+
+evidence_shape:
+  resource_type: string                 # always "aws_sns_topic"
+  resource_name: string
+  encryption_state: enum                # "customer_managed" | "aws_managed_default"
+  kms_master_key_id: string?            # null when attribute absent

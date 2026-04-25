@@ -1,0 +1,9 @@
+detector_id: aws.secrets_manager_rotation
+
+evidence_shape:
+  resource_type: string                 # "aws_secretsmanager_secret_rotation" | "aws_secretsmanager_secret"
+  resource_name: string
+  rotation_state: enum                  # "configured_within_recommended" | "configured_window_too_long" | "configured_unknown_window" | "absent"
+  automatically_after_days: int?
+  has_rotation_lambda: bool?            # populated for rotation resources only
+  gap: string?                          # populated for "configured_window_too_long" or "absent"

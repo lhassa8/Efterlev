@@ -86,16 +86,25 @@ The architectural commitment that makes this expansion cheap: the detector contr
 
 ---
 
-## v1 locked scope (2026-04-22)
+## v1 locked scope (2026-04-22, amended 2026-04-23)
 
-Four interdependent commitments locked at the start of v1 development, captured in full in `DECISIONS.md` (2026-04-22). Summarized here because they are ICP-material and shape what the archetype user actually gets in v1.
+Three interdependent commitments, surviving from the 2026-04-22 v1 scope lock. The fourth original commitment (closed-source through v1) was rescinded 2026-04-23 in favor of an open-source-first posture (see below). All three remaining commitments are ICP-material and shape what the archetype user gets in v1.
 
-1. **Archetype-only.** No named design partner. We design against the primary ICP as described above and accept that Evidence Manifest schema and Phase 6 detector priorities will need a revision pass once a real prospect surfaces.
-2. **Commercial AWS first.** Deployment modes 1 (developer laptop) and 2 (CI runner) cover the initial customer base. Deployment mode 3 (customer-owned VM inside a GovCloud boundary) and the AWS Bedrock backend are gated on prospect demand; Anthropic-direct is sufficient through v1 for this ICP.
-3. **20x-native output first.** FRMR-compatible attestation JSON is the only v1 production output format. OSCAL SSP / AR / POA&M generators defer to v1.5+, gated on Rev5-transition or OSCAL-Hub-consuming customer demand. The architecture retains the `oscal/` generator slot; it is empty at v1.
-4. **Closed-source through v1.** Private GitHub repository, no public announcement, no external contributor outreach. Customer security-review access is granted via private-repo invite under NDA — not source escrow, not refusal. License stays Apache 2.0; privacy is enforced by the repo's visibility, not the license.
+1. **Archetype-first.** No named design partner at v1 start. We design against the primary ICP as described above and accept that Evidence Manifest schema and Phase 6 detector priorities will need a revision pass once the first real user surfaces. Under the open-source-first posture, that user is more likely to surface through public GitHub discovery than through private outreach — but the archetype-first discipline (build for ICP A specifically, not for every possible compliance user) stays intact.
+2. **20x-native output first.** FRMR-compatible attestation JSON is the only v1 production output format. OSCAL SSP / AR / POA&M generators defer to v1.5+, gated on Rev5-transition or OSCAL-Hub-consuming customer demand. The architecture retains the `oscal/` generator slot; it is empty at v1.
+3. **Commercial AWS + GovCloud both first** *(amended 2026-04-23).* Deployment modes 1 (developer laptop), 2 (CI runner), AND 3 (customer-owned VM inside a GovCloud boundary) all ship at launch. AWS Bedrock backend — originally deferred to v1 Phase 3 gated on GovCloud-prospect demand — is now a pre-launch readiness gate (A3), because the "runs where the customer wants to run it" promise of the open-source launch is hollow without GovCloud support.
 
-These commitments do not change ICP A's shape. They narrow what Efterlev v1 *ships* to serve that ICP. They are re-evaluated at first customer engagement or Month 6, whichever comes first.
+### Rescinded 2026-04-23: ~~Closed-source through v1~~
+
+Originally commitment #4. Rescinded in favor of an open-source-first, gate-driven launch. Efterlev ships as a public Apache-2.0 repository when eight pre-launch readiness gates pass (A1 identity/governance, A2 distribution/packaging, A3 Bedrock backend, A4 detector breadth to 30, A5 trust surface, A6 documentation site, A7 deployment-mode verification, A8 launch rehearsal). Monetization posture: pure OSS, no commercial tier, no paid layer — ever.
+
+Trigger for the pivot: the 2026-04-23 market-reality-check surfaced three facts that invalidated the closed-source rationale: Paramify's FedRAMP 20x Phase 2 Moderate authorization (now category-leading in the "30-day FedRAMP" narrative); compliance.tf's direct technical-substitute positioning with 185 FedRAMP Moderate Rev 4 controls enforced; and FedRAMP 20x Phase 3's expected Q3–Q4 2026 public-authorization opening, which is the demand surge this product was built to serve. Discovery for an OSS tool during that surge happens through public GitHub, not NDA outreach.
+
+Full rationale, alternatives rejected, and sequencing implications in `DECISIONS.md` 2026-04-23 "Rescind closed-source lock; open-source-first, gate-driven launch."
+
+---
+
+These commitments do not change ICP A's shape. They narrow what Efterlev v1 *ships* to serve that ICP. The archetype-first call (commitment #1) is the one most likely to warp in response to first-user feedback; the others are structural.
 
 ---
 

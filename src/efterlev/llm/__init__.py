@@ -15,13 +15,16 @@ to keep the Bedrock adapter small when it lands.
 from __future__ import annotations
 
 from efterlev.llm.base import LLMClient, LLMMessage, LLMResponse, StubLLMClient
-from efterlev.llm.factory import DEFAULT_MODEL, get_default_client
+from efterlev.llm.bedrock_client import AnthropicBedrockClient
+from efterlev.llm.factory import DEFAULT_MODEL, get_client_from_config, get_default_client
 
 __all__ = [
     "DEFAULT_MODEL",
+    "AnthropicBedrockClient",
     "LLMClient",
     "LLMMessage",
     "LLMResponse",
     "StubLLMClient",
+    "get_client_from_config",
     "get_default_client",
 ]

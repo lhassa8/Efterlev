@@ -1,0 +1,19 @@
+detector_id: aws.iam_inline_policies_audit
+
+ksis:
+  - KSI-IAM-ELP
+
+controls:
+  - id: AC-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Account management. Inline policies bypass central
+      managed-policy review and complicate access auditing.
+  - id: AC-6
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Least privilege. Inline policies don't violate least-privilege by
+      themselves, but they create review-blind-spots that lead to
+      overly-broad grants surviving longer than they should.

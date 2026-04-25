@@ -1,0 +1,23 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_kms_key.app_data",
+          "mode": "managed",
+          "type": "aws_kms_key",
+          "name": "app_data",
+          "values": {
+            "description": "Application data encryption key",
+            "key_usage": "ENCRYPT_DECRYPT",
+            "deletion_window_in_days": 30,
+            "is_enabled": true
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

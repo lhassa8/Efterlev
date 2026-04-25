@@ -1,0 +1,18 @@
+detector_id: aws.guardduty_enabled
+
+ksis:
+  - KSI-MLA-OSM
+
+controls:
+  - id: SI-4
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      GuardDuty is the AWS-native continuous-threat-detection service.
+      Enabled = evidence of threat detection at the account level.
+  - id: RA-5(11)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Public disclosure program — GuardDuty's findings include
+      Amazon-curated threat intelligence on known-bad IPs and domains.

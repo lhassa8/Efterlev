@@ -272,8 +272,8 @@ class RedactionLedger:
 # pick it up automatically — same pattern as `efterlev.provenance.context.active_store`.
 # `format_*_for_prompt` consults this when no explicit `redaction_ledger` is
 # passed, keeping the agent code agnostic of how audit-logging is wired.
-_active_redaction_ledger: contextvars.ContextVar[RedactionLedger | None] = (
-    contextvars.ContextVar("efterlev_active_redaction_ledger", default=None)
+_active_redaction_ledger: contextvars.ContextVar[RedactionLedger | None] = contextvars.ContextVar(
+    "efterlev_active_redaction_ledger", default=None
 )
 
 

@@ -1,0 +1,20 @@
+detector_id: aws.iam_admin_policy_usage
+
+ksis:
+  - KSI-IAM-ELP
+
+controls:
+  - id: AC-6
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Least privilege. AdministratorAccess grants *:* — directly opposite
+      of least privilege. Detector emits per-attachment so Gap Agent
+      can render which principals carry the privilege.
+  - id: AC-6(2)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Privileged functions (non-privileged use). AC-6(2) requires that
+      privileged accounts be used only for privileged functions; the
+      detector evidences the attachment, not the runtime use pattern.

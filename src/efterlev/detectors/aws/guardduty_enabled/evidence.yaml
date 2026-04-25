@@ -1,0 +1,7 @@
+detector_id: aws.guardduty_enabled
+
+evidence_shape:
+  resource_type: string                   # always "aws_guardduty_detector"
+  resource_name: string
+  detector_state: enum                    # "enabled"
+  finding_publishing_frequency: string?   # "FIFTEEN_MINUTES" | "ONE_HOUR" | "SIX_HOURS"

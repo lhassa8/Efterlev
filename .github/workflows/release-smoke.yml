@@ -1,0 +1,206 @@
+# Install-verification smoke matrix — runs on every semver tag push
+# in parallel with release-pypi.yml and release-container.yml.
+#
+# Every cell in the matrix verifies that a real user on that platform +
+# install path can go from zero to a working `efterlev scan` against
+# the fixture.
+#
+# Coordination with real-PyPI upload (SPEC-05's release-pypi.yml):
+# publish-pypi waits on the `pypi` GitHub environment's manual-approval
+# gate. The maintainer approves only after observing this workflow
+# green on the same tag. Document in docs/RELEASE.md.
+#
+# Cell timing: each cell polls the appropriate registry (Test PyPI,
+# ghcr.io, Docker Hub) with a 30-second retry until the artifact
+# becomes available or 10 minutes elapses, whichever first. This
+# absorbs the natural lag between tag-push triggering release-pypi.yml
+# / release-container.yml and artifacts landing on their registries.
+
+name: release-smoke
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      pep440: ${{ steps.v.outputs.pep440 }}
+    steps:
+      - name: Parse tag
+        id: v
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/v}"
+          # Normalize semver rc tag to PEP 440 (v0.1.0-rc.1 -> 0.1.0rc1)
+          PEP440="$(echo "$TAG" | sed -E 's/-rc\.([0-9]+)/rc\1/')"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "pep440=$PEP440" >> "$GITHUB_OUTPUT"
+          echo "Tag version:   $TAG"
+          echo "PEP 440 form:  $PEP440"
+
+  smoke:
+    name: "${{ matrix.os }} / ${{ matrix.method }}"
+    needs: resolve-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # pipx-equivalent install from Test PyPI, across five platforms.
+          - os: ubuntu-22.04
+            method: pipx
+          - os: ubuntu-24.04-arm
+            method: pipx
+          - os: macos-14
+            method: pipx
+          - os: macos-13
+            method: pipx
+          - os: windows-2022
+            method: pipx
+          # Docker install paths — Linux-only at v0.1.0 (Windows and macOS
+          # Docker paths deferred per SPEC-06 non-goals).
+          - os: ubuntu-22.04
+            method: docker-ghcr
+          - os: ubuntu-24.04-arm
+            method: docker-ghcr
+          - os: ubuntu-22.04
+            method: docker-dockerhub
+          - os: ubuntu-24.04-arm
+            method: docker-dockerhub
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        if: matrix.method == 'pipx'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up uv
+        if: matrix.method == 'pipx'
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install from Test PyPI (with retry-and-wait)
+        if: matrix.method == 'pipx'
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.pep440 }}
+        run: |
+          set -euo pipefail
+          # uv tool install creates an isolated venv and puts the CLI on PATH.
+          # Retry loop absorbs lag between tag push and Test PyPI indexing.
+          for attempt in $(seq 1 20); do
+            if uv tool install \
+                --index-url https://test.pypi.org/simple/ \
+                --index-strategy unsafe-best-match \
+                "efterlev==${VERSION}"; then
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "::error::Test PyPI did not serve efterlev==${VERSION} within 10 minutes"
+              exit 1
+            fi
+            echo "Attempt ${attempt}/20 failed; waiting 30s for Test PyPI to index the release..."
+            sleep 30
+          done
+
+      - name: Install from ghcr.io (with retry-and-wait)
+        if: matrix.method == 'docker-ghcr'
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/efterlev/efterlev:v${VERSION}"
+          for attempt in $(seq 1 20); do
+            if docker pull "$IMAGE"; then
+              echo "EFTERLEV_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "::error::ghcr.io did not serve ${IMAGE} within 10 minutes"
+              exit 1
+            fi
+            echo "Attempt ${attempt}/20 failed; waiting 30s..."
+            sleep 30
+          done
+
+      - name: Install from Docker Hub (with retry-and-wait)
+        if: matrix.method == 'docker-dockerhub'
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          IMAGE="docker.io/efterlev/efterlev:v${VERSION}"
+          for attempt in $(seq 1 20); do
+            if docker pull "$IMAGE"; then
+              echo "EFTERLEV_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "::error::docker.io did not serve ${IMAGE} within 10 minutes"
+              exit 1
+            fi
+            echo "Attempt ${attempt}/20 failed; waiting 30s..."
+            sleep 30
+          done
+
+      - name: Version check
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EFTERLEV_IMAGE:-}" ]; then
+            ACTUAL="$(docker run --rm "${EFTERLEV_IMAGE}" --version 2>&1)"
+          else
+            ACTUAL="$(efterlev --version 2>&1)"
+          fi
+          echo "Reported version: ${ACTUAL}"
+          if ! echo "${ACTUAL}" | grep -qF "${EXPECTED_VERSION}"; then
+            echo "::error::efterlev --version output does not contain ${EXPECTED_VERSION}"
+            exit 1
+          fi
+
+      - name: Init + scan the smoke fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${EFTERLEV_IMAGE:-}" ]; then
+            RUN=(docker run --rm -v "${GITHUB_WORKSPACE}:/repo" -w /repo "${EFTERLEV_IMAGE}")
+          else
+            RUN=(efterlev)
+          fi
+          "${RUN[@]}" init --target tests/smoke --baseline fedramp-20x-moderate || true
+          "${RUN[@]}" scan --target tests/smoke
+
+      - name: Assert scan state
+        shell: bash
+        run: python3 tests/smoke/assert.py tests/smoke/.efterlev
+
+  signature-verify:
+    name: Verify signatures via scripts/verify-release.sh
+    needs: [resolve-version, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install sigstore Python package
+        run: python3 -m pip install sigstore
+
+      - name: Run verify-release.sh against this tag
+        env:
+          TAG: ${{ needs.resolve-version.outputs.version }}
+        run: scripts/verify-release.sh "v${TAG}"

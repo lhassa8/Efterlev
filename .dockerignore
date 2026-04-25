@@ -1,0 +1,51 @@
+# Exclude everything the Dockerfile doesn't need from the build context.
+# This keeps build fast and prevents accidentally shipping dev state.
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Python runtime artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Virtual envs / lock state
+.venv
+.uv
+
+# Build outputs
+build
+dist
+*.egg-info
+
+# Test and scripts — not needed at runtime (the wheel is self-contained)
+tests
+scripts
+
+# Tooling / dev
+.vscode
+.idea
+.DS_Store
+
+# Repo-specific state — never inside a Docker build
+.efterlev
+.e2e-results
+
+# Docs — not needed at runtime
+docs
+*.md
+!README.md
+
+# Workflows — not needed inside the image
+.github
+
+# Fixtures
+govnotes-demo

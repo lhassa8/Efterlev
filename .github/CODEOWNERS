@@ -1,0 +1,13 @@
+# CODEOWNERS — see GOVERNANCE.md for role definitions
+#
+# During the BDFL era, the BDFL owns the full repo. As maintainers are
+# invited per GOVERNANCE.md "Maintainer Invitation," ownership widens:
+# specific paths get co-owners, and over time the BDFL's full-repo
+# ownership narrows as sub-maintainers take responsibility for their
+# areas.
+#
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Branch protection uses these entries to require owner review on PRs
+# touching the listed paths.
+
+* @lhassa8

@@ -1,0 +1,21 @@
+detector_id: aws.iam_service_account_keys_age
+
+ksis:
+  - KSI-IAM-SNU
+
+controls:
+  - id: IA-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Identification and Authentication. Long-lived access keys are the
+      classic non-user-authentication shape; the detector evidences
+      their presence per IAM user.
+  - id: IA-5
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Authenticator management. Per AWS recommendation, access keys
+      should be rotated at most every 90 days; key age is not visible
+      from IaC, so this detector flags the visibility gap rather than
+      asserting age.

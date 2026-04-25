@@ -1,0 +1,20 @@
+detector_id: aws.config_enabled
+
+ksis:
+  - KSI-MLA-EVC
+  - KSI-SVC-ACM
+
+controls:
+  - id: CM-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      AWS Config records resource state changes against a baseline.
+      Evidenced when both a configuration_recorder and delivery_channel
+      are declared (both are required for Config to actually record).
+  - id: CM-8(2)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Automated maintenance of the system component inventory; AWS
+      Config's ongoing state capture.

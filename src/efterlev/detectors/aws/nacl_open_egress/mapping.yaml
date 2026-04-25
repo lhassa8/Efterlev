@@ -1,0 +1,19 @@
+detector_id: aws.nacl_open_egress
+
+ksis:
+  - KSI-CNA-RNT
+  - KSI-CNA-MAT
+
+controls:
+  - id: SC-7
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Boundary protection at the NACL layer. An all-traffic-to-anywhere
+      egress rule effectively renders the NACL a no-op for outbound.
+  - id: SC-7(5)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Deny by default, allow by exception. NACL with 0.0.0.0/0 + protocol -1
+      is the inverse — allow by default. Direct mapping.

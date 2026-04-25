@@ -48,9 +48,7 @@ def test_all_flags_true_emits_fully_blocked() -> None:
 
 
 def test_partial_flags_emits_partial_with_gap() -> None:
-    results = _run_detector_on(
-        DETECTOR_DIR / "fixtures" / "should_not_match" / "partial_flags.tf"
-    )
+    results = _run_detector_on(DETECTOR_DIR / "fixtures" / "should_not_match" / "partial_flags.tf")
     assert len(results) == 1
     ev = results[0]
     assert ev.content["posture"] == "partial"

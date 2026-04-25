@@ -1,0 +1,17 @@
+detector_id: aws.elb_access_logs
+
+ksis:
+  - KSI-MLA-LET
+
+controls:
+  - id: AU-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Event logging at the L7/L4 load-balancer layer. Captures HTTP
+      request paths and TCP connection metadata respectively.
+  - id: AU-12
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Audit record generation at the load-balancer layer.

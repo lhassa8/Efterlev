@@ -104,12 +104,13 @@ diffing evidence content. Tracked as a follow-up.
 
 ## What doesn't work yet
 
-- **PyPI release.** Today Efterlev installs from the private repo;
-  PyPI release is gated on the v1 public-repo opening. See
-  `DECISIONS.md` 2026-04-22 "Lock v1 scope."
+- **PyPI release.** Today Efterlev installs from a cloned checkout;
+  PyPI release lands as part of pre-launch readiness gate A2 and
+  coincides with the public-repo flip. See `DECISIONS.md` 2026-04-23
+  "Rescind closed-source lock."
 - **Composite action / marketplace listing.** The workflow is
-  drop-in today; a reusable `uses: lhassa8/Efterlev@v1` form
-  lands when the repo opens.
+  drop-in today; a reusable `uses: efterlev/scan-action@v1` form
+  lands alongside the PyPI package at launch.
 - **Line-level PR annotations.** Current output is a single sticky
   comment with findings in a table. GitHub's "review annotations"
   API would surface each finding as a line comment on the

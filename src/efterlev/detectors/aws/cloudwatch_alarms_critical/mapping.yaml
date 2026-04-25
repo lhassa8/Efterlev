@@ -1,0 +1,29 @@
+detector_id: aws.cloudwatch_alarms_critical
+
+ksis:
+  - KSI-MLA-OSM
+  - KSI-MLA-LET
+
+controls:
+  - id: SI-4
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      CloudWatch alarm inventory. Each emitted Evidence represents one
+      declared alarm with its metric name and threshold.
+  - id: SI-4(2)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Automated tools and mechanisms — declared alarms qualify.
+  - id: SI-4(4)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Covered when the alarm's metric name relates to traffic patterns.
+  - id: AU-6(1)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Automated process integration — alarms with alarm_actions
+      connect detection to an SNS/Lambda response path.

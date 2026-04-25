@@ -25,21 +25,29 @@ What it does:
 
 Contract:
 
-  - Requires `ANTHROPIC_API_KEY` in the environment. If absent the script
+  - Two backends supported, selected via `--llm-backend`:
+    * `anthropic` (default) — requires `ANTHROPIC_API_KEY` in env.
+    * `bedrock` — requires `EFTERLEV_BEDROCK_SMOKE=1` (opt-in gate),
+      AWS credentials (`AWS_PROFILE` or `AWS_ACCESS_KEY_ID`), and a
+      region (`--llm-region` or `AWS_REGION`). Implements SPEC-13.
+  - When the configured backend's prerequisites are missing, the script
     exits with code 2 (skip — distinct from 0 for pass and 1 for critical
     fail) so CI can distinguish "not configured for live test" from "live
     test failed."
   - Exit 0 iff every critical check passed.
   - Never mutates the surrounding repo. The workspace lives entirely
-    under `.e2e-results/<timestamp>/workspace/` and is gitignored.
+    under `.e2e-results/<timestamp>[-<backend>-<region>]/workspace/`
+    and is gitignored.
 
-Pytest wrapper at `tests/test_e2e_smoke.py` gives `pytest -k e2e` as the
-CI-shaped entry point; the script itself remains the primary interface for
-interactive use and local debugging.
+Pytest wrappers at `tests/test_e2e_smoke.py` (anthropic) and
+`tests/test_e2e_smoke_bedrock.py` (bedrock) give `pytest -k e2e` as the
+CI-shaped entry point; the script itself remains the primary interface
+for interactive use and local debugging.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -463,9 +471,7 @@ def _evaluate(
     # "Evidence before claims" in CLAUDE.md, so penalizing it here would
     # pressure the model in exactly the direction the product commits NOT to
     # go. Two distinct statuses is the honest floor.
-    statuses: set[str] = {
-        str(clf["status"]) for clf in classifications if clf.get("status")
-    }
+    statuses: set[str] = {str(clf["status"]) for clf in classifications if clf.get("status")}
     checks.append(
         _check(
             stage="03-agent-gap",
@@ -866,19 +872,109 @@ def _write_reports(
 # ----- main -----------------------------------------------------------
 
 
-def main() -> int:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print(
-            "ANTHROPIC_API_KEY is not set. This harness calls the real Anthropic "
-            "API end-to-end; skipping.\n"
-            "Set the key and re-run: `ANTHROPIC_API_KEY=sk-... uv run python "
-            "scripts/e2e_smoke.py`",
-            file=sys.stderr,
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI args. Defaults preserve v0 anthropic-direct behavior."""
+    parser = argparse.ArgumentParser(
+        description="End-to-end Efterlev smoke harness against a real LLM backend."
+    )
+    parser.add_argument(
+        "--llm-backend",
+        choices=["anthropic", "bedrock"],
+        default="anthropic",
+        help="LLM backend (default: anthropic).",
+    )
+    parser.add_argument(
+        "--llm-region",
+        default=None,
+        help=(
+            "AWS region for the bedrock backend (e.g. 'us-gov-west-1'). "
+            "Falls back to AWS_REGION env if unset. Required when --llm-backend=bedrock."
+        ),
+    )
+    parser.add_argument(
+        "--llm-model",
+        default=None,
+        help=(
+            "LLM model ID. Defaults to 'claude-opus-4-7' (anthropic) or "
+            "'us.anthropic.claude-opus-4-7-v1:0' (bedrock)."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def _check_backend_env(backend: str, region: str | None) -> tuple[bool, int, str]:
+    """Return (is-configured, exit-code-on-skip, skip-message).
+
+    Each backend has a distinct "not configured for live test" condition.
+    Skip semantics return exit 2 to distinguish "not configured" from
+    "configured but failed" (exit 1).
+    """
+    if backend == "anthropic":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            return (
+                False,
+                2,
+                (
+                    "ANTHROPIC_API_KEY is not set. This harness calls the real "
+                    "Anthropic API end-to-end; skipping.\n"
+                    "Set the key and re-run: `ANTHROPIC_API_KEY=sk-... uv run python "
+                    "scripts/e2e_smoke.py`"
+                ),
+            )
+        return True, 0, ""
+
+    # backend == "bedrock"
+    if os.environ.get("EFTERLEV_BEDROCK_SMOKE") != "1":
+        return (
+            False,
+            2,
+            (
+                "EFTERLEV_BEDROCK_SMOKE is not set to '1'. This is the explicit "
+                "opt-in for live AWS Bedrock smoke runs; skipping.\n"
+                "Set EFTERLEV_BEDROCK_SMOKE=1 + AWS_PROFILE (or AWS_ACCESS_KEY_ID) "
+                "and re-run."
+            ),
         )
-        return 2
+    has_creds = bool(os.environ.get("AWS_PROFILE") or os.environ.get("AWS_ACCESS_KEY_ID"))
+    if not has_creds:
+        return (
+            False,
+            2,
+            (
+                "EFTERLEV_BEDROCK_SMOKE=1 set but no AWS credentials available "
+                "(neither AWS_PROFILE nor AWS_ACCESS_KEY_ID is set); skipping."
+            ),
+        )
+    if not region and not os.environ.get("AWS_REGION"):
+        return (
+            False,
+            2,
+            ("Bedrock smoke needs a region — pass --llm-region or set AWS_REGION; skipping."),
+        )
+    return True, 0, ""
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+
+    is_configured, skip_code, skip_msg = _check_backend_env(args.llm_backend, args.llm_region)
+    if not is_configured:
+        print(skip_msg, file=sys.stderr)
+        return skip_code
+
+    region = args.llm_region or os.environ.get("AWS_REGION")
+    default_model = (
+        "us.anthropic.claude-opus-4-7-v1:0" if args.llm_backend == "bedrock" else "claude-opus-4-7"
+    )
+    model = args.llm_model or default_model
 
     timestamp = _utc_timestamp()
-    results_dir = RESULTS_ROOT / timestamp
+    # Suffix non-anthropic runs so multiple backends can land artifacts
+    # without overwriting each other when run in quick succession.
+    suffix = "" if args.llm_backend == "anthropic" else f"-{args.llm_backend}"
+    if args.llm_backend == "bedrock" and region:
+        suffix = f"{suffix}-{region}"
+    results_dir = RESULTS_ROOT / f"{timestamp}{suffix}"
     workspace = results_dir / "workspace"
     outputs_dir = results_dir / "outputs"
     artifacts_dir = results_dir / "artifacts"
@@ -886,19 +982,37 @@ def main() -> int:
         d.mkdir(parents=True, exist_ok=True)
 
     _log(f"results directory: {results_dir}")
+    _log(f"backend: {args.llm_backend}, region: {region or '(n/a)'}, model: {model}")
     _log("laying down Terraform fixture")
     _write_terraform_fixture(workspace)
+
+    # Build the init command with the right backend wiring. All
+    # subsequent agent stages read the resulting `.efterlev/config.toml`
+    # via the LLM factory's workspace-walking dispatch (SPEC-10), so the
+    # agents themselves don't need backend-specific flags.
+    init_cmd = [
+        "uv",
+        "run",
+        "efterlev",
+        "init",
+        "--target",
+        ".",
+        "--baseline",
+        "fedramp-20x-moderate",
+        "--llm-backend",
+        args.llm_backend,
+        "--llm-model",
+        model,
+    ]
+    if args.llm_backend == "bedrock":
+        assert region is not None  # _check_backend_env guarantees this
+        init_cmd.extend(["--llm-region", region])
 
     # Each stage shells out to `uv run efterlev …` so we exercise the
     # exact CLI an operator would invoke. cwd = workspace so Typer's
     # `--target .` resolves correctly.
     stages: dict[str, StageResult] = {}
-    stages["01-init"] = _run_stage(
-        "01-init",
-        ["uv", "run", "efterlev", "init", "--target", ".", "--baseline", "fedramp-20x-moderate"],
-        workspace,
-        outputs_dir,
-    )
+    stages["01-init"] = _run_stage("01-init", init_cmd, workspace, outputs_dir)
     if stages["01-init"].exit_code != 0:
         _log("init failed; evaluating remaining stages as not-run and reporting")
 

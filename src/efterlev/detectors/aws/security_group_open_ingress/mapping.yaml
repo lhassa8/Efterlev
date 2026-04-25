@@ -1,0 +1,32 @@
+detector_id: aws.security_group_open_ingress
+
+# FRMR 0.9.43-beta:
+#   KSI-CNA-RNT (Restricting Network Traffic) lists sc-7.5.
+#   KSI-CNA-MAT (Minimizing Attack Surface) lists sc-7.3, sc-7.4, sc-7.5, sc-7.8.
+# Both are clean mappings; we claim both.
+ksis:
+  - KSI-CNA-RNT
+  - KSI-CNA-MAT
+
+controls:
+  - id: SC-7
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Boundary protection at the IaC layer. Detector flags ingress rules
+      that allow 0.0.0.0/0 or ::/0 on non-public-web ports (anything
+      outside {80, 443}). Does NOT prove the SG is attached to a
+      reachable resource; that's Gap Agent territory.
+  - id: SC-7(3)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Access points — limit external access to a controlled set. An
+      open-ingress rule on, say, port 22 fails this; an attached but
+      restricted rule does not.
+  - id: SC-7(5)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Deny by default, allow by exception. Direct mapping for any
+      0.0.0.0/0 or ::/0 ingress rule the detector flags.

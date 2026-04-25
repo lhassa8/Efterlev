@@ -1,0 +1,9 @@
+detector_id: aws.iam_admin_policy_usage
+
+evidence_shape:
+  resource_type: string         # "aws_iam_{role,user,group}_policy_attachment"
+  resource_name: string
+  principal_kind: enum          # "role" | "user" | "group"
+  principal_ref: string?
+  policy_arn: string            # always arn:aws:iam::aws:policy/AdministratorAccess
+  gap: string                   # finding-shape marker

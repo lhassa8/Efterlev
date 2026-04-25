@@ -53,9 +53,7 @@ def test_encrypted_without_cmk_records_aws_managed() -> None:
 
 
 def test_unencrypted_rds_emits_absent_with_gap() -> None:
-    results = _run_detector_on(
-        DETECTOR_DIR / "fixtures" / "should_not_match" / "unencrypted.tf"
-    )
+    results = _run_detector_on(DETECTOR_DIR / "fixtures" / "should_not_match" / "unencrypted.tf")
     assert len(results) == 1
     ev = results[0]
     assert ev.content["encryption_state"] == "absent"

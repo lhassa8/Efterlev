@@ -1,0 +1,14 @@
+detector_id: aws.sqs_queue_encryption
+
+# SC-28 unmapped in FRMR 0.9.43-beta — same precedent as
+# `aws.encryption_s3_at_rest` and `aws.sns_topic_encryption`.
+ksis: []
+
+controls:
+  - id: SC-28
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      SQS supports SSE-KMS (customer-managed or AWS-managed) AND
+      SSE-SQS (queue-managed). Detector distinguishes all four states
+      including "absent" (no encryption explicitly configured).

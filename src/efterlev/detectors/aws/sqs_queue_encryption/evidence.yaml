@@ -1,0 +1,9 @@
+detector_id: aws.sqs_queue_encryption
+
+evidence_shape:
+  resource_type: string                 # always "aws_sqs_queue"
+  resource_name: string
+  encryption_state: enum                # "customer_managed" | "aws_managed_default" | "sqs_managed_sse" | "absent"
+  kms_master_key_id: string?
+  sqs_managed_sse_enabled: bool?
+  gap: string?                          # populated when encryption_state == "absent"

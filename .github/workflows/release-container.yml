@@ -1,0 +1,147 @@
+# Container release workflow — builds multi-arch amd64+arm64 images on
+# every semver tag and pushes to ghcr.io and Docker Hub, with cosign
+# keyless OIDC signing and buildx provenance + SBOM attestation.
+#
+# One-time maintainer setup before this workflow can publish:
+#
+#   1. ghcr.io: automatic. Provisioned with the `efterlev/` GitHub org.
+#      The workflow uses the default GITHUB_TOKEN with packages:write.
+#
+#   2. Docker Hub: create the `efterlev` org at hub.docker.com → Organizations.
+#      Generate a new Access Token scoped to "Read, Write, Delete" for
+#      the org at hub.docker.com → Account Settings → Security → New
+#      Access Token. Add it to the GitHub repo's secrets as DOCKERHUB_TOKEN
+#      (Settings → Secrets and variables → Actions → New repository secret).
+#
+# See SPEC-06 for the full design + rationale.
+
+name: release-container
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+
+permissions:
+  contents: read
+  packages: write   # push to ghcr.io
+  id-token: write   # cosign keyless OIDC + SLSA attestation
+
+jobs:
+  build-and-push:
+    name: Build and push multi-arch image
+    runs-on: ubuntu-latest
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.tags.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Parse tag
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *"-rc."* ]]; then
+            echo "is-rc=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-rc=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: efterlev
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IS_RC: ${{ steps.version.outputs.is-rc }}
+        run: |
+          set -euo pipefail
+          TAGS=""
+          for REGISTRY in ghcr.io/efterlev/efterlev docker.io/efterlev/efterlev; do
+            # Exact version tag — always applied
+            TAGS="${TAGS}${REGISTRY}:v${VERSION},"
+            # Moving tags (v{major}.{minor} and latest) — non-rc only
+            if [ "$IS_RC" = "false" ]; then
+              MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1-2)
+              TAGS="${TAGS}${REGISTRY}:v${MAJOR_MINOR},"
+              TAGS="${TAGS}${REGISTRY}:latest,"
+            fi
+          done
+          TAGS="${TAGS%,}"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "Resolved tags:"
+          echo "$TAGS" | tr ',' '\n' | sed 's/^/  /'
+
+      - name: Build and push multi-arch image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign images with cosign (keyless OIDC)
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          # Sign by digest (not tag) — cosign-recommended pattern ensures
+          # the signature binds to the exact artifact bytes, not to whatever
+          # the tag currently resolves to.
+          IFS=',' read -ra TAG_ARRAY <<< "$TAGS"
+          # Build a dedup'd set of image names (no tag component).
+          declare -A IMAGES
+          for TAG in "${TAG_ARRAY[@]}"; do
+            IMAGES["${TAG%%:*}"]=1
+          done
+          for IMAGE in "${!IMAGES[@]}"; do
+            echo "Signing ${IMAGE}@${DIGEST}"
+            cosign sign --yes "${IMAGE}@${DIGEST}"
+          done
+
+      - name: Verify signatures
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          declare -A IMAGES
+          IFS=',' read -ra TAG_ARRAY <<< "$TAGS"
+          for TAG in "${TAG_ARRAY[@]}"; do
+            IMAGES["${TAG%%:*}"]=1
+          done
+          for IMAGE in "${!IMAGES[@]}"; do
+            echo "Verifying ${IMAGE}@${DIGEST}"
+            cosign verify "${IMAGE}@${DIGEST}" \
+              --certificate-identity-regexp '^https://github\.com/efterlev/efterlev/' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          done

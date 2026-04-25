@@ -181,14 +181,17 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 **Current state at v0 (honest):** the repo is private, the package is not yet published to PyPI (version 0.0.1 per `pyproject.toml`), and no release artifacts are signed. The "releases are signed" language previously in this section was aspirational. Users install via `uv sync --extra dev` against a cloned repo, not via a packaged release.
 
 **Mitigations implemented today:**
-- The codebase is auditable (private-repo-under-NDA for customer security review per the v1 lock, DECISIONS 2026-04-22).
+- The codebase is pre-launch private, staged for a public Apache-2.0 flip once the eight pre-launch readiness gates pass (DECISIONS 2026-04-23 "Rescind closed-source lock"). Full code auditability is a launch deliverable.
 - The dependency list is small and justified (every non-trivial dep has a DECISIONS entry).
 - Vendored catalogs (`catalogs/frmr/`, `catalogs/nist/`) are SHA-256-pinned at load time — see `src/efterlev/paths.py::verify_catalog_hashes`. A tampered catalog fails `efterlev init`.
 
-**Planned for v1 release:**
-- Sigstore / cosign signing of release artifacts.
+**Planned for public launch (pre-launch readiness gate A5, trust surface):**
+- Sigstore / cosign signing of release artifacts (wheel, sdist, container images).
+- SLSA provenance on each release artifact.
 - Published SBOMs per release.
-- Public-repo opening (gated on first customer engagement or month 6).
+- Coordinated-disclosure channel via GitHub Security Advisories + `security@efterlev.com` mailbox.
+- Dependabot/Renovate enabled on `main` once public.
+- Pre-launch threat-model review with public-repo posture applied (attacker can read source, open PRs, influence vendored content).
 
 **Residual risk at v0:** users running Efterlev out of a cloned repo must verify they trust the source. Git commit signing is the closest-available integrity mechanism pending sigstore.
 
@@ -216,6 +219,53 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 
 ---
 
+### T7: Public-repo source review for prompt-injection paths (added 2026-04-25 per SPEC-30.2)
+
+**Threat:** With the repo public, an attacker can read every agent prompt, the secret-redaction pattern library, and the provenance-store schema. They can then craft Terraform fixtures, Evidence Manifests, or cited evidence-id strings designed to slip past per-agent fence validators or the scrubber's pattern set.
+
+**Mitigation:** Per-run-nonced XML fences make content-injected forged fences computationally infeasible to predict; the post-launch posture publishes the algorithm but the per-run nonce is generated at agent invocation. Secret redaction operates on structural patterns that cannot be enumerated faithfully without seeing the pattern library, but the patterns are conservative — over-redaction is the safe-failure mode. Reports of bypass paths flow through `SECURITY.md` (SPEC-30.1) and become test fixtures.
+
+**Residual risk:** A determined attacker who can both author the Terraform input AND read the prompt structure may still find new bypass shapes; the project's response cadence matters more than the static defense in depth.
+
+### T8: Malicious PR (backdoor in detector or agent prompt) (added 2026-04-25 per SPEC-30.2)
+
+**Threat:** A contributor opens a PR that introduces a subtle backdoor — a detector that silently fails on a specific resource pattern, an agent prompt change that weakens citation discipline, or a dependency that pulls in malicious transitive code.
+
+**Mitigation:** Branch protection on `main` (SPEC-04, `.github/BRANCH_PROTECTION.md`): every PR requires maintainer review; CODEOWNERS enforces gating; merge requires linear history; force-push is disallowed; signed commits required for maintainer-authored commits. CI security scans (SPEC-30.7) catch known-bad patterns. The maintainer reviews every PR's full diff during the BDFL era; a hostile contributor needs to bypass both human review and automated scanning.
+
+**Residual risk:** Sophisticated supply-chain attacks targeting maintainer credentials or CI pipelines (e.g., the SolarWinds-style attack class). Sigstore + SLSA provenance on releases (SPEC-08) constrains the post-merge attack window; tamper-evident.
+
+### T9: Dependency poisoning (added 2026-04-25 per SPEC-30.2)
+
+**Threat:** A direct or transitive Python dependency is compromised between Efterlev releases. Malicious code reaches the user's machine via `pipx install efterlev`.
+
+**Mitigation:** Pinned dependency versions in `pyproject.toml` with explicit upper bounds; Dependabot weekly updates flow as PRs the maintainer reviews (SPEC-30.6); `pip-audit` CI scan blocks PRs that introduce known vulnerable versions (SPEC-30.7). Container images bake dependencies in at build time, then sign the immutable artifact via Sigstore (SPEC-06 + SPEC-08).
+
+**Residual risk:** Zero-day in a dep that lands between an audit pass and a release. Mitigated only by response cadence; documented in SECURITY.md as the coordinated-disclosure window.
+
+### T10: Release-artifact tampering (added 2026-04-25 per SPEC-30.2)
+
+**Threat:** An attacker swaps a Sigstore-signed wheel/container with a malicious one between release upload and user download.
+
+**Mitigation:** Sigstore keyless-OIDC signatures bind the artifact to the GitHub Actions workflow that built it (SPEC-08); SLSA provenance attestations cryptographically link wheel/container → workflow → commit SHA → repo. The verification script `scripts/verify-release.sh` runs all three checks; the release-notes template documents how users self-verify.
+
+**Residual risk:** A user who skips verification has no protection beyond TLS to PyPI / ghcr.io. The coordinated-disclosure-on-tamper process in SECURITY.md is the response path.
+
+---
+
+## What changes when the repo goes public (2026-04-25)
+
+The trust posture shifts at the public-flip moment:
+
+- **Before:** the codebase was readable only by the maintainer + invited reviewers under NDA; threat T7-style attacks required social-engineering to obtain access.
+- **After:** the codebase is fully public; T7-T10 above are explicitly in-scope.
+
+The mitigations under T7-T10 were designed before the open-source-first commitment was locked (DECISIONS 2026-04-23) and are validated by SPEC-30.7's CI security scanning + SPEC-30.8's pre-launch security review.
+
+The post-flip threat model is reviewed every minor release per the cadence below, and after any architectural change affecting the trust boundaries.
+
+---
+
 ## Explicitly NOT in scope for the tool's threat model
 
 - **Protecting the user from themselves.** Efterlev trusts its invoking user. A user who deliberately points Efterlev at sensitive content and chooses to use generative agents is making an informed decision.
@@ -226,9 +276,7 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 
 ## How to report a security issue
 
-Security issues should be reported privately before public disclosure. See `SECURITY.md` in the repo for the disclosure process (to be added before v1 release).
-
-We aim to acknowledge security reports within 48 hours and to publish a coordinated advisory on resolution.
+Security issues should be reported privately before public disclosure. See [`SECURITY.md`](./SECURITY.md) for the full coordinated-disclosure process: GitHub Security Advisories at [github.com/efterlev/efterlev/security/advisories/new](https://github.com/efterlev/efterlev/security/advisories/new) (preferred) or `security@efterlev.com` (alternate). Acknowledgment within 3 business days; 90-day default coordinated-disclosure window.
 
 ---
 

@@ -96,3 +96,92 @@ def test_config_default_fallback_model_is_sonnet(tmp_path: Path) -> None:
 
     cfg = LLMConfig()
     assert cfg.fallback_model == DEFAULT_FALLBACK_MODEL
+
+
+# --- SPEC-11: backend/region validator --------------------------------
+
+
+def test_llm_config_default_is_anthropic_with_no_region() -> None:
+    cfg = LLMConfig()
+    assert cfg.backend == "anthropic"
+    assert cfg.region is None
+
+
+def test_llm_config_bedrock_requires_region() -> None:
+    """SPEC-11: backend=bedrock without region is a config-time error,
+    not a runtime error at first LLM call."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="region is required"):
+        LLMConfig(backend="bedrock")
+
+
+def test_llm_config_bedrock_empty_string_region_rejected() -> None:
+    """Empty string is not a valid region — falsy truthiness catches it."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="region is required"):
+        LLMConfig(backend="bedrock", region="")
+
+
+def test_llm_config_bedrock_accepts_govcloud_region() -> None:
+    cfg = LLMConfig(
+        backend="bedrock",
+        model="us.anthropic.claude-opus-4-7-v1:0",
+        region="us-gov-west-1",
+    )
+    assert cfg.backend == "bedrock"
+    assert cfg.region == "us-gov-west-1"
+
+
+def test_llm_config_bedrock_accepts_commercial_region() -> None:
+    cfg = LLMConfig(
+        backend="bedrock",
+        model="us.anthropic.claude-opus-4-7-v1:0",
+        region="us-east-1",
+    )
+    assert cfg.region == "us-east-1"
+
+
+def test_llm_config_anthropic_forbids_region() -> None:
+    """Setting region alongside backend=anthropic is a misconfiguration
+    that previously would have been silently accepted."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="region must be unset"):
+        LLMConfig(backend="anthropic", region="us-east-1")
+
+
+def test_llm_config_rejects_unknown_backend() -> None:
+    """Literal narrows backend to 'anthropic' | 'bedrock'; anything else
+    fails at Pydantic's type level before the model_validator runs."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        LLMConfig(backend="oracle")  # type: ignore[arg-type]
+
+
+def test_config_toml_round_trip_with_bedrock(tmp_path: Path) -> None:
+    """A Bedrock config round-trips through TOML preserving region."""
+    cfg = Config(
+        llm=LLMConfig(
+            backend="bedrock",
+            model="us.anthropic.claude-opus-4-7-v1:0",
+            region="us-gov-west-1",
+        ),
+    )
+    path = tmp_path / "config.toml"
+    save_config(cfg, path)
+    restored = load_config(path)
+    assert restored == cfg
+    # And the saved TOML actually contains the region line.
+    assert 'region = "us-gov-west-1"' in path.read_text()
+
+
+def test_config_toml_anthropic_omits_region_line(tmp_path: Path) -> None:
+    """Default (anthropic) config should not emit a region line — keeps
+    the common-case config visually minimal."""
+    cfg = Config()
+    path = tmp_path / "config.toml"
+    save_config(cfg, path)
+    assert "region" not in path.read_text()

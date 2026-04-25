@@ -1,0 +1,18 @@
+detector_id: aws.secrets_manager_rotation
+
+ksis:
+  - KSI-SVC-ASM
+  - KSI-IAM-SNU
+
+controls:
+  - id: SC-12
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Cryptographic key/secret management lifecycle.
+  - id: IA-5(1)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Authenticator management — secret rotation is the standard
+      mechanism for refreshing credential authenticators on a cadence.

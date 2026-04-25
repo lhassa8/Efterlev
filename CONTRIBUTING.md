@@ -1,6 +1,6 @@
 # Contributing to Efterlev
 
-> **v1 status (2026-04-22): external contributions paused.** Efterlev is in closed development through v1 (private repo, no public announcement). External detector/primitive/agent contributions are paused during this period; the architecture continues to support them, and this document stays authoritative for when the repo reopens. If you are an evaluating customer with private-repo access under NDA and want to contribute an internal detector or bug fix, contact the maintainer directly — the contribution path is the same as documented below, with review scoped to the engagement. Reopening timing is gated on first customer engagement or Month 6, whichever comes first. See `DECISIONS.md` 2026-04-22.
+> **Status (2026-04-23): pre-launch; external contributions will open the moment the repo flips public.** Efterlev is in the final readiness gates before its public open-source launch; the repo is staged private during that window but the open-source-first commitment is locked (see `DECISIONS.md` 2026-04-23 "Rescind closed-source lock"). Once the eight pre-launch readiness gates pass (A1 identity/governance through A8 launch rehearsal), the repo goes public and this document becomes the canonical contribution path. The contribution flow described below — detectors as the most-welcomed type, the five-file detector contract, the standards checklist — is authoritative starting from launch day. Prospective contributors watching the repo: the signal to start is the public-visibility flip; at that point `good first issue` tickets will already be open.
 
 We want contributors. This document is the path from curiosity to merged PR. It is written for a human developer, not for Claude Code — that's what `CLAUDE.md` is for.
 
@@ -11,7 +11,7 @@ We want contributors. This document is the path from curiosity to merged PR. It 
 - Five-minute path: clone, install, run tests, see them pass.
 - One-hour path: pick an issue labeled `good first issue`, add a detector or fix a bug, open a PR with a passing test.
 - Most valuable contribution type right now: new detectors for FedRAMP Moderate controls on the roadmap.
-- Questions? Open a [GitHub Discussion](https://github.com/lhassa8/efterlev/discussions) before writing much code.
+- Questions? Open a [GitHub Discussion](https://github.com/efterlev/efterlev/discussions) before writing much code.
 
 ---
 
@@ -19,7 +19,7 @@ We want contributors. This document is the path from curiosity to merged PR. It 
 
 ```bash
 # Clone
-git clone https://github.com/lhassa8/efterlev.git
+git clone https://github.com/efterlev/efterlev.git
 cd efterlev
 
 # Install (uv is fast; use pip if you prefer)
@@ -214,6 +214,21 @@ If your fixtures match what the detector produces, tests pass. If not, the harne
 - Passes `pytest` — run `uv run pytest`
 - Has tests for any new detector, primitive, or agent
 - Includes a line in `DECISIONS.md` if the change involves a non-trivial choice
+- **Every commit is DCO-signed-off** — use `git commit -s` so each commit message carries a `Signed-off-by:` trailer. Branch protection on `main` blocks merges without DCO sign-off. See the "Signing and DCO sign-off" section below for details.
+
+**Signing and DCO sign-off:**
+
+- **All commits** (contributors and maintainers) must include a `Signed-off-by: Full Name <email>` trailer. Use `git commit -s` to add it automatically; `git commit -s --amend` to fix a missed one. By signing off you certify the Developer Certificate of Origin ([developercertificate.org](https://developercertificate.org)) — essentially a promise that you have the right to contribute the work under the project's Apache 2.0 license.
+- **Maintainer commits** must additionally be SSH-signed. Configure git to sign with Ed25519 SSH:
+  ```bash
+  git config --global user.signingkey ~/.ssh/your_signing_key.pub
+  git config --global gpg.format ssh
+  git config --global commit.gpgsign true
+  git config --global tag.gpgsign true
+  ```
+  Register the public half on your GitHub profile as a Signing Key and add a record to [`.github/SIGNING_KEYS.md`](./.github/SIGNING_KEYS.md) in your onboarding PR.
+- **Contributors are encouraged but not required to sign.** Signing is optional for non-maintainer PRs to keep the first-contribution barrier low; DCO sign-off is the hard requirement.
+- **Default merge strategy is squash-and-merge.** The squash commit is signed by the merging maintainer and preserves the contributor's DCO sign-off from the merged commits in the squash-commit body. Contributors never lose their attribution or sign-off.
 
 **New detectors specifically:**
 - Include all five files (detector.py, mapping.yaml, evidence.yaml, fixtures/, README.md)
@@ -257,7 +272,7 @@ Bodies are welcome for non-trivial changes. Reference issue numbers with `Refs #
 
 ## Design discussions
 
-Use [GitHub Discussions](https://github.com/lhassa8/efterlev/discussions) for:
+Use [GitHub Discussions](https://github.com/efterlev/efterlev/discussions) for:
 - "Should Efterlev support X?" questions
 - Proposals for new agents, new output formats, or significant architectural changes
 - Questions about how a detector should handle a specific case
@@ -274,27 +289,25 @@ When in doubt, start in Discussions. Moving a Discussion to an Issue when the sh
 
 ## How maintainer status works
 
-**v0 governance:** benevolent-dictator model. The project author is the sole maintainer and approves all merges.
+The full picture lives in [GOVERNANCE.md](./GOVERNANCE.md). Summary:
 
-**Path to committer:** contributors whose PRs consistently show up at the quality bar (described above) and who help triage issues and review others' PRs will be invited to commit rights. There is no formal application — if you've been contributing well for a while, we'll ask.
+- **Today:** benevolent-dictator model. The BDFL (`@lhassa8`) is the sole maintainer and approves all merges.
+- **Path to maintainer:** no application. Contributors whose PRs show up consistently at the quality bar — lint/type/test clean, evidence-vs-claims discipline upheld, detector READMEs honest about what they don't prove — and who participate thoughtfully in others' reviews will be invited to join the merge team. Rough bar: ~10+ merged PRs over 3+ months, with demonstrated judgment on ambiguous calls.
+- **At 10 sustained active contributors** (at least one merged PR in each of the prior 3 calendar months, sustained for 6 months), governance transitions to a technical steering committee via a public `DECISIONS.md` entry and a 30-day comment window.
 
-**At 10 active contributors,** governance moves to a technical steering committee with documented membership criteria. That change is tracked in `DECISIONS.md` and will be discussed publicly when we approach the threshold.
-
-Maintainer responsibilities are light by OSS standards: review PRs, triage issues, keep the main branch green. Maintainer status is not a rank; it's a chore assignment.
+Maintainer responsibilities are light by OSS standards: review PRs, triage issues, keep `main` green. Maintainer status is not a rank; it's a chore assignment.
 
 ---
 
 ## Code of conduct
 
-Be respectful. Assume good faith. Disagree technically without being personal.
+Efterlev adopts the [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) as its Code of Conduct. Full text, enforcement contact, response-time commitment, and the Efterlev-specific interpretation section live in [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md). Enforcement contact: `conduct@efterlev.com`.
 
-Specifically for this project:
+The project-specific interpretation (detailed in `CODE_OF_CONDUCT.md`) codifies three norms that apply to contributions in this repo:
 
-- **No FUD about competitors.** Our [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) is a model for honest positioning. Comments in issues or PRs that trash Comp AI, RegScale, Vanta, or anyone else will be asked to be reframed.
+- **No FUD about competitors.** Our [COMPETITIVE_LANDSCAPE.md](./COMPETITIVE_LANDSCAPE.md) is the model for honest positioning. Comments in issues or PRs that disparage Paramify, compliance.tf, Comp AI, RegScale, Vanta, or anyone else will be asked to be reframed.
 - **No overclaiming in docs or code.** We are explicit about what Efterlev does not do. Contributions that blur those lines will be asked to tighten their claims. This is not nitpicking; it's the core product discipline.
 - **Compliance jargon is okay; gatekeeping is not.** Some contributors will be deep in FedRAMP; others will be strong engineers learning the domain. If someone asks a basic compliance question, explain it. The domain needs more people in it, not fewer.
-
-A formal Code of Conduct based on the [Contributor Covenant](https://www.contributor-covenant.org/) will be added before v1 release.
 
 ---
 
@@ -308,12 +321,12 @@ See [SECURITY.md](./SECURITY.md) for the coordinated disclosure process. (Until 
 
 ## License of contributions
 
-By contributing, you agree your contributions are licensed under the project's Apache 2.0 license. A Contributor License Agreement may be introduced at v1 if the project is donated to a foundation; contributors will be notified and asked to consent before that change.
+By contributing, you agree your contributions are licensed under the project's Apache 2.0 license. Efterlev uses the Developer Certificate of Origin (DCO) rather than a CLA — no legal paperwork, no copyright assignment. The per-commit `git commit -s` sign-off is the certification; see the "Signing and DCO sign-off" section above for the full flow and the rationale. If the project is ever donated to a foundation (OpenSSF / LF / CNCF), contributors will be notified and asked to consent before any licensing change.
 
 ---
 
 ## Questions this document didn't answer
 
-Open a [Discussion](https://github.com/lhassa8/efterlev/discussions). If enough people ask the same question, it lands in this document.
+Open a [Discussion](https://github.com/efterlev/efterlev/discussions). If enough people ask the same question, it lands in this document.
 
 Welcome. We're glad you're here.

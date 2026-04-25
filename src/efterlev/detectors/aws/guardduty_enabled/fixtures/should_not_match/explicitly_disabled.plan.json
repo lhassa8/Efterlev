@@ -1,0 +1,18 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_guardduty_detector.main",
+          "mode": "managed",
+          "type": "aws_guardduty_detector",
+          "name": "main",
+          "values": {"enable": false}
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

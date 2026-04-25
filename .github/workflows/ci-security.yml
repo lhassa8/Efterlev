@@ -1,0 +1,96 @@
+# Security-scan workflow — runs on every PR and weekly on main.
+#
+# Four scans:
+#   1. pip-audit  — Python supply-chain vulnerability scan against
+#                   the resolved dependency set.
+#   2. bandit     — Python static analysis for security issues.
+#   3. semgrep    — security-focused rule set; project-specific rule
+#                   set lives in .github/semgrep-rules/ (added later).
+#   4. CodeQL     — GitHub's free Python security analysis.
+#
+# Failure modes:
+#   - pip-audit finds a vuln in a pinned dep → PR blocks until the dep is bumped.
+#   - bandit / semgrep flags new code → PR blocks until the finding is
+#     addressed or the rule is allowlisted with explicit justification
+#     in the same PR.
+#   - CodeQL findings appear in the GitHub Security tab; failures don't
+#     hard-block at v0.1.0 but maintainer reviews each before merge.
+#
+# See SPEC-30.7 for the design.
+
+name: ci-security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly Monday 08:00 PT; catches new advisories against the existing main
+    # commit before a contributor's PR rebases against a vulnerable baseline.
+    - cron: '0 15 * * 1'
+
+permissions:
+  contents: read
+  security-events: write   # CodeQL writes findings here
+
+jobs:
+
+  pip-audit:
+    name: pip-audit (Python deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Run pip-audit
+        run: |
+          uv run --with pip-audit pip-audit \
+            --strict \
+            --skip-editable
+
+  bandit:
+    name: bandit (Python static security analysis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install bandit
+        run: pip install --upgrade 'bandit[toml]>=1.7,<2'
+      - name: Run bandit
+        # Skip B101 (assert-used) in tests/ — pytest needs it.
+        # Skip B404 (subprocess import) in scripts/ — release-pipeline scripts
+        # legitimately shell out.
+        run: |
+          bandit -r src/efterlev \
+            --exclude tests \
+            --severity-level medium \
+            --confidence-level medium
+
+  semgrep:
+    name: semgrep (security rule set)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: returntocorp/semgrep-action@v1
+        with:
+          # r/python.lang.security is the curated Python-security rule set.
+          # Project-specific rules can be added under .github/semgrep-rules/
+          # in a follow-up PR.
+          config: 'p/python r/python.lang.security'
+
+  codeql:
+    name: CodeQL (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3

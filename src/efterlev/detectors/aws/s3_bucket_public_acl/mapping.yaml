@@ -1,0 +1,21 @@
+detector_id: aws.s3_bucket_public_acl
+
+ksis:
+  - KSI-CNA-RNT
+  - KSI-CNA-MAT
+
+controls:
+  - id: AC-3
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Access enforcement at the bucket layer — public ACLs and
+      anonymous-allow bucket policies remove the auth barrier.
+  - id: SC-7
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Boundary protection. Bucket-level public access bypasses
+      VPC-layer boundaries entirely. Complementary to
+      `aws.s3_public_access_block` which catches the override
+      mechanism.

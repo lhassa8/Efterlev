@@ -61,16 +61,32 @@ dev = [
     # PEP 561 stubs for pyyaml — required by mypy strict on
     # `efterlev.manifests.*`. Runtime pyyaml lives in project deps.
     "types-PyYAML>=6.0,<7",
+    # boto3 also lives in the [bedrock] extra; included here so the
+    # AnthropicBedrockClient tests can mock it without an opt-in install.
+    "boto3>=1.35,<2",
+]
+# AWS Bedrock backend (SPEC-10). Opt-in to keep the default `pipx install
+# efterlev` lean for users who don't need GovCloud / Bedrock. Container
+# images bake boto3 in directly via the Dockerfile.
+bedrock = [
+    "boto3>=1.35,<2",
+]
+# Docs site build (SPEC-38, A6 gate). Pin majors so a Material/MkDocs
+# breaking-change doesn't silently break the site build.
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
+    "pymdown-extensions>=10.7,<11",
 ]
 
 [project.scripts]
 efterlev = "efterlev.cli.main:app"
 
 [project.urls]
-Homepage = "https://github.com/lhassa8/Efterlev"
-Documentation = "https://github.com/lhassa8/Efterlev#readme"
-Repository = "https://github.com/lhassa8/Efterlev"
-Issues = "https://github.com/lhassa8/Efterlev/issues"
+Homepage = "https://efterlev.com"
+Documentation = "https://efterlev.com"
+Repository = "https://github.com/efterlev/efterlev"
+Issues = "https://github.com/efterlev/efterlev/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/efterlev"]
@@ -137,3 +153,6 @@ check_untyped_defs = true
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra --strict-markers"
+markers = [
+    "e2e: end-to-end harness tests that hit a real LLM backend; opt-in only.",
+]

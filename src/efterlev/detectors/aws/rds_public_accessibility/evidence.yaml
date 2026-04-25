@@ -1,0 +1,8 @@
+detector_id: aws.rds_public_accessibility
+
+evidence_shape:
+  resource_type: string         # "aws_db_instance" | "aws_rds_cluster" | "aws_rds_cluster_instance"
+  resource_name: string
+  exposure_state: enum          # "publicly_accessible" | "unparseable"
+  reason: string?               # populated only on exposure_state=unparseable
+  gap: string?                  # finding-shape marker

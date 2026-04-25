@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from efterlev.errors import ConfigError
 
@@ -36,6 +37,14 @@ class LLMConfig(BaseModel):
     the deployment wants a single model identity in every provenance
     record.
 
+    `backend` and `region` landed 2026-04-24 as part of SPEC-11. The
+    Bedrock backend (SPEC-10) is required by the open-source launch
+    posture to make GovCloud EC2 deployments possible without egress
+    to anthropic.com. `region` is conditional: required when
+    `backend == "bedrock"`, forbidden when `backend == "anthropic"`.
+    The validator enforces the either-or at config-load time so
+    misconfigured deployments fail fast rather than at first LLM call.
+
     Retry counts live as in-class constants in `anthropic_client.py`
     rather than in config, per the "keep it small" policy. If real-
     world operations reveal they need per-deployment tuning, they
@@ -44,9 +53,24 @@ class LLMConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: str = "anthropic"
+    backend: Literal["anthropic", "bedrock"] = "anthropic"
     model: str = DEFAULT_ANTHROPIC_MODEL
     fallback_model: str = DEFAULT_FALLBACK_MODEL
+    region: str | None = None
+
+    @model_validator(mode="after")
+    def _region_required_iff_bedrock(self) -> LLMConfig:
+        if self.backend == "bedrock" and not self.region:
+            raise ValueError(
+                "LLMConfig.region is required when backend is 'bedrock'; "
+                "set region to e.g. 'us-gov-west-1' or 'us-east-1'."
+            )
+        if self.backend == "anthropic" and self.region is not None:
+            raise ValueError(
+                "LLMConfig.region must be unset when backend is 'anthropic' "
+                "(region is only used by the Bedrock backend)."
+            )
+        return self
 
 
 class ScanConfig(BaseModel):
@@ -94,14 +118,22 @@ def load_config(path: Path) -> Config:
 def save_config(config: Config, path: Path) -> None:
     """Write `config` as TOML to `path`. Creates parent directories."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        "# Efterlev workspace config — written by `efterlev init`.",
-        "# Edit freely; `efterlev` commands read this on every invocation.",
-        "",
+    llm_lines = [
         "[llm]",
         f'backend = "{config.llm.backend}"',
         f'model = "{config.llm.model}"',
         f'fallback_model = "{config.llm.fallback_model}"',
+    ]
+    # SPEC-11: emit region only when backend=bedrock to keep the default
+    # (anthropic) config visually minimal. Pydantic validator guarantees
+    # region is set iff backend==bedrock.
+    if config.llm.backend == "bedrock":
+        llm_lines.append(f'region = "{config.llm.region}"')
+    lines = [
+        "# Efterlev workspace config — written by `efterlev init`.",
+        "# Edit freely; `efterlev` commands read this on every invocation.",
+        "",
+        *llm_lines,
         "",
         "[scan]",
         f'target_dir = "{config.scan.target_dir}"',

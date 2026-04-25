@@ -1294,6 +1294,96 @@ Three categories of finding + decisions for each:
 
 ---
 
+## 2026-04-23 — Rescind closed-source lock; open-source-first, gate-driven launch `[scope]` `[positioning]` `[process]` `[distribution]`
+
+**Decision (three interlocking calls, superseding pieces of 2026-04-22 "Lock v1 scope"):**
+
+1. **The 2026-04-22 commitment #4 ("Closed-source through v1; private-repo access under NDA") is rescinded.** Efterlev will open as a public Apache-2.0 repository. The GitHub org `efterlev/` will own the canonical repo. Public visibility is the primary distribution channel and the intended way new users discover, evaluate, and install the tool.
+2. **Launch is gate-driven, not date-driven.** Eight pre-launch readiness gates (A1 identity/governance; A2 distribution/packaging; A3 Bedrock backend for GovCloud; A4 detector breadth to 30; A5 trust surface; A6 documentation site; A7 deployment-mode verification matrix; A8 launch rehearsal) each have explicit exit criteria. The repo flips public when all eight pass and not before. No calendar commitment; no scheduled launch date. If a gate takes longer than expected, it takes longer. We would rather open six weeks late in a ready state than on time in a half-ready state.
+3. **Monetization posture: pure OSS, no commercial tier.** Apache-2.0 core, no paid layer, no managed SaaS, no enterprise edition. Sustained by maintainer time and contributor goodwill. If sustainability becomes untenable, we enter maintenance mode or seek a foundation home (OpenSSF/LF/CNCF, per existing governance language). Monetization is not introduced by stealth.
+
+**What this does NOT change from the 2026-04-22 lock:**
+- Archetype-first design discipline (ICP A remains the primary user).
+- FRMR-attestation as the only v1 production output format; OSCAL deferred to v1.5+.
+- Evidence-vs-Claims discipline; provenance graph; local-first posture; non-negotiable principles in `CLAUDE.md`.
+
+**What this changes in sequencing from the 2026-04-22 lock:**
+- **Bedrock backend** (originally v1 Phase 3, gated on GovCloud prospect demand) becomes pre-launch gate A3. The "customer can run it in AWS GovCloud EC2" claim is material to the OSS pitch; it must be true at launch, not contingent.
+- **Detector breadth 14 → 30** (originally month 2–3) becomes pre-launch gate A4. A first-time user's first scan on their real infra needs to read as "coverage," not a toy.
+- **Drift Agent** (originally v1 Phase 4, month 2) stays post-launch but becomes the first post-launch priority (C1). Paramify and compliance.tf both land near the continuous-validation story; we cede the category noun if we delay.
+- **`pipx install efterlev`** moves from "v1 public-repo opening" language (throughout `README.md` and `LIMITATIONS.md`) to "when A2 distribution gate passes."
+
+**Rationale for each call:**
+
+The market-reality-check completed 2026-04-23 (captured in the planning session transcript) surfaced three facts that invalidated the 2026-04-22 lock's closed-source rationale:
+
+- Paramify was authorized through the FedRAMP 20x Phase 2 Moderate pilot (`paramify.com/fedramp-20x`, accessed 2026-04-23) and now markets "FedRAMP 20x authorization in under 30 days" with case-study-backed Phase 2 submissions. They are no longer a generic GRC competitor; they are the category-defining FedRAMP-specialist tool and they got to the narrative first.
+- compliance.tf (`compliance.tf`, accessed 2026-04-23) enforces 185 FedRAMP Moderate Rev 4 controls automatically at Terraform-module-download time and has announced scan/edit/enforce custom rules shipping Q2 2026. This is a direct technical substitute for the "repo-native Terraform compliance" wedge, using a prevention-model framing that is simpler to pitch than our detection model.
+- FedRAMP 20x Phase 3 is expected Q3–Q4 2026 as the *public* authorization path for all Low/Moderate CSPs (`marcmansolutions.com/insights/fedramp-20x-phase3-cloud-providers-2026`, accessed 2026-04-23). This is the demand surge the product was built for. Discovery for an OSS tool in that surge happens through public GitHub, not through NDA outreach. Closed-source through the surge means invisibility during the only window where being early matters.
+
+The 2026-04-22 lock was internally consistent given what we knew then (no named prospect, schema-surface revision risk, maintainer bandwidth). The pivot is a response to new information, not a reversal of reasoning.
+
+**On the pure-OSS monetization call specifically:** the alternative (paid support / managed tier / enterprise edition) would create incentives for closed-development to leak back in via feature gating, two-repo strategy, or CLA complexity. Pure OSS is simpler, aligns with the "easiest and cheapest first step" principle we want to own, and does not foreclose a foundation home later. Sustainability via maintainer time and contributor goodwill is the explicit trade.
+
+**On the gate-driven launch call specifically:** a time-boxed launch would force corner-cutting on either detector coverage, Bedrock support, deployment-mode verification, or documentation. Each corner-cut would show up in the first real user's first five minutes and kill conversion. A launch date's only benefit is external coordination; we have no external coordination to do. Gates are the right primitive.
+
+**Alternatives rejected:**
+
+- **Open-source immediately, ship remaining work in the open.** Rejected. Ships the product in a state that doesn't yet back the "runs anywhere you want" claim (no Bedrock for GovCloud, no container, no PyPI package, no docs site). First-impression credibility is not recoverable; the first thousand visitors who arrive at a half-ready repo and leave do not return.
+- **Keep the 2026-04-22 closed-source lock and revisit at Month 6.** Rejected. Market clock has moved. Paramify's Phase 2 authorization was the change-of-fact that made the lock's rationale obsolete. Waiting compounds the invisibility risk without reducing any risk the lock was meant to mitigate.
+- **Open-source core, sell a managed SaaS tier later.** Rejected in favor of pure OSS. Managed tier would require brand separation, governance scaffolding for a two-surface product, and creates incentives for the OSS core to stay thinner than it should. The pure-OSS call forecloses this cleanly.
+- **Date-gated launch (e.g., "ship by June 5").** Rejected per the explicit user direction 2026-04-23: "build what we can, as fast as we can, making sure we don't cut any corners. when it's ready for real customer usage, we go live, no earlier. ignore project dates." Gates are the pacing primitive.
+- **Open-source but keep the main branch private; ship OSS via periodic drops.** Rejected. Periodic-drop OSS destroys the community-contribution wedge (no PRs can land between drops). The value of open-source is the development surface being public, not just the artifact.
+
+**Impact on other docs (threaded in the same session):**
+
+- `DECISIONS.md`: this entry.
+- `README.md`: status blockquote rewritten to drop closed-development language; Install section rewritten to drop "v1 public-repo opening" gate; pipx install promise moves to "when A2 distribution gate passes."
+- `docs/icp.md`: "v1 locked scope" section's commitment #4 marked rescinded with back-pointer to this entry.
+- `CONTRIBUTING.md`: "external contributions paused for v1" notice removed; detector/agent contribution flow re-opened.
+- `LIMITATIONS.md`: "PyPI release gated on v1 public-repo opening" language updated to reference the gate-driven launch.
+- `COMPETITIVE_LANDSCAPE.md`: 2026-04-23 market-reality update — Paramify promoted to the primary-competitor tier; compliance.tf added as a distinct technical-substitute entry; AWS/HashiCorp first-party risk named.
+- `docs/dual_horizon_plan.md` §3.1: pointer updated to reference this entry as the current v1 sequencing authority (supersedes the 2026-04-22 lock's Phase 3 / Phase 4 / Phase 6 ordering).
+
+**What we are NOT committing to in this entry:**
+
+- A launch date. Deliberate. Launch is when A1–A8 pass.
+- A specific post-launch milestone schedule. Phase C items are ordered by leverage, not calendar.
+- A foundation-donation commitment. Remains deferred; revisit at 25+ active contributors.
+- A contributor count trigger for steering-committee formation (stays at 10 per existing governance).
+
+**Verification (for this entry's claims, not for feature work):**
+
+- 2026-04-22 closed-source lock as stated: `DECISIONS.md` 2026-04-22 "Lock v1 scope: archetype-only, commercial AWS, 20x-native, closed-NDA", commitment #4.
+- Paramify FedRAMP 20x authorization claim: paramify.com/fedramp-20x, "first and only FedRAMP 20x Moderate Authorized GRC tool."
+- compliance.tf 185-control claim: compliance.tf, "compliance.tf enforces 185 FedRAMP Moderate Baseline Rev 4 controls automatically."
+- FedRAMP 20x Phase 3 Q3-Q4 2026 timing: marcmansolutions.com/insights/fedramp-20x-phase3-cloud-providers-2026.
+- InfusionPoints April 10 2026 and Aeroplicity April 13 2026 20x authorizations: newswire.com (InfusionPoints), natlawreview.com (Aeroplicity). Both retrieved 2026-04-23.
+
+---
+
+## 2026-04-23 — PyPI name `efterlev` held via placeholder upload `[distribution]` `[identity]` `[pre-launch]`
+
+**Decision:** Uploaded an inert `efterlev==0.0.0` placeholder package to real PyPI (`pypi.org/project/efterlev/`) to reserve the canonical name before public launch. Classifier `Development Status :: 1 - Planning`; importing the package raises `RuntimeError` with a clear pre-launch message; README names the package as a placeholder and tells readers not to install it.
+
+**Context:** SPEC-01 lists PyPI name-hold as one of five sub-tasks for pre-launch identity. Verified 2026-04-23 that the name was available (`curl pypi.org/pypi/efterlev/json` → 404). Name is sufficiently obscure (Swedish-derived) that squat risk is low but non-zero; with compliance-scanner interest rising and Phase 3 opening Q3-Q4 2026, holding the name cheaply is prudent.
+
+**Implementation:** minimal `pyproject.toml` (hatchling build-backend, version 0.0.0), one-file Python package, README declaring the placeholder, built with `uv build`, uploaded with `twine upload` using the maintainer's existing `~/.pypirc` token. Build artifacts and source tree cleaned up post-upload; nothing about the placeholder lives in the main Efterlev repo.
+
+**Alternatives rejected:**
+- **Upload the real Efterlev code as 0.0.1.** Rejected. The repo is pre-launch per DECISIONS 2026-04-23 "Rescind closed-source lock"; a real PyPI release would be a de-facto launch without the readiness gates (A2 install UX, A5 trust surface, A6 docs site). Findable, installable, but broken-first-impression.
+- **Upload to Test PyPI only.** Rejected. Test PyPI name-holds don't prevent someone else from taking the name on real PyPI. The whole point is to hold the canonical name.
+- **Do nothing; rely on name obscurity.** Rejected. Name-hold is cheap; the cost of losing the name to a squatter during Phase 3 adoption surge is high and irreversible.
+
+**Relationship to other pre-launch work:**
+- SPEC-01 exit-criterion item for PyPI name: done.
+- SPEC-05 (PyPI release pipeline) now has an existing PyPI project to publish into; first real release via the trusted-publishing pipeline will be `0.1.0`, not overwriting the `0.0.0` placeholder.
+- The placeholder version (`0.0.0`) is intentionally below any version we'd ship as the real product (SPEC-05 calls out `0.1.0` as the first public real release).
+
+**Verification:** `curl pypi.org/pypi/efterlev/json` 2026-04-23 post-upload returned `name: efterlev, version: 0.0.0, status: Development Status :: 1 - Planning`, confirming the hold.
+
+---
+
 
 
 ```

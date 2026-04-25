@@ -16,18 +16,34 @@ from __future__ import annotations
 # Detector registrations. Each import triggers the @detector decorator
 # that registers the detector with the module-level _REGISTRY.
 from efterlev.detectors.aws import (
+    access_analyzer_enabled,  # noqa: F401
     backup_retention_configured,  # noqa: F401
     cloudtrail_audit_logging,  # noqa: F401
     cloudtrail_log_file_validation,  # noqa: F401
+    cloudwatch_alarms_critical,  # noqa: F401
+    config_enabled,  # noqa: F401
+    elb_access_logs,  # noqa: F401
     encryption_ebs,  # noqa: F401
     encryption_s3_at_rest,  # noqa: F401
     fips_ssl_policies_on_lb_listeners,  # noqa: F401
+    guardduty_enabled,  # noqa: F401
+    iam_admin_policy_usage,  # noqa: F401
+    iam_inline_policies_audit,  # noqa: F401
     iam_password_policy,  # noqa: F401
+    iam_service_account_keys_age,  # noqa: F401
     iam_user_access_keys,  # noqa: F401
+    kms_customer_managed_keys,  # noqa: F401
     kms_key_rotation,  # noqa: F401
     mfa_required_on_iam_policies,  # noqa: F401
+    nacl_open_egress,  # noqa: F401
     rds_encryption_at_rest,  # noqa: F401
+    rds_public_accessibility,  # noqa: F401
+    s3_bucket_public_acl,  # noqa: F401
     s3_public_access_block,  # noqa: F401
+    secrets_manager_rotation,  # noqa: F401
+    security_group_open_ingress,  # noqa: F401
+    sns_topic_encryption,  # noqa: F401
+    sqs_queue_encryption,  # noqa: F401
     tls_on_lb_listeners,  # noqa: F401
     vpc_flow_logs_enabled,  # noqa: F401
 )

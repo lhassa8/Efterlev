@@ -1,0 +1,134 @@
+# Release workflow — builds the wheel + sdist, uploads to Test PyPI
+# always, and to real PyPI only on final (non-rc) version tags.
+#
+# One-time maintainer setup before this workflow can publish:
+#
+#   1. Test PyPI trusted publishing:
+#      At test.pypi.org → your account → Publishing → Add a new pending
+#      publisher:
+#        - PyPI Project Name: efterlev
+#        - Owner: efterlev
+#        - Repository name: efterlev
+#        - Workflow filename: release-pypi.yml
+#        - Environment: test-pypi
+#
+#   2. Real PyPI trusted publishing:
+#      Same flow at pypi.org with:
+#        - Environment: pypi
+#      AND configure the `pypi` GitHub environment (repo Settings →
+#      Environments) to require maintainer approval — this is the
+#      human gate that confirms SPEC-09 release-smoke.yml passed on
+#      the same tag before real-PyPI publication proceeds.
+#
+# See SPEC-05 for the full design + rationale and .github/BRANCH_PROTECTION.md
+# for related repo-settings configuration.
+
+name: release-pypi
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build wheel + sdist
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.verify.outputs.version }}
+      is-rc: ${{ steps.verify.outputs.is-rc }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify pyproject.toml version matches tag
+        id: verify
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PYPROJECT_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+          # Normalize semver-shaped tag to PEP 440: v0.1.0-rc.1 → 0.1.0rc1
+          NORMALIZED=$(echo "$TAG" | sed -E 's/-rc\.([0-9]+)/rc\1/')
+          echo "Tag:              v$TAG"
+          echo "Tag normalized:   $NORMALIZED"
+          echo "pyproject.toml:   $PYPROJECT_VERSION"
+          if [ "$PYPROJECT_VERSION" != "$NORMALIZED" ]; then
+            echo "::error::Version mismatch — fix pyproject.toml or re-tag."
+            exit 1
+          fi
+          echo "version=$NORMALIZED" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *"-rc."* ]]; then
+            echo "is-rc=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-rc=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: uv build
+
+      - name: Inspect artifacts
+        run: |
+          ls -la dist/
+          uv run --with twine twine check dist/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-test-pypi:
+    name: Publish to Test PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: test-pypi
+      url: https://test.pypi.org/project/efterlev/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write  # OIDC for trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to Test PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # Sigstore signing runs automatically under trusted publishing
+          # (SPEC-08 ties in here for signature and attestation).
+
+  publish-pypi:
+    name: Publish to real PyPI
+    needs: [build, publish-test-pypi]
+    # Final tags only — never publish rc tags to real PyPI (SPEC-05 scope).
+    if: ${{ needs.build.outputs.is-rc == 'false' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      # Environment is configured in repo settings to require maintainer
+      # approval. Approval is the human confirmation that release-smoke.yml
+      # (SPEC-09) has passed on the same tag.
+      url: https://pypi.org/project/efterlev/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to real PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Default URL is real PyPI; Sigstore signing runs automatically.

@@ -1,0 +1,21 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_accessanalyzer_analyzer.default",
+          "mode": "managed",
+          "type": "aws_accessanalyzer_analyzer",
+          "name": "default",
+          "values": {
+            "analyzer_name": "default-account-analyzer",
+            "type": "ACCOUNT"
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

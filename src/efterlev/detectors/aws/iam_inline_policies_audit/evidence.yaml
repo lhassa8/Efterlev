@@ -1,0 +1,9 @@
+detector_id: aws.iam_inline_policies_audit
+
+evidence_shape:
+  resource_type: string         # "aws_iam_role_policy" | "aws_iam_user_policy" | "aws_iam_group_policy"
+  resource_name: string
+  principal_kind: enum          # "role" | "user" | "group"
+  principal_ref: string?        # the role/user/group reference value
+  policy_state: enum            # "literal_json" | "unparseable"
+  policy_name: string?          # the inline-policy's `name` attribute

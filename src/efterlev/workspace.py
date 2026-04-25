@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from efterlev.config import BaselineConfig, Config, save_config
+from efterlev.config import BaselineConfig, Config, LLMConfig, save_config
 from efterlev.errors import ConfigError
 from efterlev.frmr import load_frmr
 from efterlev.oscal import load_oscal_800_53
@@ -41,8 +41,22 @@ class InitResult:
     receipt_record_id: str
 
 
-def init_workspace(target: Path, baseline: str, *, force: bool = False) -> InitResult:
+def init_workspace(
+    target: Path,
+    baseline: str,
+    *,
+    force: bool = False,
+    llm_config: LLMConfig | None = None,
+) -> InitResult:
     """Create `.efterlev/` under `target`, verify + load catalogs, persist a load receipt.
+
+    Args:
+        target: Repo path to initialize.
+        baseline: FRMR baseline name; must be in SUPPORTED_BASELINES.
+        force: Overwrite an existing `.efterlev/` directory if present.
+        llm_config: Optional pre-built LLMConfig. If None, the default
+            (anthropic backend) is used. The CLI passes an explicit LLMConfig
+            when the user invokes `--llm-backend bedrock` etc.
 
     Raises:
         ConfigError: baseline not supported, or `.efterlev/` already exists and
@@ -76,7 +90,10 @@ def init_workspace(target: Path, baseline: str, *, force: bool = False) -> InitR
     (cache_dir / "oscal_catalog.json").write_text(oscal_cat.model_dump_json(), encoding="utf-8")
 
     save_config(
-        Config(baseline=BaselineConfig(id=baseline)),
+        Config(
+            baseline=BaselineConfig(id=baseline),
+            llm=llm_config if llm_config is not None else LLMConfig(),
+        ),
         efterlev_dir / "config.toml",
     )
 

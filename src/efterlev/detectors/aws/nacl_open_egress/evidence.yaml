@@ -1,0 +1,11 @@
+detector_id: aws.nacl_open_egress
+
+evidence_shape:
+  resource_type: string         # "aws_network_acl" | "aws_network_acl_rule"
+  resource_name: string
+  origin: enum                  # "inline_egress" | "standalone_rule"
+  exposure_state: enum          # "all_traffic_to_world"
+  protocol: string?             # always "-1" when this evidence shape emits
+  open_ipv4: bool?              # true when cidr_block == "0.0.0.0/0"
+  open_ipv6: bool?              # true when ipv6_cidr_block == "::/0"
+  gap: string                   # finding-shape marker

@@ -1,0 +1,37 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_config_configuration_recorder.main",
+          "mode": "managed",
+          "type": "aws_config_configuration_recorder",
+          "name": "main",
+          "values": {
+            "name": "default",
+            "role_arn": "arn:aws:iam::123456789012:role/config-role",
+            "recording_group": [
+              {
+                "all_supported": true,
+                "include_global_resource_types": true
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_config_delivery_channel.main",
+          "mode": "managed",
+          "type": "aws_config_delivery_channel",
+          "name": "main",
+          "values": {
+            "name": "default",
+            "s3_bucket_name": "config-audit-logs"
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

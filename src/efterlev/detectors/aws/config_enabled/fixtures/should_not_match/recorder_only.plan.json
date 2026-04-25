@@ -1,0 +1,22 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_config_configuration_recorder.orphan",
+          "mode": "managed",
+          "type": "aws_config_configuration_recorder",
+          "name": "orphan",
+          "values": {
+            "name": "orphan",
+            "role_arn": "arn:aws:iam::123456789012:role/config-role",
+            "recording_group": [{"all_supported": true}]
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

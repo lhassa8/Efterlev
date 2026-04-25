@@ -111,13 +111,73 @@ def init(
         "--force",
         help="Overwrite an existing `.efterlev/` directory.",
     ),
+    llm_backend: str = typer.Option(
+        "anthropic",
+        "--llm-backend",
+        help="LLM backend: 'anthropic' (direct API) or 'bedrock' (AWS Bedrock).",
+    ),
+    llm_region: str | None = typer.Option(
+        None,
+        "--llm-region",
+        help=(
+            "AWS region for Bedrock backend (e.g. 'us-gov-west-1'). "
+            "Required when --llm-backend=bedrock."
+        ),
+    ),
+    llm_model: str | None = typer.Option(
+        None,
+        "--llm-model",
+        help=(
+            "LLM model ID. Defaults to 'claude-opus-4-7' (anthropic) or "
+            "'us.anthropic.claude-opus-4-7-v1:0' (bedrock)."
+        ),
+    ),
 ) -> None:
     """Initialize `.efterlev/` in the target repo with a provenance store and config."""
+    from efterlev.config import DEFAULT_ANTHROPIC_MODEL, LLMConfig
     from efterlev.errors import CatalogLoadError, ConfigError
     from efterlev.workspace import init_workspace
 
+    # Typer-level validation: fail fast on obvious CLI mistakes before
+    # Pydantic's model_validator catches the same thing at config construction.
+    if llm_backend not in ("anthropic", "bedrock"):
+        typer.echo(
+            f"error: --llm-backend must be 'anthropic' or 'bedrock', got {llm_backend!r}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if llm_backend == "bedrock" and not llm_region:
+        typer.echo(
+            "error: --llm-region is required when --llm-backend=bedrock "
+            "(e.g. 'us-gov-west-1' or 'us-east-1')",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if llm_backend == "anthropic" and llm_region:
+        typer.echo(
+            "error: --llm-region is only valid with --llm-backend=bedrock",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    # Build LLMConfig explicitly so the Pydantic validator enforces the
+    # invariants one more time (defense in depth).
+    default_model = (
+        "us.anthropic.claude-opus-4-7-v1:0" if llm_backend == "bedrock" else DEFAULT_ANTHROPIC_MODEL
+    )
+    llm_config = LLMConfig(
+        backend=llm_backend,  # type: ignore[arg-type]
+        model=llm_model or default_model,
+        region=llm_region,
+    )
+
     try:
-        result = init_workspace(target.resolve(), baseline, force=force)
+        result = init_workspace(
+            target.resolve(),
+            baseline,
+            force=force,
+            llm_config=llm_config,
+        )
     except (ConfigError, CatalogLoadError) as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1) from e
@@ -332,8 +392,7 @@ def poam(
         classifications = reconstruct_classifications_from_store(rows)
         if not classifications:
             typer.echo(
-                "error: no Gap Agent classifications in the store. "
-                "Run `efterlev agent gap` first.",
+                "error: no Gap Agent classifications in the store. Run `efterlev agent gap` first.",
                 err=True,
             )
             raise typer.Exit(code=1)
@@ -387,9 +446,7 @@ def _write_scan_redaction_log(ledger_obj: Any, root: Path, scan_id: str) -> None
     """
     from efterlev.llm.scrubber import write_redaction_log
 
-    count = write_redaction_log(
-        ledger_obj, root / ".efterlev" / "redacted.log", scan_id=scan_id
-    )
+    count = write_redaction_log(ledger_obj, root / ".efterlev" / "redacted.log", scan_id=scan_id)
     if count > 0:
         pattern_counts = ledger_obj.pattern_counts()
         summary = ", ".join(f"{n}x{name}" for name, n in sorted(pattern_counts.items()))

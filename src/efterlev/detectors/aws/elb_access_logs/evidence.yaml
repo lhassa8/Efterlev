@@ -1,0 +1,10 @@
+detector_id: aws.elb_access_logs
+
+evidence_shape:
+  resource_type: string         # "aws_lb" | "aws_alb" | "aws_elb"
+  resource_name: string
+  lb_kind: enum                 # "alb_or_nlb" | "classic"
+  log_state: enum               # "enabled" | "bucket_only" | "absent"
+  bucket: string?
+  interval_minutes: int?        # classic ELB only
+  gap: string?                  # populated when log_state == "absent"

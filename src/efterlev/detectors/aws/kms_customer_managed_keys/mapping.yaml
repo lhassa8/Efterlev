@@ -1,0 +1,14 @@
+detector_id: aws.kms_customer_managed_keys
+
+ksis:
+  - KSI-SVC-ASM
+
+controls:
+  - id: SC-12
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Customer-managed-key inventory. Declares that CMKs are present
+      and serve as the cryptographic primitives the workload uses.
+      Pairs with `aws.kms_key_rotation` for the rotation-policy half
+      of SC-12 evidence.

@@ -1,0 +1,131 @@
+site_name: Efterlev
+site_url: https://efterlev.com
+site_description: Repo-native, agent-first compliance scanner for FedRAMP 20x. Open-source. Apache 2.0.
+site_author: Efterlev project
+
+repo_url: https://github.com/efterlev/efterlev
+repo_name: efterlev/efterlev
+edit_uri: edit/main/docs/
+
+copyright: |
+  &copy; Efterlev project &mdash; Apache 2.0. <a href="https://github.com/efterlev/efterlev/blob/main/SECURITY.md">Security</a> · <a href="https://github.com/efterlev/efterlev/blob/main/GOVERNANCE.md">Governance</a> · <a href="https://github.com/efterlev/efterlev/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+
+plugins:
+  - search
+
+# Technical-internal docs and the specs directory live under docs/ for git
+# history reasons but aren't part of the public docs site. The site has
+# its own pages for these topics; the originals stay accessible on GitHub.
+exclude_docs: |
+  /day1_brief.md
+  /dogfood-2026-04-22.md
+  /scope.md
+  /RELEASE.md
+  /deploy-govcloud-ec2.md
+  /security-review-2026-04.md
+  /icp.md
+  /dual_horizon_plan.md
+  /ci-integration.md
+  /examples/
+  /specs/
+  /launch/
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Concepts:
+      - "KSIs for engineers": concepts/ksis-for-engineers.md
+      - "Evidence vs Claims": concepts/evidence-vs-claims.md
+      - "Provenance": concepts/provenance.md
+      - "What Efterlev is not": concepts/what-efterlev-is-not.md
+  - Tutorials:
+      - "Install": tutorials/install.md
+      - "GitHub Actions": tutorials/ci-github-actions.md
+      - "GitLab CI": tutorials/ci-gitlab.md
+      - "CircleCI": tutorials/ci-circleci.md
+      - "Jenkins": tutorials/ci-jenkins.md
+      - "Deploy in AWS GovCloud": tutorials/deploy-govcloud-ec2.md
+      - "Deploy air-gapped": tutorials/deploy-air-gap.md
+      - "Write your first detector": tutorials/write-a-detector.md
+      - "Write an Evidence Manifest": tutorials/write-a-manifest.md
+      - "Customize an agent prompt": tutorials/customize-agent-prompt.md
+  - Comparisons:
+      - "Paramify": comparisons/paramify.md
+      - "compliance.tf": comparisons/compliance-tf.md
+      - "Comp AI": comparisons/comp-ai.md
+      - "Vanta / Drata": comparisons/vanta-drata.md
+      - "Hiring a consultant": comparisons/consultant.md
+  - Reference:
+      - "CLI": reference/cli.md
+      - "Primitives": reference/primitives.md
+      - "Detectors": reference/detectors.md
+      - "Models": reference/models.md
+      - "FRMR attestation schema": reference/frmr-attestation-schema.md
+      - "POA&M markdown": reference/poam-markdown-shape.md
+  - Architecture: architecture.md
+  - FAQ: faq.md
+  - "Deployment modes": deployment-modes.md
+  - "Manual verification runbook": manual-verification-runbook.md
+  - Project:
+      - "Contributing": https://github.com/efterlev/efterlev/blob/main/CONTRIBUTING.md
+      - "Governance": https://github.com/efterlev/efterlev/blob/main/GOVERNANCE.md
+      - "Decisions log": https://github.com/efterlev/efterlev/blob/main/DECISIONS.md
+      - "Limitations": https://github.com/efterlev/efterlev/blob/main/LIMITATIONS.md
+      - "Threat model": https://github.com/efterlev/efterlev/blob/main/THREAT_MODEL.md
+      - "Security policy": https://github.com/efterlev/efterlev/blob/main/SECURITY.md
+      - "Code of Conduct": https://github.com/efterlev/efterlev/blob/main/CODE_OF_CONDUCT.md
+      - "Release process": https://github.com/efterlev/efterlev/blob/main/docs/RELEASE.md
+      - "ICP": https://github.com/efterlev/efterlev/blob/main/docs/icp.md
+      - "Competitive landscape": https://github.com/efterlev/efterlev/blob/main/COMPETITIVE_LANDSCAPE.md

@@ -26,9 +26,7 @@ def _run_detector_on(path: Path) -> list:
 
 
 def test_symmetric_rotated_emits_enabled() -> None:
-    results = _run_detector_on(
-        DETECTOR_DIR / "fixtures" / "should_match" / "symmetric_rotated.tf"
-    )
+    results = _run_detector_on(DETECTOR_DIR / "fixtures" / "should_match" / "symmetric_rotated.tf")
     assert len(results) == 1
     ev = results[0]
     assert ev.detector_id == "aws.kms_key_rotation"
@@ -53,9 +51,7 @@ def test_symmetric_unrotated_emits_disabled_with_gap() -> None:
 
 
 def test_asymmetric_key_emits_not_applicable() -> None:
-    results = _run_detector_on(
-        DETECTOR_DIR / "fixtures" / "should_not_match" / "asymmetric_key.tf"
-    )
+    results = _run_detector_on(DETECTOR_DIR / "fixtures" / "should_not_match" / "asymmetric_key.tf")
     assert len(results) == 1
     ev = results[0]
     assert ev.content["rotation_status"] == "not_applicable"

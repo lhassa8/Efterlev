@@ -1,0 +1,18 @@
+detector_id: aws.access_analyzer_enabled
+
+ksis:
+  - KSI-CNA-EIS
+
+controls:
+  - id: CA-7
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Continuous monitoring — IAM Access Analyzer evaluates resource
+      policies continuously and surfaces cross-account access paths.
+  - id: AC-6
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Least privilege — the analyzer surfaces overly-broad access grants
+      that violate least-privilege.

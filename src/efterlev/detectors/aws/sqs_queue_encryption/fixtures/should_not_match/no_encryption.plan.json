@@ -1,0 +1,18 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_sqs_queue.plaintext",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "plaintext",
+          "values": {"name": "plaintext-queue"}
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

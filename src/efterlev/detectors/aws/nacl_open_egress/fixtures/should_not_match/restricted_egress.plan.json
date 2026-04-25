@@ -1,0 +1,30 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_network_acl.private_subnet",
+          "mode": "managed",
+          "type": "aws_network_acl",
+          "name": "private_subnet",
+          "values": {
+            "vpc_id": "vpc-0abc123",
+            "egress": [
+              {
+                "rule_no": 100,
+                "rule_action": "allow",
+                "protocol": "tcp",
+                "from_port": 443,
+                "to_port": 443,
+                "cidr_block": "0.0.0.0/0"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "configuration": {"root_module": {"module_calls": {}}}
+}

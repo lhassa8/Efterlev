@@ -1,0 +1,23 @@
+detector_id: aws.rds_public_accessibility
+
+# FRMR 0.9.43-beta: KSI-CNA-RNT and KSI-CNA-MAT both list sc-7.5
+# in their controls array. Clean mappings.
+ksis:
+  - KSI-CNA-RNT
+  - KSI-CNA-MAT
+
+controls:
+  - id: AC-3
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Access enforcement at the network layer — `publicly_accessible = true`
+      removes the network-level access barrier. Does NOT prove anything
+      about IAM-level or DB-level access control.
+  - id: SC-7
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Boundary protection. The setting controls whether the RDS gets a
+      public-routable DNS name; combined with permissive security groups
+      this is the canonical "data plane on the internet" misconfiguration.

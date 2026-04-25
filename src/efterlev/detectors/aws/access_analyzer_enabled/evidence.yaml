@@ -1,0 +1,8 @@
+detector_id: aws.access_analyzer_enabled
+
+evidence_shape:
+  resource_type: string         # always "aws_accessanalyzer_analyzer"
+  resource_name: string
+  analyzer_state: enum          # "declared"
+  scope: enum                   # "ACCOUNT" | "ORGANIZATION"
+  stronger_org_scope: bool      # shorthand for scope == "ORGANIZATION"

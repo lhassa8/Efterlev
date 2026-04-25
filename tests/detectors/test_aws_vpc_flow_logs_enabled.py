@@ -26,9 +26,7 @@ def _run_detector_on(path: Path) -> list:
 
 
 def test_vpc_all_traffic_to_s3_records_target_and_destination() -> None:
-    results = _run_detector_on(
-        DETECTOR_DIR / "fixtures" / "should_match" / "vpc_all_traffic_s3.tf"
-    )
+    results = _run_detector_on(DETECTOR_DIR / "fixtures" / "should_match" / "vpc_all_traffic_s3.tf")
     assert len(results) == 1
     ev = results[0]
     assert ev.detector_id == "aws.vpc_flow_logs_enabled"
@@ -40,9 +38,7 @@ def test_vpc_all_traffic_to_s3_records_target_and_destination() -> None:
 
 
 def test_subnet_reject_defaults_destination_to_cloudwatch_logs() -> None:
-    results = _run_detector_on(
-        DETECTOR_DIR / "fixtures" / "should_match" / "subnet_reject_cwl.tf"
-    )
+    results = _run_detector_on(DETECTOR_DIR / "fixtures" / "should_match" / "subnet_reject_cwl.tf")
     assert len(results) == 1
     ev = results[0]
     assert ev.content["target_kind"] == "subnet"
@@ -56,9 +52,7 @@ def test_subnet_reject_defaults_destination_to_cloudwatch_logs() -> None:
 
 
 def test_no_flow_logs_emits_nothing() -> None:
-    results = _run_detector_on(
-        DETECTOR_DIR / "fixtures" / "should_not_match" / "no_flow_logs.tf"
-    )
+    results = _run_detector_on(DETECTOR_DIR / "fixtures" / "should_not_match" / "no_flow_logs.tf")
     assert results == []
 
 

@@ -1,0 +1,14 @@
+detector_id: aws.security_group_open_ingress
+
+evidence_shape:
+  resource_type: string         # "aws_security_group" | "aws_security_group_rule"
+  resource_name: string         # the Terraform logical name
+  origin: enum                  # "inline_ingress" | "standalone_rule"
+  exposure_state: enum          # "open_to_world" | "unparseable"
+  from_port: int?               # null when unset/unparseable
+  to_port: int?
+  protocol: string?             # tcp/udp/icmp/all (terraform "-1" => "all" semantically)
+  open_ipv4: bool?              # true when 0.0.0.0/0 in cidr_blocks
+  open_ipv6: bool?              # true when ::/0 in ipv6_cidr_blocks
+  reason: string?               # populated only on exposure_state=unparseable
+  gap: string?                  # human-readable gap summary; finding-shape marker
