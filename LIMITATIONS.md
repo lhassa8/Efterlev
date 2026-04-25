@@ -60,6 +60,16 @@ The Remediation Agent produces code diffs as local output. Opening PRs against r
 
 Each detector's `README.md` states what the detector proves and what it does not prove. For example: the SC-28 S3 encryption detector evidences the infrastructure layer of SC-28 (encryption is configured) but does not evidence the procedural layer (key management practices, rotation policies, BYOK). Never read an Efterlev finding as "SC-28 is implemented"; read it as "infrastructure-layer evidence for SC-28 is present."
 
+### The HCL parser lags upstream Terraform syntax
+
+Efterlev's `.tf` parser uses [`python-hcl2`](https://github.com/amplify-education/python-hcl2), a pure-Python re-implementation of HashiCorp's HCL2 grammar. python-hcl2 trails upstream Terraform — certain valid 1.x constructs (notably for-expressions inside list comprehensions emitting object literals, e.g. EFA network interface configuration in `terraform-aws-modules/terraform-aws-eks`) raise `Unexpected token` parse errors. Discovered 2026-04-25 dogfooding `terraform-aws-eks` and `cloudposse/terraform-aws-components` (13 of ~1800 files unparseable in the latter).
+
+**Behavior on parse failure (post-2026-04-25):** the scan is partial-success. Each unparseable file is recorded as a `ParseFailure` and the walk continues. The CLI prints a warning block listing skipped files and exits 0 if any file parsed; non-zero only when every file failed. Detector coverage on a partially-failing codebase is reduced by exactly the resources in those files.
+
+**Workaround for codebases with persistent failures:** use plan-JSON mode. `terraform plan -out plan.bin && terraform show -json plan.bin > plan.json && efterlev scan --plan plan.json` — plan JSON is HashiCorp-emitted and bypasses python-hcl2 entirely. Every detector runs against plan-derived resources without modification (Phase B equivalence test in `tests/detectors/test_plan_mode_equivalence.py`).
+
+**Upgrade path:** when python-hcl2 catches up to the syntax (or we swap to a maintained alternative — `hcl-parser`-style native bindings, a Go-shellout to `hcl2json`, etc.). Tracked as a v0.2.0 follow-up; not blocking launch because plan-JSON mode is a clean workaround for the affected codebases.
+
 ### FRMR attestation output is Pydantic-validated, not FedRAMP-schema-validated
 
 The FRMR attestation JSON artifact (`efterlev agent document` output) is validated against the Pydantic `AttestationArtifact` model at construction time — `extra="forbid"`, strict literal types, `requires_review=Literal[True]`. FedRAMP's vendored `FedRAMP.schema.json` describes the FRMR *catalog* (what KSIs exist), not attestation *output* (a CSP's statement of evidence). FedRAMP has not published an attestation-output schema as of April 2026; when they do, Efterlev will migrate. See `DECISIONS.md` 2026-04-22 "Phase 2: FRMR attestation generator" for the full schema-posture call. Regardless of schema validation, submission-time FedRAMP review may apply additional constraints the tool does not capture — the artifact is a draft, always.

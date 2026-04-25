@@ -87,14 +87,43 @@ def test_scan_without_tf_files_is_a_clean_noop(tmp_path: Path) -> None:
     assert result.evidence_count == 0
 
 
-def test_scan_bad_syntax_raises_detector_error(tmp_path: Path) -> None:
+def test_scan_collects_parse_failures_and_continues(tmp_path: Path) -> None:
+    """Bad-syntax files no longer abort the scan — they're recorded.
+
+    Pre-2026-04-25 contract: one bad .tf file raised DetectorError and
+    aborted the whole scan. New contract: each unparseable file lands in
+    `result.parse_failures` and the scan proceeds with the rest. Discovered
+    while dogfooding cloudposse/terraform-aws-components (1801 files; the
+    abort-on-first behavior made the tool unusable on any real codebase).
+    """
     (tmp_path / "bad.tf").write_text("not valid { terraform")
-    with (
-        ProvenanceStore(tmp_path) as store,
-        active_store(store),
-        pytest.raises(DetectorError, match="failed to parse"),
-    ):
-        scan_terraform(ScanTerraformInput(target_dir=tmp_path))
+    (tmp_path / "good.tf").write_text(
+        'resource "aws_s3_bucket" "ok" { bucket = "ok" }\n'
+    )
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        result = scan_terraform(ScanTerraformInput(target_dir=tmp_path))
+
+    assert result.resources_parsed == 1
+    assert len(result.parse_failures) == 1
+    assert str(result.parse_failures[0].file) == "bad.tf"
+    # Detectors still ran against the file that did parse.
+    assert result.detectors_run == _terraform_detector_count()
+
+
+def test_scan_all_files_unparseable_returns_zero_resources(tmp_path: Path) -> None:
+    """If every file fails to parse, the scan still completes.
+
+    The scan primitive is partial-success-by-design; the CLI is the layer
+    that decides whether to exit non-zero (it does, when `resources_parsed`
+    is 0 AND `parse_failures` is non-empty). Tested separately at the CLI
+    layer, not here.
+    """
+    (tmp_path / "bad1.tf").write_text("invalid { syntax")
+    (tmp_path / "bad2.tf").write_text("also { invalid")
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        result = scan_terraform(ScanTerraformInput(target_dir=tmp_path))
+    assert result.resources_parsed == 0
+    assert {str(f.file) for f in result.parse_failures} == {"bad1.tf", "bad2.tf"}
 
 
 def test_scan_nonexistent_target_raises(tmp_path: Path) -> None:

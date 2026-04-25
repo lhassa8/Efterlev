@@ -312,6 +312,40 @@ def scan(
         # Primitive already deduplicates; join for display.
         skipped = ", ".join(manifest_result.skipped_unknown_ksi)
         typer.echo(f"  skipped manifest(s) for unknown KSI(s): {skipped}")
+
+    if scan_result.parse_failures:
+        # Surface unparseable files structurally so the user knows what was
+        # skipped without grepping logs. Truncate the list at 10 to keep the
+        # CLI output skimmable; the structured output (JSON, MCP) carries the
+        # full list. python-hcl2 lags upstream Terraform syntax — for codebases
+        # with persistent failures, plan-JSON mode (`--plan plan.json`) is the
+        # workaround since plan-JSON is HashiCorp-emitted.
+        typer.echo("")
+        typer.echo(
+            f"  ⚠ files skipped due to parse error: {scan_result.files_failed} "
+            f"(scan continued with the {scan_result.resources_parsed} resources "
+            f"that did parse)"
+        )
+        for fail in scan_result.parse_failures[:10]:
+            typer.echo(f"    {fail.file}: {fail.reason}")
+        if scan_result.files_failed > 10:
+            typer.echo(f"    … and {scan_result.files_failed - 10} more")
+        typer.echo("    For codebases with persistent failures, try plan-JSON mode:")
+        typer.echo(
+            "      terraform plan -out plan.bin && "
+            "terraform show -json plan.bin > plan.json"
+        )
+        typer.echo("      efterlev scan --plan plan.json")
+
+    # Hard-fail only if EVERY .tf file failed to parse — partial success is
+    # the design (see ScanTerraformOutput.parse_failures). Zero resources +
+    # zero failures = empty repo (legitimate; not a failure).
+    if scan_result.parse_failures and scan_result.resources_parsed == 0:
+        typer.echo("", err=True)
+        typer.echo(
+            "error: every .tf file failed to parse; nothing to scan.", err=True
+        )
+        raise typer.Exit(code=1)
     if scan_result.evidence_record_ids:
         typer.echo("")
         typer.echo("Detector record IDs (pass to `efterlev provenance show`):")

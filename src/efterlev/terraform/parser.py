@@ -14,6 +14,7 @@ whichever detectors need them.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,26 +26,67 @@ from efterlev.models import SourceRef, TerraformResource
 _RESOURCE_HEADER_RE = re.compile(r'^\s*resource\s+"([^"]+)"\s+"([^"]+)"')
 
 
-def parse_terraform_tree(target_dir: Path) -> list[TerraformResource]:
+@dataclass(frozen=True)
+class ParseFailure:
+    """One file the tree-walker couldn't parse, captured for partial-success reporting."""
+
+    file: Path
+    """Repo-relative path (matches `SourceRef.file` for successful resources)."""
+    reason: str
+    """Short error message — typically the python-hcl2 / lark exception class + str(e)."""
+
+
+@dataclass(frozen=True)
+class TerraformParseResult:
+    """What `parse_terraform_tree` returns: successful resources + per-file failures.
+
+    Real-world Terraform codebases often contain at least one file the
+    python-hcl2 library can't parse (the parser lags upstream Terraform
+    syntax — see `LIMITATIONS.md`). A scan that aborts on the first failure
+    is unusable on production codebases (e.g. `cloudposse/terraform-aws-components`
+    has 1801 .tf files; one parse failure on file 1 blocked the entire scan
+    pre-2026-04-25). The collect-and-continue contract surfaces failures
+    structurally instead of crashing.
+    """
+
+    resources: list[TerraformResource]
+    parse_failures: list[ParseFailure]
+
+    @property
+    def files_failed(self) -> int:
+        return len(self.parse_failures)
+
+
+def parse_terraform_tree(target_dir: Path) -> TerraformParseResult:
     """Walk `target_dir` recursively and parse every `.tf` file.
 
-    Files that fail to parse raise `DetectorError`; in v0 one bad file fails
-    the whole scan so users get a clear signal rather than silent partial
-    results. v1 may loosen this to collect-and-continue with warnings.
+    Collect-and-continue: a file that python-hcl2 can't parse is recorded as
+    a `ParseFailure` and the walk continues. Callers (the scan primitive,
+    the CLI) inspect `parse_failures` to surface structured warnings.
+    Aborting only happens for catastrophic conditions (target directory
+    doesn't exist) — never for "one weird file."
 
     Each resource's `source_ref.file` is recorded as a path relative to
     `target_dir` — keeps the provenance store, HTML reports, and FRMR
     attestation JSON free of the user's absolute filesystem layout. The
     Remediation Agent and other readers recover the absolute path via
-    `paths.resolve_within_root(file, root)` at read time.
+    `paths.resolve_within_root(file, root)` at read time. `ParseFailure.file`
+    uses the same relative path for the same reason.
     """
     if not target_dir.is_dir():
         raise DetectorError(f"target is not a directory: {target_dir}")
     resources: list[TerraformResource] = []
+    parse_failures: list[ParseFailure] = []
     for tf_file in sorted(target_dir.rglob("*.tf")):
         relative = tf_file.relative_to(target_dir)
-        resources.extend(parse_terraform_file(tf_file, record_as=relative))
-    return resources
+        try:
+            resources.extend(parse_terraform_file(tf_file, record_as=relative))
+        except DetectorError as e:
+            # Strip the absolute-path prefix from the error message to keep
+            # the failure record relative-path-clean, matching `file`.
+            reason = str(e).replace(f"failed to parse {tf_file}: ", "")
+            parse_failures.append(ParseFailure(file=relative, reason=reason))
+    return TerraformParseResult(resources=resources, parse_failures=parse_failures)
 
 
 def parse_terraform_file(

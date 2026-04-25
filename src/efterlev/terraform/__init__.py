@@ -8,7 +8,18 @@ just translates `.tf` files into typed resource records with line-accurate
 
 from __future__ import annotations
 
-from efterlev.terraform.parser import parse_terraform_file, parse_terraform_tree
+from efterlev.terraform.parser import (
+    ParseFailure,
+    TerraformParseResult,
+    parse_terraform_file,
+    parse_terraform_tree,
+)
 from efterlev.terraform.plan import parse_plan_json
 
-__all__ = ["parse_plan_json", "parse_terraform_file", "parse_terraform_tree"]
+__all__ = [
+    "ParseFailure",
+    "TerraformParseResult",
+    "parse_plan_json",
+    "parse_terraform_file",
+    "parse_terraform_tree",
+]

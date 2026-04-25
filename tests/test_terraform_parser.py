@@ -42,13 +42,14 @@ def test_parse_tree_records_paths_relative_to_target_dir(tmp_path: Path) -> None
     (nested / "bucket.tf").write_text('resource "aws_s3_bucket" "a" { bucket = "a" }\n')
     (tmp_path / "root.tf").write_text('resource "aws_s3_bucket" "b" { bucket = "b" }\n')
 
-    resources = parse_terraform_tree(tmp_path)
-    recorded = {str(r.source_ref.file) for r in resources}
+    result = parse_terraform_tree(tmp_path)
+    recorded = {str(r.source_ref.file) for r in result.resources}
     # Both paths are relative to tmp_path (never absolute, never containing
     # the test's /tmp/pytest-of-*/… prefix).
     assert recorded == {"root.tf", "infra/modules/bucket.tf"}
-    for r in resources:
+    for r in result.resources:
         assert not r.source_ref.file.is_absolute()
+    assert result.parse_failures == []
 
 
 def test_parse_file_with_explicit_record_as_uses_that_path(tmp_path: Path) -> None:
@@ -124,8 +125,9 @@ def test_walks_tree_across_subdirectories(tmp_path: Path) -> None:
     # Non-.tf files are ignored.
     (tmp_path / "README.md").write_text("# not terraform")
 
-    resources = parse_terraform_tree(tmp_path)
-    assert {r.name for r in resources} == {"main", "sub"}
+    result = parse_terraform_tree(tmp_path)
+    assert {r.name for r in result.resources} == {"main", "sub"}
+    assert result.parse_failures == []
 
 
 def test_bad_syntax_raises_detector_error(tmp_path: Path) -> None:
@@ -140,8 +142,48 @@ def test_nonexistent_target_dir_raises(tmp_path: Path) -> None:
         parse_terraform_tree(tmp_path / "no-such-dir")
 
 
-def test_empty_dir_returns_empty_list(tmp_path: Path) -> None:
-    assert parse_terraform_tree(tmp_path) == []
+def test_empty_dir_returns_empty_result(tmp_path: Path) -> None:
+    result = parse_terraform_tree(tmp_path)
+    assert result.resources == []
+    assert result.parse_failures == []
+
+
+def test_tree_walk_collects_failures_and_continues(tmp_path: Path) -> None:
+    """Real-world contract: one bad file does NOT abort the whole walk.
+
+    Discovered 2026-04-25 dogfooding cloudposse/terraform-aws-components
+    (1801 .tf files): the legacy abort-on-first-failure behavior made the
+    tool unusable on any real codebase, since python-hcl2 lags upstream
+    Terraform syntax. Collect-and-continue is the launch-blocker fix.
+    """
+    (tmp_path / "good.tf").write_text(
+        'resource "aws_s3_bucket" "ok" { bucket = "ok" }\n'
+    )
+    (tmp_path / "bad.tf").write_text("this is not { valid terraform")
+    (tmp_path / "also_good.tf").write_text(
+        'resource "aws_s3_bucket" "ok2" { bucket = "ok2" }\n'
+    )
+
+    result = parse_terraform_tree(tmp_path)
+
+    # Good files parsed; bad file collected as a failure record (not raised).
+    assert {r.name for r in result.resources} == {"ok", "ok2"}
+    assert len(result.parse_failures) == 1
+    failure = result.parse_failures[0]
+    assert str(failure.file) == "bad.tf"
+    # The relative-path-clean reason should NOT include the absolute path
+    # prefix — repo-relative is the rendering contract, same as resources.
+    assert str(tmp_path) not in failure.reason
+    assert failure.reason  # non-empty
+
+
+def test_tree_walk_all_files_fail_returns_empty_resources(tmp_path: Path) -> None:
+    (tmp_path / "bad1.tf").write_text("this is { not valid")
+    (tmp_path / "bad2.tf").write_text("also { not valid")
+
+    result = parse_terraform_tree(tmp_path)
+    assert result.resources == []
+    assert {str(f.file) for f in result.parse_failures} == {"bad1.tf", "bad2.tf"}
 
 
 def test_get_nested_returns_none_on_missing_path(tmp_path: Path) -> None:

@@ -51,8 +51,24 @@ class DetectorRunSummary(BaseModel):
     evidence_count: int
 
 
+class ParseFailureRecord(BaseModel):
+    """One file the parser couldn't read, surfaced through the scan output."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file: Path
+    reason: str
+
+
 class ScanTerraformOutput(BaseModel):
-    """Structured summary of a scan, with record IDs walkable via `provenance show`."""
+    """Structured summary of a scan, with record IDs walkable via `provenance show`.
+
+    `parse_failures` carries any .tf files the parser couldn't read. The scan
+    is partial-success by design (per `parse_terraform_tree` collect-and-
+    continue contract): one weird file should not block detection on the
+    other 1800. Callers decide whether a partial-success scan is acceptable
+    based on `parse_failures` and `resources_parsed`.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -61,10 +77,15 @@ class ScanTerraformOutput(BaseModel):
     evidence: list[Evidence] = Field(default_factory=list)
     evidence_record_ids: list[str] = Field(default_factory=list)
     per_detector: list[DetectorRunSummary] = Field(default_factory=list)
+    parse_failures: list[ParseFailureRecord] = Field(default_factory=list)
 
     @property
     def evidence_count(self) -> int:
         return len(self.evidence)
+
+    @property
+    def files_failed(self) -> int:
+        return len(self.parse_failures)
 
 
 @primitive(capability="scan", side_effects=False, version="0.1.0", deterministic=True)
@@ -78,7 +99,8 @@ def scan_terraform(input: ScanTerraformInput) -> ScanTerraformOutput:
     content hash from `ProvenanceRecord.record_id`, so exposing the record
     IDs explicitly is clearer than making the CLI do the mapping.
     """
-    resources = parse_terraform_tree(input.target_dir)
+    parse_result = parse_terraform_tree(input.target_dir)
+    resources = parse_result.resources
     terraform_source: Source = "terraform"
     terraform_detectors = [
         spec for spec in get_registry().values() if spec.source == terraform_source
@@ -115,4 +137,8 @@ def scan_terraform(input: ScanTerraformInput) -> ScanTerraformOutput:
         evidence=evidence,
         evidence_record_ids=evidence_record_ids,
         per_detector=per_detector,
+        parse_failures=[
+            ParseFailureRecord(file=f.file, reason=f.reason)
+            for f in parse_result.parse_failures
+        ],
     )
