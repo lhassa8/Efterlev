@@ -122,11 +122,22 @@ jobs:
             # efterlev==0.0.1rc2" even when the version IS in the
             # index. Found 2026-04-26 in the v0.0.1-rc.2 dry-run when
             # local uv 0.8.13 succeeded but CI uv 0.11.7 failed.
+            #
+            # `--refresh` is required because setup-uv@v5 restores the
+            # uv cache from GitHub Actions cache, including TestPyPI's
+            # simple-index metadata. Without --refresh, uv reads the
+            # cached (stale) index that doesn't yet list the freshly-
+            # uploaded rc and reports "no version of efterlev==X"
+            # even though the version IS published. Found 2026-04-26
+            # in the v0.0.1-rc.3 dry-run after the prerelease-policy
+            # fix landed and the failure mode mutated to cache
+            # staleness instead.
             if uv tool install \
                 --index-url https://test.pypi.org/simple/ \
                 --extra-index-url https://pypi.org/simple/ \
                 --index-strategy unsafe-best-match \
                 --prerelease=allow \
+                --refresh \
                 "efterlev==${VERSION}"; then
               break
             fi

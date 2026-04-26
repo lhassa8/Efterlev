@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "efterlev"
-version = "0.0.1rc3"
+version = "0.0.1rc4"
 description = "Repo-native, agent-first compliance scanner for FedRAMP and DoD Impact Levels"
 readme = "README.md"
 license = "Apache-2.0"
