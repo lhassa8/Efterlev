@@ -85,12 +85,23 @@ class AttestationArtifactIndicator(BaseModel):
     `controls_mapped` is the FRMR catalog's list for the KSI — what the
     catalog says this KSI covers regardless of what the scanner saw.
     `controls_evidenced` is the union of `Evidence.controls_evidenced`
-    across the cited evidence — what the scan actually proved. The latter
-    is always a subset of the former. A 3PAO reviewing the artifact reads
-    `controls_evidenced` for "what was demonstrated" and `controls_mapped`
-    for "what would be demonstrated by full coverage of this KSI." Merging
-    the two (the v0 behavior, dropped here) overstated evidenced coverage
-    by listing every FRMR-mapped control as if the scan touched it.
+    across the cited evidence — what the scan actually proved. A 3PAO
+    reviewing the artifact reads `controls_evidenced` for "what was
+    demonstrated" and `controls_mapped` for "what would be demonstrated
+    by full coverage of this KSI." Merging the two (the v0 behavior,
+    dropped here) overstated evidenced coverage by listing every
+    FRMR-mapped control as if the scan touched it.
+
+    Granularity note: the two lists overlap at the **control family**
+    level, not always at the exact-match level. Caught in the live
+    SPEC-57 dogfood — KSI-IAM-ELP's `controls_mapped` includes AC-2.5
+    and AC-2.6 (specific enhancements per FRMR's mapping choice); the
+    detector evidences AC-2 (the parent, which encompasses both
+    enhancements). Both are honest claims at different granularities. A
+    reviewer comparing the two lists should treat AC-2 in evidenced as
+    "covers any AC-2.* in mapped." Documented behavior, not a defect;
+    an explicit overlap-checking helper may land in v0.2 if downstream
+    consumers ask for one.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

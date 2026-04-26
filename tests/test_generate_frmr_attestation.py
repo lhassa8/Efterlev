@@ -234,19 +234,23 @@ def test_duplicate_ksi_draft_last_wins() -> None:
 # --- SPEC-57.2: controls split ---------------------------------------------
 
 
-def test_controls_evidenced_is_subset_of_controls_mapped() -> None:
-    """SPEC-57.2 (3PAO review §5): the artifact carries two control
-    lists. `controls_mapped` is the FRMR catalog's full list for the KSI
-    (what would be demonstrated by full coverage). `controls_evidenced` is
-    what the cited evidence actually demonstrated. The latter is always a
-    subset of the former.
+def test_controls_split_with_case_normalization_at_artifact_boundary() -> None:
+    """SPEC-57.2 (3PAO review §5): the artifact carries two control lists.
+    `controls_mapped` is the FRMR catalog's full list for the KSI (what
+    would be demonstrated by full coverage). `controls_evidenced` is
+    what the cited evidence actually demonstrated.
 
     Case normalization: this test mixes lowercase (FRMR catalog form)
     and uppercase (detector evidence form) inputs. The artifact
-    boundary normalizes both to uppercase so the subset relationship
-    holds regardless of upstream case conventions. Without normalization
-    the bug shipped to a real artifact (caught in the live SPEC-57
-    dogfood; this test locks the fix).
+    boundary normalizes both to uppercase (NIST 800-53 canonical form).
+    Without normalization the lists would compare unequal even when
+    they reference the same controls — bug caught in the live SPEC-57
+    dogfood, this test locks the fix.
+
+    Granularity note: this synthetic test uses exact-match controls so
+    the strict subset relationship holds. In real artifacts the two
+    lists may use different granularities (parent control vs
+    enhancement); see model docstring on AttestationArtifactIndicator.
     """
     indicator = _indicator(
         "KSI-IAM-ELP",
@@ -260,10 +264,44 @@ def test_controls_evidenced_is_subset_of_controls_mapped() -> None:
         _input(drafts=[draft], indicators={indicator.id: indicator}),
     )
     rec = result.artifact.KSI["IAM"].indicators["KSI-IAM-ELP"]
+    # Both lists normalized to uppercase, sorted for determinism.
     assert rec.controls_mapped == ["AC-2", "AC-3", "AC-6", "IA-2", "PS-2", "PS-3", "SC-4"]
     assert rec.controls_evidenced == ["AC-2", "AC-3", "AC-6"]
-    # The contract: evidenced ⊆ mapped (now holds across mixed-case input).
-    assert set(rec.controls_evidenced).issubset(set(rec.controls_mapped))
+
+
+def test_controls_can_overlap_at_family_level_not_just_exact_match() -> None:
+    """SPEC-57.2 family-overlap contract: if FRMR maps a KSI to specific
+    enhancements (AC-2.5, AC-2.6) and the detector evidences the parent
+    control (AC-2), both are honest claims at different granularities.
+    The artifact preserves both verbatim — no merging, no normalization
+    of granularity — and the model docstring documents the family-level
+    overlap relationship. Caught in the live SPEC-57 dogfood when the
+    tool's detector library evidenced AC-2 (parent) for KSI-IAM-ELP
+    while FRMR maps the KSI to AC-2.5 + AC-2.6 (enhancements).
+    """
+    indicator = _indicator(
+        "KSI-IAM-ELP",
+        theme="IAM",
+        controls=["ac-2.5", "ac-2.6", "ac-6"],  # FRMR enhancement-level
+    )
+    draft = _draft("KSI-IAM-ELP", controls_evidenced=["AC-2", "AC-6"])  # detector parent-level
+    result = generate_frmr_attestation(
+        _input(drafts=[draft], indicators={indicator.id: indicator}),
+    )
+    rec = result.artifact.KSI["IAM"].indicators["KSI-IAM-ELP"]
+    # Both claims preserved as-is. AC-2 is NOT in mapped (mapped has
+    # AC-2.5 and AC-2.6), but AC-2 in evidenced overlaps both at the
+    # family level — documented as expected behavior.
+    assert "AC-2" in rec.controls_evidenced
+    assert "AC-2.5" in rec.controls_mapped
+    assert "AC-2" not in rec.controls_mapped  # the granularity gap is real
+    # Family-level overlap holds: every evidenced control has at least
+    # one mapped control in the same family.
+    def _family(c: str) -> str:
+        return c.split(".", 1)[0]
+    mapped_families = {_family(c) for c in rec.controls_mapped}
+    evidenced_families = {_family(c) for c in rec.controls_evidenced}
+    assert evidenced_families.issubset(mapped_families)
 
 
 def test_controls_evidenced_empty_when_no_evidence_cited() -> None:
