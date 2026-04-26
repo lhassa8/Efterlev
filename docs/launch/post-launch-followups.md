@@ -8,6 +8,65 @@ Each entry names the deferral, the reason, the owner, and a target window. As it
 
 ## v0.1.x — patch-follow-ups (within first 30 days)
 
+### Container base image — evaluate alternatives to `python:3.12-slim-bookworm`
+
+**Item:** trivy scan of the v0.0.1-rc.5 image surfaced 11 CRITICAL/HIGH CVEs, all inherited from the `python:3.12-slim-bookworm` base layer (`ncurses-base`, `ncurses-bin`, `zlib1g`, etc.; one marked `will_not_fix` upstream by Debian). Efterlev's CLI usage doesn't directly expose these libraries to attacker input, but a leaner base image would shrink the inherited surface to near-zero.
+
+**Resolution path:** evaluate alternatives in order of operational simplicity:
+1. **Distroless** (`gcr.io/distroless/python3-debian12`) — smallest surface, no shell, no package manager. Trade-off: harder to debug interactively in production.
+2. **Chainguard images** (`cgr.dev/chainguard/python`) — Wolfi-based, near-zero CVE rates, free for OSS. More involved to integrate but high-signal for security reviewers.
+3. **Slim variants of newer Python releases** (`python:3.13-slim-bookworm` or `python:3.12-slim-trixie` when bookworm goes stable-2-cycles-old).
+
+**Owner:** Maintainer.
+
+**Target:** v0.2.0 if the alternative-base evaluation is straightforward; v0.3.0 if it requires Dockerfile refactoring.
+
+**Cross-references:** `docs/security-review-2026-04.md` §7 row "Container base image inherits 11 OS-package CVEs."
+
+---
+
+### Pin third-party GitHub Actions to commit SHAs
+
+**Item:** all release-pipeline workflows reference vendor actions by floating tag (`@v3`, `@release/v1`, `@v6`). OpenSSF Scorecard and SLSA L3 expectations call for SHA pinning.
+
+**Resolution path:** sweep `.github/workflows/*.yml`, replace each `uses: org/action@<tag>` with `uses: org/action@<full-commit-sha> # <tag>`. Dependabot's github-actions ecosystem already opens PRs for action updates; with SHA pinning, those PRs become explicit-review-then-merge events instead of "trust the floating tag." Should land AFTER the dependabot-grouping fix (`patterns: ["*"]`) so the SHA sweep doesn't generate 20 separate update PRs.
+
+**Owner:** Maintainer.
+
+**Target:** v0.2.0.
+
+**Cross-references:** `docs/security-review-2026-04.md` §5 + §7.
+
+---
+
+### Attach wheel-level SBOM to GitHub Releases
+
+**Item:** the container image already carries an embedded SBOM via `buildx sbom: true`. The wheel/sdist published to PyPI doesn't currently get a separate SBOM file attached to the GitHub Release.
+
+**Resolution path:** add a workflow step in `release-pypi.yml` (after the `build` job, before `publish-test-pypi`) that runs `syft dist/efterlev-<VERSION>-py3-none-any.whl -o cyclonedx-json > dist/efterlev-<VERSION>-sbom.cdx.json`, and uploads the SBOM file as a release asset alongside the wheel + sdist.
+
+**Owner:** Maintainer.
+
+**Target:** v0.1.x (small, self-contained, can land in any patch release).
+
+**Cross-references:** `docs/security-review-2026-04.md` §5 + §7.
+
+---
+
+### Bake security tools into the `[dev]` extra
+
+**Item:** `pip-audit`, `bandit` are invoked via `uvx` (one-shot tool install) rather than included in the `[dev]` extra. CI installs them inline. Local-dev parity with CI would be nicer.
+
+**Resolution path:** add `pip-audit>=2.7,<3` and `bandit[toml]>=1.7,<2` to `[project.optional-dependencies].dev` in `pyproject.toml`. CI workflow can then `uv sync --extra dev` and call them directly.
+
+**Owner:** Maintainer.
+
+**Target:** v0.2.0.
+
+**Cross-references:** `docs/security-review-2026-04.md` §7.
+
+---
+
 ### Drop `macos-13 / pipx` cell from the smoke matrix
 
 **Item:** the `macos-13` (x86 Intel Mac) cell got stuck queued for 90+ minutes in every round of the v0.0.1-rc.[1–5] dry-run — never got a runner. This is a GitHub-hosted x86 Mac runner capacity issue, chronic enough that the cell never produced signal in 5 attempts.

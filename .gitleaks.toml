@@ -1,0 +1,42 @@
+# gitleaks configuration for Efterlev.
+#
+# Run as: gitleaks git --redact (against full history) or
+#         gitleaks dir --redact (against working tree).
+#
+# Default ruleset is loaded automatically; this file ADDS allowlist
+# entries for specific files that legitimately contain secret-shaped
+# strings used to TEST the secret-scrubber.
+#
+# Why allowlist instead of removing the strings: the scrubber library
+# (`src/efterlev/llm/scrubber.py`) is the core defense against
+# secrets reaching LLM prompts. Tests for it MUST contain
+# deliberately-fake-but-real-shaped secret strings — otherwise the
+# tests can't verify the scrubber actually catches them. A scrubber
+# regression that started letting AKIA-shaped strings through would
+# never be detected without those test fixtures.
+#
+# Rule of thumb: allowlist test files that EXIST TO TEST the scrubber.
+# Any new file that needs to be allowlisted should have a comment in
+# the file itself explaining why the secret-shaped strings are safe.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Scrubber test fixtures and e2e harness — deliberately synthetic secret-shaped strings."
+
+paths = [
+  # Unit tests for `src/efterlev/llm/scrubber.py`. Every secret-shaped
+  # string in this file is a fixture exercising one of the scrubber's
+  # 7 pattern families (AWS, GCP, GitHub, Slack, Stripe, PEM, JWT).
+  '''tests/test_scrubber\.py''',
+
+  # Integration tests verifying the scrubber runs end-to-end through
+  # `format_evidence_for_prompt` and `format_source_files_for_prompt`.
+  # Same posture — synthetic secrets driving the scrubber.
+  '''tests/test_redaction_integration\.py''',
+
+  # End-to-end smoke harness; contains a small fixture set that
+  # exercises the scrubber alongside the rest of the pipeline.
+  '''scripts/e2e_smoke\.py''',
+]
