@@ -5,20 +5,32 @@
 #
 #   1. Test PyPI trusted publishing:
 #      At test.pypi.org → your account → Publishing → Add a new pending
-#      publisher:
+#      publisher (or trusted publisher if the `efterlev` project already
+#      exists on TestPyPI):
 #        - PyPI Project Name: efterlev
 #        - Owner: efterlev
-#        - Repository name: efterlev
+#        - Repository name: efterlev   (case-sensitive; matches
+#                                       `github.repository` returned at
+#                                       runtime, which is the lowercase
+#                                       canonical form post-rename
+#                                       2026-04-26)
 #        - Workflow filename: release-pypi.yml
 #        - Environment: test-pypi
 #
 #   2. Real PyPI trusted publishing:
-#      Same flow at pypi.org with:
+#      Same flow at pypi.org/manage/project/efterlev/settings/publishing/
+#      (the project already exists from the 2026-04-23 placeholder upload,
+#      so this is a "regular" trusted publisher, not pending). Use:
 #        - Environment: pypi
 #      AND configure the `pypi` GitHub environment (repo Settings →
-#      Environments) to require maintainer approval — this is the
-#      human gate that confirms SPEC-09 release-smoke.yml passed on
-#      the same tag before real-PyPI publication proceeds.
+#      Environments) to require maintainer approval if your plan supports
+#      it — this is the human gate that confirms SPEC-09 release-smoke.yml
+#      passed on the same tag before real-PyPI publication proceeds. On
+#      free/Pro plans, environment-required-reviewers are plan-gated;
+#      defer until after the public flip if running on free/Pro. The
+#      deployment-tag-pattern restriction `v[0-9]*.[0-9]*.[0-9]*` already
+#      configured on the `pypi` environment provides a coarser gate that
+#      works on any plan.
 #
 # See SPEC-05 for the full design + rationale and .github/BRANCH_PROTECTION.md
 # for related repo-settings configuration.
