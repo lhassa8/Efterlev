@@ -9,7 +9,7 @@ Hour-by-hour sequence for flipping Efterlev public. Tick each checkbox as you go
 - [ ] Run `uv run mkdocs build --strict` — must build clean.
 - [ ] Repo transfer from `lhassa8/Efterlev` → `efterlev/efterlev` complete (see SPEC-01.62 maintainer-action). The destination repo exists and is **still private**.
 - [ ] `gh repo view efterlev/efterlev` — confirm visibility is `private`; you haven't flipped accidentally.
-- [ ] **Enable GitHub Pages now (while still private).** GitHub Settings → Pages → Source: "GitHub Actions". Pages config is required before `docs-deploy.yml` can deploy. Doing this now (not at hour 0) avoids panic-troubleshooting at the launch moment.
+- [ ] **GitHub Pages enable: timing depends on plan.** On GitHub Pro/Team/Enterprise, enable now while private (Settings → Pages → Source: "GitHub Actions"). On GitHub Free, Pages-on-private isn't available — Pages can only be enabled AFTER the visibility flip; that step is in the hour-0 sequence below. Not a launch blocker either way; just a sequencing detail that depends on the plan.
 - [ ] All other A1-A7 maintainer-action queues worked through (Docker Hub org, npm namespace, branch protection apply, DCO app install, security review §8 sign-off, GovCloud walkthrough if maintainer has access).
 - [ ] Sleep on it. The 24-hour pause is a feature; surprises tend to surface when fresh-eyes look at the same thing.
 
@@ -25,6 +25,7 @@ Hour-by-hour sequence for flipping Efterlev public. Tick each checkbox as you go
 - [ ] Approve the `pypi` GitHub-environment deployment (manual gate per SPEC-05) once smoke is green.
 - [ ] Confirm artifacts: `pip index versions efterlev`, `docker manifest inspect ghcr.io/efterlev/efterlev:v0.1.0`.
 - [ ] **Flip repo visibility:** `efterlev/efterlev` → GitHub → Settings → Danger Zone → Change visibility → Public.
+- [ ] **Enable GitHub Pages (if not already done in pre-launch).** Settings → Pages → Source: "GitHub Actions". On free-plan accounts this option is only available once the repo is public; do it now, immediately after the visibility flip, before triggering docs-deploy. Save.
 - [ ] Trigger the docs deploy: `gh workflow run docs-deploy.yml --ref main --repo efterlev/efterlev`. (A visibility flip is a settings change, not a push, so it does NOT auto-fire `docs-deploy.yml`. The workflow has a `workflow_dispatch` trigger for exactly this case.)
 - [ ] Watch the run: `gh run watch --repo efterlev/efterlev`. Build + deploy must succeed.
 - [ ] Confirm `efterlev.com` resolves to the docs site (DNS-propagation can lag — give it up to 10 min).
