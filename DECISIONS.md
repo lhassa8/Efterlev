@@ -1448,6 +1448,54 @@ The 2026-04-22 lock was internally consistent given what we knew then (no named 
 
 ---
 
+## 2026-04-25 — Round-2 independent review + 3PAO acting review: SPEC-57 closes the substantive findings `[launch]` `[review]` `[pre-launch]`
+
+**Decision:** Take the round-2 independent review (executed in a separate Claude session by an evaluator with no context of this session) seriously, calibrate against current SHA, fix the genuinely live findings, and run a follow-up acting-3PAO review that generated a real attestation artifact end-to-end and audited it as an assessor would.
+
+The combined output is one walker-traceability bug fixed in the codebase, four artifact-shape changes shipped under SPEC-57, a doc-CI script that prevents the entire class of doc-vs-code drift the round-2 reviewer flagged as recreating itself, and a real Anthropic-API-generated attestation artifact validated against assessor-style criteria — the closest substitute available for an actual 3PAO conversation given no 3PAO is currently accessible to the project.
+
+**Round-2 independent review calibration (commit `85b511f`):** the reviewer flagged 10+ items; ~80% calibrated; two findings were either already-fixed (the README:235 v1-deliverable contradiction was gone in the earlier 2026-04-23 honesty pass) or empirically wrong (the FRMR catalog has 60 indicators, not the claimed 64; verified by direct catalog read). The four genuinely-live findings:
+
+1. **Empty-evidence-ids gap (AI Finding 1):** `KsiClassification` accepted `status="implemented"` with `evidence_ids=[]`. Fixed via Pydantic `model_validator` rejecting positive status with no citations. The fence-citation validator catches IDs the model fabricated against prompt fences but does not fire on zero-citation classifications — different bug class.
+2. **`efterlev detectors list` (THREAT_MODEL claim vs reality):** the threat model promised the command; it didn't exist. Fixed by implementing it as a real subcommand. Output: per-detector id@version + source + ksis + controls + total count.
+3. **`efterlev provenance verify` (T4 claim vs reality):** same pattern — THREAT_MODEL claimed it, the command did not exist. Fixed by implementing real tamper-detection: walks every record, recomputes the blob's SHA-256, compares to the hash embedded in the sharded `content_ref` path. Two CLI tests cover clean-store-passes and tampered-blob-detected.
+4. **Doc-vs-code drift recreating itself (Finding 2 meta):** the reviewer's most leveraged point — "the author needs an automated check, not another honesty pass." Fixed via `scripts/check-docs.py` + `.github/workflows/check-docs.yml`. Walks user-facing docs (README, LIMITATIONS, THREAT_MODEL, CONTRIBUTING, docs/architecture/quickstart/concepts/reference, catalogs/README), enforces numeric-claim agreement with runtime (tests, detectors, indicators, source files) and CLI-reference resolution. Tolerates aspirational references via context-marker regex ("not yet implemented", "planned for v1", "tracked as follow-up", etc.). Caught its own drift on first run.
+
+**Acting-3PAO review (commit `54e8b47` + SPEC-57 `e355b9d` + `30c19a2`):** the maintainer cannot currently access a real 3PAO; absent that, I (Claude, in-session) took the role with explicit framing — "I do not have access to the live system, only this artifact and the Efterlev codebase that produced it. Findings are written as I would write them to a CSP — actionable, specific, with line citations." Generated a real FRMR attestation against `terraform-aws-modules/terraform-aws-iam` @ 981121bc using Anthropic API (Opus for gap classification, Sonnet for documentation narratives). Reviewed the resulting artifact across artifact format/ingestion, provenance traceability, coverage representation, DRAFT marker, narrative quality, schema evolution, and what would change my decision to "ACCEPTED."
+
+Six findings in the review:
+- §2 walker traceability (BLOCKER): `provenance show <evidence_id>` returned "record not found" because the walker did single-key lookup against `record_id` while the validator did dual-key lookup against `record_id` OR `evidence_id`. Cited evidence_ids in the artifact failed to resolve via the user-facing CLI. Fixed by adding `ProvenanceStore.resolve_to_record(citation_id)` and wiring `walk_chain` to use it.
+- §3 `not_implemented` ambiguity (HIGH): the v0 status conflated "CSP doesn't implement" with "scanner can't evidence this from IaC by design." A 3PAO seeing 59 of 60 KSIs as `not_implemented` couldn't tell which were real gaps. Closed via SPEC-57.1 (fifth status `evidence_layer_inapplicable`).
+- §5 controls overstated (MEDIUM): the v0 single `controls` field carried the full FRMR-mapped list (34 controls for KSI-IAM-ELP) next to a narrative naming 3 evidenced ones. Closed via SPEC-57.2 (split into `controls_mapped` + `controls_evidenced`, case-normalized at the artifact boundary, family-level overlap honestly documented).
+- §7 no `attestation_format_version` (MEDIUM): downstream consumers had no way to version-gate against the artifact format independently of FRMR catalog version. Closed via SPEC-57.3 (added `info.attestation_format_version: str = "1"` with documented bump policy).
+- §6 narrative-template inconsistency (LOW): observation, not blocker. Deferred to v0.2 with documented rationale (locking a template now risks over-fitting to dogfood shape; v0.2 derives from real-customer artifacts).
+- §4 DRAFT marker is CSS-strippable in HTML: already mitigated (the JSON is the artifact of record per `docs/RELEASE.md`).
+
+**Two follow-up findings caught only by re-running against the live artifact (not by synthetic tests):**
+- **Case mismatch in controls split:** FRMR catalog uses lowercase (`ac-2`); detector evidence uses uppercase (`AC-2`). Without normalization the subset relationship breaks and downstream consumers see no overlap. Fixed by uppercasing both at the artifact boundary (NIST 800-53 canonical form).
+- **Granularity gap in controls split:** FRMR maps KSI-IAM-ELP to AC-2.5 + AC-2.6 (specific enhancements); the detector evidences AC-2 (parent). Both are honest claims at different granularities. The original "always a subset" SPEC contract was too strong; updated to document family-level overlap as the real relationship. New `test_controls_can_overlap_at_family_level_not_just_exact_match` locks the looser-but-correct contract.
+
+Both follow-ups demonstrate the value of dogfooding implementations against real LLM-generated artifacts, not just synthetic test fixtures. Synthetic tests would have passed.
+
+**Verification at final commit (`30c19a2`):**
+- 621 tests passing (+11 from this round of work: empty-evidence-ids validator + 4 SPEC-57 tests + family-overlap test + provenance-verify CLI tests + dual-key-walker tests + detectors-list test).
+- ruff + mypy + check-docs + launch-grep-scrub + mkdocs strict all clean.
+- Real attestation artifact regenerated against terraform-aws-iam: `attestation_format_version: "1"`, 31 evidence_layer_inapplicable + 28 not_implemented + 1 partial (KSI-IAM-ELP), `controls_mapped` and `controls_evidenced` both populated with case normalization, walker resolves cited evidence_ids end-to-end (full chain: claim → 3 evidence leaves → source files at iam-role/main.tf:360-367, iam-role-for-service-accounts/main.tf:254-261, iam-user/main.tf:79-85).
+
+**What this changes about launch posture:** the round-2 reviewer's verdict — "the architecture is sound; the product is competent; the next leverage is a 3PAO conversation plus a CI step that prevents the honesty pass from being permanent maintenance overhead" — is now substantively addressed. The doc-CI step ships. The 3PAO conversation isn't a real 3PAO, but the in-session acting role generated and audited a real artifact against assessor-style criteria, surfaced one blocker (now fixed) and three substantive findings (now fixed), and signed off on the post-fix artifact as launch-acceptable. Real 3PAO contact remains the right pre-launch action when accessible; in the meantime, the artifact is in a place where a thoughtful assessor would write findings as observations, not rejection conditions.
+
+**What remains for launch:** the maintainer-action queue (repo transfer, branch protection, Pages, security-review §8 sign-off, GovCloud walkthrough, fresh-eyes runbook rehearsal, pipeline dry-run via `git push origin v0.0.1-rc.1`), plus SPEC-57.4 follow-up at v0.2.
+
+**Cross-references:**
+- Round-2 review response commits: `85b511f`, `54e8b47`.
+- SPEC-57 implementation: `e355b9d`, `30c19a2`.
+- Spec doc: `docs/specs/SPEC-57.md`.
+- Doc-CI: `scripts/check-docs.py`, `.github/workflows/check-docs.yml`.
+- Detectors-list command: `efterlev detectors list`.
+- Tamper-detection command: `efterlev provenance verify`.
+
+---
+
 
 
 ```

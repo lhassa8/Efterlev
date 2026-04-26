@@ -109,7 +109,14 @@ v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, h
 - A7 (deployment-mode matrix, SPEC-53) — 15-mode green/yellow/white-circle matrix with manual-verification runbook template.
 - A8 (launch rehearsal, SPEC-56) — `scripts/launch-grep-scrub.sh` + allowlist (clean), `docs/launch/runbook.md` (fresh-eyes-walked 2026-04-25, four operational papercuts fixed), `docs/launch/failure-response.md`, `docs/launch/announcement-copy.md`, `docs/launch/design-partner-outreach.md`.
 
-**What's left before the public flip (maintainer-action queue):**
+**End state at 2026-04-25 (post-A8) — dogfood-driven hardening + 3PAO review remediation:**
+- 621 tests passing (+19 from the post-A8 work). All verification suites clean (ruff, mypy strict on 129 source files, mkdocs strict, launch-grep-scrub, doc-CI, dogfood-CI against 7 pinned real-world Terraform repos).
+- **Dogfood pass against real codebases (DECISIONS 2026-04-25 "Real-codebase dogfood"):** found two latent bugs the unit suite couldn't surface — (a) 16-of-30 A4 detectors silently missing from the runtime registry due to empty package `__init__.py` files (per-detector tests bypassed the registry path); (b) `parse_terraform_tree` aborted on first parse failure (cloudposse's 1801-file repo aborted on file 1 of N; tool unusable on real codebases). Both fixed; regression suite + CI dogfood workflow encoded against 7 pinned terraform-aws-modules / aws-ia targets so the same class can't recur.
+- **Round-2 independent review response (DECISIONS 2026-04-25 "Round-2 independent review"):** four genuinely-live findings closed — (a) `KsiClassification` Pydantic invariant rejecting positive status with empty `evidence_ids`; (b) `efterlev detectors list` command implemented (was claimed by THREAT_MODEL.md but didn't exist); (c) `efterlev provenance verify` tamper-detection command implemented (same pattern); (d) `scripts/check-docs.py` + CI workflow that catches doc-vs-code drift automatically (caught its own drift on first run).
+- **Acting-3PAO review of a real attestation artifact (DECISIONS 2026-04-25 "Round-2 independent review + 3PAO"):** generated a real FRMR attestation artifact end-to-end on `terraform-aws-modules/terraform-aws-iam` using Anthropic API, audited it as an assessor would, surfaced one BLOCKER (walker traceability — cited evidence_ids didn't resolve via `provenance show`) and three substantive findings (status ambiguity, controls overstated, no format version). All four closed via the walker dual-key fix + SPEC-57 (fifth GapStatus `evidence_layer_inapplicable`, controls split into `controls_mapped`/`controls_evidenced` with case normalization + family-overlap honesty, `attestation_format_version: "1"` distinct from `frmr_version`).
+- **Live-artifact validation:** the post-fix re-generated artifact carries all SPEC-57 changes (31 evidence_layer_inapplicable / 28 not_implemented / 1 partial classification — much honester signal than the pre-fix 0/59/1 distribution; walker resolves cited evidence_ids end-to-end through the full chain to source-file line ranges). Two follow-up bugs only the live-artifact pass surfaced (case mismatch, granularity gap) also fixed.
+
+**What's left before the public flip (maintainer-action queue, unchanged from above):**
 - Repo transfer `lhassa8/Efterlev` → `efterlev/efterlev`.
 - Apply branch protection per `.github/BRANCH_PROTECTION.md` on the destination repo.
 - Enable GitHub Pages (Source: GitHub Actions) on the destination while still private.
@@ -118,12 +125,18 @@ v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, h
 - Maintainer §8 sign-off on `docs/security-review-2026-04.md`.
 - 24-hour pause + fresh-eyes walk through `docs/launch/runbook.md` (one human, one read).
 - GovCloud walkthrough by a maintainer with hands-on AWS GovCloud access (one of the 15 deployment modes that needs hands-on verification before promoting from ⚪ → 🟡).
+- Pipeline dry-run via `git push origin v0.0.1-rc.1` to actually exercise `release-pypi.yml` + `release-container.yml` + `release-smoke.yml` (workflows are written but have never run).
+- Real 3PAO contact when accessible (acting-3PAO review is the in-session substitute, not a replacement).
 
 **What's next (post-launch, Phase C — written just-in-time per the hybrid spec policy):**
 - CI regression detection (scan PR + base branch, diff evidence) — biggest follow-up to the GitHub Action.
+- SPEC-57.4 — narrative-template consistency (deferred from SPEC-57 to v0.2; locked-template risks over-fitting to dogfood shape, derive empirically from real-customer artifacts).
 - Unify `derived_from` semantics on `record_id` only (the dual-keyed lookup is a pragmatic bridge).
 - Context-aware high-entropy redaction patterns (`password\s*=\s*"..."` shapes) as a second-pass secret detection layer.
 - POA&M integration with Remediation Agent output (enrich Remediation Plan field from prior `agent remediate` runs).
+- Evidence.content typed boundary — per-detector Pydantic content models (round-2 finding, deferred as ~1 day spread across 30 detectors).
+- O(1) evidence_id → record_id index alongside writes (replaces the current O(N) blob scan in `_validate_claim_derived_from` + `walk_chain` dual-key resolution).
+- CR26 `baseline_spec_version` versioning — when CR26 lands (mid-2026 est.), the `attestation_format_version` policy already established lets us bump cleanly.
 - Phase 4 (runtime + drift) — gated on having enough scans-over-time data; may wait for first prospect usage.
 - Phase 5 (review workflow, manifest-staleness prompt-layer treatment).
 - Real PR creation against real repos (Drift Agent / `--apply` flag — explicit and opt-in).

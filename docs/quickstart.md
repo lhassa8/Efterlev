@@ -110,7 +110,7 @@ You'll see every finding with the `.tf` file and line number that produced it. C
 
 ## 4. (Optional) Run the Gap Agent
 
-The Gap Agent uses Claude to classify each KSI as `implemented` / `partial` / `not_implemented` / `not_applicable`, grounded in the scanner's evidence. This is the LLM step — it requires an API key.
+The Gap Agent uses Claude to classify each KSI as `implemented` / `partial` / `not_implemented` / `not_applicable` / `evidence_layer_inapplicable`, grounded in the scanner's evidence. The fifth status (SPEC-57.1) is for KSIs the scanner cannot evidence from infrastructure-as-code by design — procedural commitments like the FedRAMP Security Inbox — distinct from KSIs the CSP doesn't implement. This is the LLM step — it requires an API key.
 
 === "Anthropic API"
 

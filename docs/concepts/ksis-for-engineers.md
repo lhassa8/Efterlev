@@ -51,7 +51,7 @@ Each detector declares which KSIs it evidences in its `@detector` decorator:
 def detect(resources): ...
 ```
 
-When the detector emits an `Evidence` record, it carries `ksis_evidenced=["KSI-SVC-SNT"]` and `controls_evidenced=["SC-8"]`. Downstream, the Gap Agent reads these records, classifies each KSI's posture (`implemented` / `partial` / `not_implemented`), and produces a per-KSI HTML report. The Documentation Agent turns the classifications into FRMR-compatible attestation JSON.
+When the detector emits an `Evidence` record, it carries `ksis_evidenced=["KSI-SVC-SNT"]` and `controls_evidenced=["SC-8"]`. Downstream, the Gap Agent reads these records, classifies each KSI's posture (`implemented` / `partial` / `not_implemented` / `not_applicable` / `evidence_layer_inapplicable`), and produces a per-KSI HTML report. (The fifth status, added 2026-04-25 per SPEC-57.1, says "the scanner has no path to evidence this KSI from IaC by design" — distinct from `not_implemented`, which means the CSP doesn't implement it. The distinction matters for review: an infrastructure scanner returning `not_implemented` for a procedural KSI is making a coverage statement, not a compliance finding.) The Documentation Agent turns the classifications into FRMR-compatible attestation JSON.
 
 ## When the mapping isn't clean
 

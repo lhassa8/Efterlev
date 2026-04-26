@@ -237,7 +237,7 @@ If your plan fails on "for_each argument derived from apply-time results" becaus
 efterlev agent gap
 ```
 
-The Gap Agent (Claude Opus 4.7) classifies each KSI as implemented, partial, not_implemented, or not_applicable, given the evidence collected. Underlying 800-53 control status is shown alongside. Requires `ANTHROPIC_API_KEY`. Writes a self-contained HTML report to `.efterlev/reports/gap-<timestamp>.html` and prints the per-KSI summary to the terminal. Every classification is persisted as a Claim record in the provenance store.
+The Gap Agent (Claude Opus 4.7) classifies each KSI as implemented, partial, not_implemented, not_applicable, or evidence_layer_inapplicable (the latter for KSIs with no plausible IaC-evidenceable surface — e.g., procedural KSIs like FedRAMP Security Inbox; SPEC-57.1), given the evidence collected. Underlying 800-53 control status is shown alongside. Requires `ANTHROPIC_API_KEY`. Writes a self-contained HTML report to `.efterlev/reports/gap-<timestamp>.html` and prints the per-KSI summary to the terminal. Every classification is persisted as a Claim record in the provenance store.
 
 ### Draft attestation narratives
 

@@ -155,22 +155,22 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 **Mitigations implemented at v0:**
 - Claims' `derived_from` structure requires explicit citation of `evidence_id`s the model saw in the prompt.
 - **Per-run nonced XML fences** (`agents/base.py:new_fence_nonce` + `format_evidence_for_prompt`) wrap every evidence record with a 32-bit hex nonce the model cannot guess. Content inside a fence cannot forge a matching fence boundary.
-- **Per-agent post-generation citation validators** (`gap._validate_cited_ids`, `documentation._validate_cited_ids`, `remediation._validate_cited_ids`) parse the prompt's fenced regions and reject any Claim whose cited evidence IDs did not appear inside a legitimately-nonced fence. Rejection raises `AgentError` and prevents Claim storage. This enforces the "cite only what you actually saw" property at the agent boundary.
+- **Per-agent post-generation citation validators** (`gap._validate_cited_ids`, `documentation._validate_cited_ids`, `remediation._validate_citations`) parse the prompt's fenced regions and reject any Claim whose cited evidence IDs did not appear inside a legitimately-nonced fence. Rejection raises `AgentError` and prevents Claim storage. This enforces the "cite only what you actually saw" property at the agent boundary.
+- **Store-level `_validate_claim_derived_from`** (`provenance/store.py`, 2026-04-23 design): defense-in-depth at the write boundary — every Claim's `derived_from` is verified to resolve as either a `ProvenanceRecord.record_id` OR an `Evidence.evidence_id` in a stored evidence payload (dual-key lookup) BEFORE the record is inserted. Catches the gap a buggy agent or direct-store-write path could create where the agent-level fence check doesn't run.
+- **Empty-evidence-ids classification rejection** (2026-04-25 SPEC-57 round-2 response): `KsiClassification` Pydantic `model_validator` rejects `status="implemented"` or `status="partial"` with `evidence_ids=[]`. The fence validator catches IDs the model fabricated against prompt fences but doesn't fire on zero citations — different bug class, different defense layer.
 - Rendered output always distinguishes Evidence (scanner-derived) from Claim (LLM-derived).
 - Every claim carries a "DRAFT — requires human review" marker; `AttestationArtifact.provenance.requires_review` is a `Literal[True]` Pydantic invariant that cannot be downgraded without a type-level change.
 
-**Not implemented at v0 (planned):** a separate `validate_claim_provenance` primitive at the store-write boundary would add defense-in-depth — verifying that every `derived_from` ID on a persisted Claim resolves to a real record in the provenance store, independent of the per-agent validator's fence-based check. The per-agent validators are the primary enforcement; a store-level check would close the gap that a buggy agent or a direct-store-write path could create. See `LIMITATIONS.md` for the deferred-features list.
-
-**Residual risk:** An LLM could cite real evidence IDs but characterize them inaccurately in the narrative. Human review is the final defense; the tool does not claim to be a substitute for human review.
+**Residual risk:** An LLM could cite real evidence IDs but characterize them inaccurately in the narrative. Human review is the final defense; the tool does not claim to be a substitute for human review. SPEC-57.1's `evidence_layer_inapplicable` status (2026-04-25) helps reviewers prioritize by separating coverage gaps from compliance findings, but does not replace human judgment on narrative accuracy.
 
 ### T4: Provenance store tampering
 
 **Threat:** A user or attacker modifies the local provenance store to fabricate evidence trails.
 
 **Mitigations:**
-- Content-addressed storage (SHA-256 of canonical content) — any modification to a stored record changes its ID and breaks downstream chains
-- The provenance DB stores record hashes; `efterlev provenance verify` detects mismatches
-- Users who need cryptographic non-repudiation can layer their own signing on top of the hashed records
+- Content-addressed storage (SHA-256 of canonical content) — any modification to a stored record changes its ID and breaks downstream chains.
+- The provenance DB stores record hashes; **`efterlev provenance verify` detects mismatches** by walking every record, recomputing each blob's SHA-256, and comparing to the hash embedded in the sharded `content_ref` path. Exit 0 = clean; exit 1 = mismatches listed by record_id (tampering, disk corruption, partial-write). Implemented 2026-04-25 in response to the round-2 review's finding that the command was claimed in the threat model but didn't exist.
+- Users who need cryptographic non-repudiation can layer their own signing on top of the hashed records.
 
 **Non-mitigation:** Efterlev does not cryptographically sign its own output. If an auditor needs signed evidence, that's the user's responsibility (e.g., via Git commit signing, cosign, or a separate notarization step).
 
