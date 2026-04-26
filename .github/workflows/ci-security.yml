@@ -47,9 +47,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
       - name: Run pip-audit
+        # `--skip-editable` skips scanning the local editable install of
+        # efterlev itself (uv sync installs it that way for development).
+        # `--strict` was here originally but it converts pip-audit warnings
+        # into errors — including a "distribution marked as editable"
+        # warning that fires regardless of --skip-editable. The default
+        # behavior already exits 1 on any vulnerability finding, which
+        # is the actual gate we want; --strict adds noise that fails CI
+        # on a non-finding. Removed 2026-04-26 after first CI run on
+        # efterlev/efterlev surfaced the conflict.
         run: |
           uv run --with pip-audit pip-audit \
-            --strict \
             --skip-editable
 
   bandit:

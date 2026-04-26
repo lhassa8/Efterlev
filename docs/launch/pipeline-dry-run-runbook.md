@@ -27,6 +27,7 @@ git rev-parse HEAD                   # capture the SHA for later reference
 ```bash
 uv run --extra dev pytest -m "not e2e" -q
 uv run --extra dev ruff check
+uv run --extra dev ruff format --check     # mirrors what CI runs
 uv run --extra dev mypy
 uv run --extra docs mkdocs build --strict
 bash scripts/launch-grep-scrub.sh
@@ -34,7 +35,7 @@ uv run python scripts/check-docs.py
 bash scripts/dogfood-real-codebases.sh   # optional but high signal
 ```
 
-All must exit 0. If any fail, do NOT push the tag.
+All must exit 0. If any fail, do NOT push the tag. The `ruff format --check` step is the easiest to forget locally because formatting normalization is invisible without it; CI catches it but at the cost of a wasted CI run. Always run it locally first.
 
 ### 3. PyPI Trusted Publishing is configured for TestPyPI
 
