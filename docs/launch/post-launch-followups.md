@@ -8,6 +8,18 @@ Each entry names the deferral, the reason, the owner, and a target window. As it
 
 ## v0.1.x — patch-follow-ups (within first 30 days)
 
+### Drop `macos-13 / pipx` cell from the smoke matrix
+
+**Item:** the `macos-13` (x86 Intel Mac) cell got stuck queued for 90+ minutes in every round of the v0.0.1-rc.[1–5] dry-run — never got a runner. This is a GitHub-hosted x86 Mac runner capacity issue, chronic enough that the cell never produced signal in 5 attempts.
+
+**Resolution path:** remove the `macos-13 / pipx` matrix entry from `release-smoke.yml`. macOS arm64 (`macos-14 / pipx`) covers all current and future Apple Silicon Macs; macOS Intel is increasingly minority hardware. If we want Intel Mac coverage later, fall back to letting the macOS arm64 cell run with Rosetta translation in CI rather than relying on the x86 GitHub-hosted runner pool.
+
+**Owner:** Maintainer.
+
+**Target:** v0.1.1 (bundle with the smoke-matrix re-blocking work below).
+
+---
+
 ### Smoke matrix re-blocking
 
 **Item:** `release-smoke.yml` is currently non-blocking (`continue-on-error: true` on the matrix job). Make it strictly required again.
