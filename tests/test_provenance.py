@@ -152,6 +152,63 @@ def test_walker_raises_on_missing_record(tmp_path: Path) -> None:
         walk_chain(store, "sha256:" + "0" * 64)
 
 
+def test_walker_resolves_evidence_id_via_dual_key_lookup(tmp_path: Path) -> None:
+    """`provenance show <evidence_id>` must work, not just `<record_id>`.
+
+    Discovered 2026-04-25 in the round-1 3PAO review of a real attestation
+    artifact: the artifact's `citations[].evidence_id` (Evidence content
+    hash) was not the same as the wrapping `ProvenanceRecord.record_id`
+    (envelope hash including timestamps + metadata). The store-level
+    validator did dual-key lookup (`_validate_claim_derived_from`); the
+    walker did not. Result: every cited evidence_id failed
+    `provenance show`, blocking traceability.
+
+    This test locks the dual-key contract on the walker. Walking by
+    evidence_id must produce the same result as walking by record_id.
+    """
+    with ProvenanceStore(tmp_path) as store:
+        # Write an evidence record carrying its own `evidence_id` field
+        # in the payload — mirrors the real Evidence shape produced by
+        # detectors. The Evidence's evidence_id is intentionally distinct
+        # from the wrapping ProvenanceRecord's record_id.
+        evidence_payload = {
+            "evidence_id": "sha256:" + "a" * 64,  # the content hash
+            "detector_id": "aws.test",
+            "content": {"resource_name": "bucket-1"},
+        }
+        record = store.write_record(
+            payload=evidence_payload,
+            record_type="evidence",
+            primitive="scan_terraform@0.1.0",
+        )
+        # Confirm the two ids genuinely differ (precondition for the
+        # bug class — if they're ever the same, this test is moot).
+        assert record.record_id != evidence_payload["evidence_id"]
+
+        # Walk by record_id — works historically.
+        by_record = walk_chain(store, record.record_id)
+        assert by_record.record.record_id == record.record_id
+
+        # Walk by evidence_id — must work post-fix.
+        by_evidence = walk_chain(store, evidence_payload["evidence_id"])
+        assert by_evidence.record.record_id == record.record_id
+
+
+def test_resolve_to_record_returns_none_on_unresolvable_id(tmp_path: Path) -> None:
+    """Helper contract: misses return None, not raise.
+
+    `walk_chain` is responsible for raising `ProvenanceError` on miss
+    (with chain context). The resolver itself returns None — keeps
+    error semantics out of the lookup helper.
+    """
+    with ProvenanceStore(tmp_path) as store:
+        store.write_record(
+            payload={"evidence_id": "sha256:" + "b" * 64, "x": 1},
+            record_type="evidence",
+        )
+        assert store.resolve_to_record("sha256:" + "0" * 64) is None
+
+
 def test_walker_raises_on_cycle(tmp_path: Path) -> None:
     # Manufacture a corrupt store by writing a record whose derived_from
     # references itself via direct SQL. Walker must detect the cycle.

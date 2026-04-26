@@ -316,6 +316,52 @@ class ProvenanceStore:
         ).fetchall()
         return [r[0] for r in rows]
 
+    def resolve_to_record(self, citation_id: str) -> ProvenanceRecord | None:
+        """Look up `citation_id` as either a record_id OR an evidence payload's evidence_id.
+
+        Why dual-key: `Evidence.evidence_id` (Evidence-content hash) is
+        structurally distinct from `ProvenanceRecord.record_id` (envelope hash
+        including timestamps + metadata). Agents cite evidence by
+        `Evidence.evidence_id` because that's the fence id the model sees in
+        the prompt, but the store indexes by `record_id`. A cited id may
+        therefore resolve via either path.
+
+        Mirrors the dual-key lookup `_validate_claim_derived_from` does at the
+        write boundary (the round-2 3PAO review of 2026-04-25 found that the
+        validator accepted citations the walker subsequently couldn't resolve
+        — a real traceability bug; this helper is the fix).
+
+        Returns the resolved `ProvenanceRecord` on hit, `None` on miss. The
+        walker uses this; the batch validator uses its own optimized path
+        because it scores many ids at once and benefits from set-arithmetic.
+        """
+        # Step 1: direct record_id hit (cheap indexed lookup).
+        record = self.get_record(citation_id)
+        if record is not None:
+            return record
+
+        # Step 2: scan evidence payloads for an Evidence.evidence_id match.
+        # Evidence record count is bounded by detector count * scanned
+        # resources; a sequential scan is acceptable. Two improvements
+        # tracked as v0.2 work in DECISIONS: (a) maintain an evidence_id →
+        # record_id index alongside writes for O(1) lookup, (b) cache
+        # within a single walk_chain invocation so a tree with many leaves
+        # doesn't re-scan per leaf.
+        evidence_rows = self._conn.execute(
+            "SELECT record_id, content_ref FROM provenance_records WHERE record_type = 'evidence'"
+        ).fetchall()
+        for record_id, content_ref in evidence_rows:
+            blob_path = self.blob_dir / content_ref
+            if not blob_path.exists():
+                continue
+            try:
+                payload = json.loads(blob_path.read_bytes())
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(payload, dict) and payload.get("evidence_id") == citation_id:
+                return self.get_record(record_id)
+        return None
+
     def iter_record_refs(self) -> list[tuple[str, str]]:
         """Return `(record_id, content_ref)` for every record, all types.
 

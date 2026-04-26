@@ -52,7 +52,15 @@ def walk_chain(store: ProvenanceStore, record_id: str) -> ChainNode:
     def _walk(rid: str) -> ChainNode:
         if rid in visiting:
             raise ProvenanceError(f"cycle in provenance graph at {rid}")
-        record = store.get_record(rid)
+        # Dual-key resolve: a cited id may be either a record_id (envelope
+        # hash) or an Evidence.evidence_id (content hash). Agents cite the
+        # latter because that's the fence id the model sees; the store
+        # indexes the former. The 3PAO review of 2026-04-25 found this
+        # asymmetry blocked traceability — `provenance show <evidence_id>`
+        # returned "record not found" even though the validator accepted
+        # the citation at write time. `resolve_to_record` mirrors the
+        # validator's dual-key lookup.
+        record = store.resolve_to_record(rid)
         if record is None:
             raise ProvenanceError(f"record not found: {rid}")
         visiting.add(rid)
