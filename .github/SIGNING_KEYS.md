@@ -30,37 +30,18 @@ An `.github/allowed-signers` file is generated at maintainer-onboarding time fro
 ### @lhassa8 (BDFL)
 
 - **Role:** BDFL (see [GOVERNANCE.md](../GOVERNANCE.md))
-- **Since:** 2026-04 (pre-launch)
-- **Fingerprint:** `<pending — to be filled in by maintainer during SPEC-04 completion>`
+- **Since:** 2026-04-26
+- **Fingerprint:** `SHA256:WmM2DTKXbVq8E+hq1kYumoFw7q9To8gUeMsSg8k2SJU`
+- **Algorithm:** Ed25519
 - **Public key:**
 
 ```
-<pending — paste SSH public-key line here, e.g.:
-ssh-ed25519 AAAAC3Nza... lhassa8@efterlev>
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMyb5ZmtCMcuo4D1LQODLpkwOXeqUgRcZjWmvMwnpP7U efterlev-git-signing
 ```
 
-<!--
-How the BDFL fills this in:
+Registered as a GitHub **Signing Key** (separate from Authentication Keys) on the BDFL's account, scoped to commit signing only. The same public-key line lives at `https://github.com/lhassa8.gpg` (yes, GitHub serves SSH signing keys at the `.gpg` URL — historical naming).
 
-1. Generate an Ed25519 SSH key if you don't already have one you want to use for signing:
-   ssh-keygen -t ed25519 -C "lhassa8@efterlev" -f ~/.ssh/efterlev_signing
-
-2. Configure git to sign with it:
-   git config --global user.signingkey ~/.ssh/efterlev_signing.pub
-   git config --global gpg.format ssh
-   git config --global commit.gpgsign true
-   git config --global tag.gpgsign true
-
-3. Register the public half on your GitHub profile as a "Signing Key"
-   (separate from Authentication Keys): https://github.com/settings/ssh/new
-   Select "Signing Key" for the key type.
-
-4. Compute the fingerprint for the record:
-   ssh-keygen -lf ~/.ssh/efterlev_signing.pub
-
-5. Paste the public-key line and fingerprint above, then commit this file
-   (signed, since signing is now configured).
--->
+Locally configured per-repo (not global) via `git config --local`: `gpg.format ssh`, `user.signingkey ~/.ssh/efterlev_signing.pub`, `commit.gpgsign true`, `tag.gpgsign true`. See PR #12 for the first signed commit on the post-rename, post-branch-protection repo — validates the end-to-end flow.
 
 ---
 

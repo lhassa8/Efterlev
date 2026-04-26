@@ -35,7 +35,7 @@ A good report typically includes:
 **In scope:**
 
 - The published `efterlev` Python package on PyPI.
-- The container images at `ghcr.io/efterlev/efterlev` and `docker.io/efterlev/efterlev`.
+- The container images at `ghcr.io/efterlev/efterlev`. (Docker Hub publish was dropped at v0.1.0 after Docker Hub eliminated the free organization tier; ghcr.io is the only container registry at launch. Docker Hub republish is a tracked v0.2.0+ follow-up via the Docker-Sponsored Open Source program.)
 - The `efterlev/scan-action` GitHub Action.
 - The MCP server exposed by Efterlev.
 - The detector library shipped in this repository.

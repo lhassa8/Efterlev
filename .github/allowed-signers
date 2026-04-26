@@ -1,0 +1,20 @@
+# Allowed-signers file for `git log --show-signature` / `git verify-commit`.
+#
+# Format: `<identity> namespaces="git" <ssh-public-key>` (one per line).
+# `identity` is the email or GitHub-handle string the commit's signer
+# claims to be. `namespaces="git"` scopes the trust to git signing only
+# (not, e.g., SSH-as-CA for hosts).
+#
+# Source of truth for the active set: `.github/SIGNING_KEYS.md`.
+# Update both files together when keys rotate.
+#
+# Usage:
+#   git config --local gpg.ssh.allowedSignersFile .github/allowed-signers
+#   git log --show-signature -1 <sha>
+#
+# Or globally (developer machines):
+#   git config --global gpg.ssh.allowedSignersFile <path>
+
+# @lhassa8 (BDFL) — signing key since 2026-04-26
+# Fingerprint: SHA256:WmM2DTKXbVq8E+hq1kYumoFw7q9To8gUeMsSg8k2SJU
+larstray@gmail.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMyb5ZmtCMcuo4D1LQODLpkwOXeqUgRcZjWmvMwnpP7U

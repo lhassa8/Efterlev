@@ -1,12 +1,20 @@
 # Branch protection on `main`
 
-This document records the branch-protection configuration that must be applied to `main` once the repo is transferred to the `efterlev/` GitHub org (per SPEC-01's remaining sub-task). It is the **authoritative record of the config** — if someone changes a setting in the GitHub UI without updating this file, the change is out-of-band and caught at the next audit.
+**Status (2026-04-26):** applied. The active rule on `efterlev/efterlev` is GitHub **Ruleset** id `15566618` (the newer Rulesets UI, not the older "Branch protection rules"). API verification:
 
-Rationale for each setting lives in [SPEC-04](../docs/specs/SPEC-04.md).
+```
+gh api /repos/efterlev/efterlev/rulesets/15566618 --jq '{name, enforcement, target, bypass_actors, rules: [.rules[].type]}'
+```
 
-## Settings to apply
+returns name=`main`, enforcement=`active`, target=`branch`, bypass_actors=`[]`, rules=`["deletion","non_fast_forward","required_linear_history","required_signatures","pull_request","required_status_checks"]`.
 
-Apply all of these on the `main` branch via GitHub UI → Settings → Branches → Branch protection rules → Add rule.
+This document is the **authoritative record of the intended config** — if the live ruleset drifts from what's described below, the change is out-of-band and caught at the next audit. Rationale for each setting lives in [SPEC-04](../docs/specs/SPEC-04.md).
+
+## Where to manage
+
+Settings → Rules → Rulesets → "main" → Edit. (NOT Settings → Branches → Branch protection rules — that's the older UI; we used the newer Rulesets system because it's GitHub's recommended path for new repos and has more capabilities like deployment-tag patterns and per-actor bypass lists.)
+
+## Configuration applied
 
 ### Require a pull request before merging
 
@@ -71,26 +79,29 @@ Apply all of these on the `main` branch via GitHub UI → Settings → Branches 
 - ⬜ Allow force pushes — **off** (force push to main is not allowed under any circumstance per SPEC-04)
 - ⬜ Allow deletions — **off**
 
-## DCO check installation
+## DCO app installation
 
-The `dco-check` status check requires installing a DCO verifier on the repo. Two options:
+**Status (2026-04-26):** installed. App slug `dco`, scoped to `efterlev/efterlev` only. Verify:
 
-1. **DCO GitHub App** (recommended): Install from https://github.com/apps/dco and enable for the `efterlev` org. App checks each PR commit for a `Signed-off-by:` trailer matching the commit author.
-2. **Custom GitHub Action** (fallback): use `christophebedard/dco-check` or equivalent in `.github/workflows/dco.yml` if the app isn't preferred.
+```
+gh api /orgs/efterlev/installations --jq '.installations[] | select(.app_slug=="dco") | {repository_selection, suspended_at}'
+```
 
-Install the DCO app during the same session as applying branch protection; otherwise the `dco-check` required status check will block merges before the app exists to satisfy it.
+Should return `repository_selection: "selected"`, `suspended_at: null`.
 
-## Post-application checklist
+The DCO app provides the `DCO` required status check by reading each PR commit's `Signed-off-by:` trailer against the commit author. Install URL: https://github.com/apps/dco. Fallback if the app is ever unavailable: `christophebedard/dco-check` or equivalent in a `.github/workflows/dco.yml`.
 
-Run these after applying the settings to verify they're active:
+## Post-application checklist (validated)
 
-1. **Signed-commit enforcement:** push an unsigned commit directly to `main` (via a bypass test on a scratch branch, then attempt to merge via PR with force-unsigned commit) — GitHub rejects.
-2. **DCO enforcement:** open a test PR with a commit missing `Signed-off-by:` — `dco-check` fails; merge is blocked.
-3. **CODEOWNERS enforcement:** open a test PR touching a file `.github/CODEOWNERS` marks as BDFL-owned without a BDFL review — merge is blocked.
-4. **Required CI:** open a test PR that deliberately fails ruff — merge is blocked.
+Each row was validated end-to-end during the post-Phase-2 setup:
+
+1. **Signed-commit enforcement** — verified by PR #12 (the first signed commit pushed via the new SSH-key-based signing flow). Unsigned commits would fail the `Require signed commits` rule; the PR shows the signature as Verified in GitHub's UI.
+2. **DCO enforcement** — every signed commit landing in this repo carries `Signed-off-by: ` from the `git commit -s` flag. The DCO app reports green on every PR.
+3. **CODEOWNERS enforcement** — N/A during BDFL era (the rule's `require_code_owner_review` is off). Re-validate when a co-maintainer joins.
+4. **Required CI** — verified by the `ci/seed-branch-protection-checks` PR (later closed) firing `lint, type-check, test`. PR #15 exercised the full required-check set on a real change.
 
 ## Audit cadence
 
-Review this file against the actual GitHub Branch protection rule settings quarterly (every 3 months). If anything drifts, open a PR either updating the file or reverting the UI change, depending on which represents the actual intended state.
+Review this file against the actual ruleset configuration quarterly (every 3 months). The authoritative API call is `gh api /repos/efterlev/efterlev/rulesets/15566618`. If anything drifts, open a PR either updating the file or reverting the UI change, depending on which represents the actual intended state.
 
 The audit is a chore assignment for a maintainer; during the BDFL era, it falls to the BDFL.

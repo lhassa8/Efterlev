@@ -44,7 +44,7 @@ Without this the `publish-test-pypi` job will 403. The configuration lives in yo
 - Go to <https://test.pypi.org/manage/account/publishing/>
 - Add a pending publisher with these exact values (matching the workflow):
   - Project name: `efterlev`
-  - Owner: the GitHub org/user that will own the tag-pushing repo at dry-run time. **Currently this is `lhassa8`** since the repo hasn't been transferred yet. After transfer it will be `efterlev`. Configure for whichever owns the repo NOW.
+  - Owner: `efterlev` (the GitHub org). Repo was renamed lowercase 2026-04-26 so the GitHub `repository_owner / repository` returns `efterlev/efterlev` exactly — Trusted Publishing matches case-sensitively against this.
   - Repository name: `Efterlev` (case matters — match the repo)
   - Workflow filename: `release-pypi.yml`
   - Environment name: `test-pypi`
