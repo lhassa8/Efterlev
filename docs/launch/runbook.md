@@ -10,7 +10,7 @@ Hour-by-hour sequence for flipping Efterlev public. Tick each checkbox as you go
 - [ ] Repo transfer from `lhassa8/Efterlev` → `efterlev/efterlev` complete (see SPEC-01.62 maintainer-action). The destination repo exists and is **still private**.
 - [ ] `gh repo view efterlev/efterlev` — confirm visibility is `private`; you haven't flipped accidentally.
 - [ ] **GitHub Pages enable: timing depends on plan.** On GitHub Pro/Team/Enterprise, enable now while private (Settings → Pages → Source: "GitHub Actions"). On GitHub Free, Pages-on-private isn't available — Pages can only be enabled AFTER the visibility flip; that step is in the hour-0 sequence below. Not a launch blocker either way; just a sequencing detail that depends on the plan.
-- [ ] All other A1-A7 maintainer-action queues worked through (Docker Hub org, npm namespace, branch protection apply, DCO app install, security review §8 sign-off, GovCloud walkthrough if maintainer has access).
+- [ ] All other A1-A7 maintainer-action queues worked through (npm namespace, branch protection apply, DCO app install, security review §8 sign-off, GovCloud walkthrough if maintainer has access). Docker Hub publish is deferred to v0.2.0+ via the Docker-Sponsored Open Source program; container images at v0.1.0 are ghcr.io only.
 - [ ] Sleep on it. The 24-hour pause is a feature; surprises tend to surface when fresh-eyes look at the same thing.
 
 ## Launch hour 0 — The flip

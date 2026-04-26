@@ -4,8 +4,9 @@
 # Checks:
 #   1. PyPI wheel + sdist are signed by the expected GitHub Actions workflow
 #      via Sigstore (Trusted Publishing attestations).
-#   2. Container images on both registries (ghcr.io and docker.io) are signed
-#      by the expected workflow via cosign keyless OIDC.
+#   2. Container images on ghcr.io are signed by the expected workflow via
+#      cosign keyless OIDC. (Docker Hub publish was dropped at v0.1.0 —
+#      ghcr.io is the only container registry until DSOS sponsorship lands.)
 #   3. SLSA build provenance is attached to each container image.
 #
 # Usage:
@@ -115,7 +116,7 @@ echo
 
 echo "[2/3] Container images — cosign keyless-OIDC signatures"
 
-for registry in ghcr.io/efterlev/efterlev docker.io/efterlev/efterlev; do
+for registry in ghcr.io/efterlev/efterlev; do
   image="${registry}:${TAG}"
   if ! docker manifest inspect "$image" >/dev/null 2>&1; then
     fail_line "$image: image not pullable (not published yet, or registry unreachable)"
@@ -146,7 +147,7 @@ echo
 
 echo "[3/3] SLSA build provenance — OCI attestations"
 
-for registry in ghcr.io/efterlev/efterlev docker.io/efterlev/efterlev; do
+for registry in ghcr.io/efterlev/efterlev; do
   image="${registry}:${TAG}"
   if ! docker manifest inspect "$image" >/dev/null 2>&1; then
     # Already fail-lined above; skip SLSA check quietly.

@@ -4,7 +4,7 @@
 
 **When to run:** after all A1–A8 work is locally green, before flipping the repo public. Per the launch posture, this is gate-driven, not date-driven — when the maintainer is ready to validate the pipeline. The dry-run does NOT publish to real PyPI (the `-rc` tag skips that job by design).
 
-**What it costs:** ~10 minutes of human attention plus ~30 minutes of CI runtime. No money — Trusted Publishing means no credentials to provision; ghcr.io uses the per-job `GITHUB_TOKEN`; only Docker Hub needs a long-lived secret (already configured if A2 is closed).
+**What it costs:** ~10 minutes of human attention plus ~30 minutes of CI runtime. No money — Trusted Publishing means no credentials to provision; ghcr.io uses the per-job `GITHUB_TOKEN`. (Docker Hub was originally a parallel publish target but was dropped at v0.1.0 per `release-container.yml` after Docker Hub eliminated the free organization tier in 2024; ghcr.io is the only container registry at launch.)
 
 **What you'll learn:** whether the workflows actually run, whether all preconditions (Trusted Publishing config, GitHub environments, secrets, dependency versions) are correct, and which cells of the smoke matrix pass on which platforms.
 
@@ -58,13 +58,11 @@ The workflow references two environments: `test-pypi` and `pypi`. They must exis
 - `test-pypi`: no required reviewers; the publish runs automatically.
 - `pypi`: at least one required reviewer (you). This is the manual gate that prevents accidental real-PyPI publish. **For an `-rc.N` dry-run this gate is never hit** because the publish-pypi job is `if: is-rc == 'false'`. But the environment must still exist for the job-level `environment:` to validate.
 
-### 5. `DOCKERHUB_TOKEN` secret is set on the repo
+### 5. `DOCKERHUB_TOKEN` secret — N/A at v0.1.0
 
-Settings → Secrets and variables → Actions. The container workflow needs it for the Docker Hub push (line 70 of release-container.yml). If unset, the Docker Hub push step fails informatively but the rest of the workflow continues. ghcr.io uses `GITHUB_TOKEN` which is automatic — no setup required.
+Docker Hub publish was removed from the release pipeline 2026-04-26 because Docker Hub eliminated the free organization tier (paid Team is $15/seat/month, unjustified for a solo-maintainer OSS project at launch). Container images live on ghcr.io only at v0.1.0. ghcr.io uses the per-job `GITHUB_TOKEN` so no secret setup is required. Skip this step.
 
-If you don't have a Docker Hub org claimed yet, you have two options:
-- **(a)** Skip Docker Hub publish for the dry-run (comment out the Docker Hub steps in release-container.yml temporarily, dry-run, then revert).
-- **(b)** Push the dry-run anyway and accept that Docker Hub steps will fail; the ghcr.io path is still validated.
+Docker Hub republish can return post-launch via the [Docker-Sponsored Open Source](https://www.docker.com/community/open-source/application/) program (free for OSS, ~2-week application).
 
 ### 6. GitHub Pages is NOT relevant to the pipeline dry-run
 
@@ -120,7 +118,7 @@ For each workflow, observe the outcome and record it. Expected behavior:
 
 #### `release-container`
 
-- ✅ `build-and-push` job: builds multi-arch image, pushes to ghcr.io (using `GITHUB_TOKEN` — should always work) and to Docker Hub (needs `DOCKERHUB_TOKEN`).
+- ✅ `build-and-push` job: builds multi-arch image, pushes to ghcr.io (using `GITHUB_TOKEN` — should always work). Docker Hub push removed at v0.1.0.
 - ✅ `cosign sign --yes` step: signs the pushed image by digest.
 - ✅ `cosign verify` step: confirms the signature on what's actually in the registry. **This is the critical end-to-end check** — if it passes, sigstore is fully wired.
 
@@ -134,7 +132,7 @@ docker run --rm ghcr.io/<owner>/efterlev:v0.0.1-rc.1 efterlev --help
 #### `release-smoke`
 
 - 9-cell matrix: 5 pipx cells (Linux, Linux-arm, macOS x86, macOS arm, Windows) + 2 docker-ghcr cells + 2 docker-dockerhub cells.
-- Each cell polls the relevant registry until the artifact appears (TestPyPI for pipx; ghcr.io for docker-ghcr; Docker Hub for docker-dockerhub), then installs + runs `efterlev scan` against an embedded fixture.
+- Each cell polls the relevant registry until the artifact appears (TestPyPI for pipx; ghcr.io for docker-ghcr), then installs + runs `efterlev scan` against an embedded fixture.
 - Fail-fast is OFF, so all cells run to completion regardless of others.
 - **What to look for:** how many cells pass. 9/9 = pipeline is fully validated. <9/9 = note which platforms fail and why; not all need to pass v0.1.0 (the deployment-mode matrix calls out which are CI-required vs documented-but-unverified).
 
@@ -155,7 +153,6 @@ git revert <bump-commit-sha> --no-edit
 The dry-run produces real artifacts in:
 - TestPyPI: `efterlev==0.0.1rc1` will live there forever (TestPyPI doesn't allow deletion). This is fine — it's the validation evidence.
 - ghcr.io: `ghcr.io/<owner>/efterlev:v0.0.1-rc.1` and the `:0.0.1rc1` tag. Can be deleted via the Packages UI on the repo if desired; not required.
-- Docker Hub: same. Optional cleanup.
 
 The git tag `v0.0.1-rc.1` should stay — it's the audit trail of when the dry-run happened.
 
@@ -178,10 +175,6 @@ Someone (probably you, on a previous dry-run) already uploaded this version. Bum
 ### `release-container` fails on the cosign sign step
 
 `id-token: write` permission is set in the workflow but may be blocked at the org level. Check Settings → Actions → General → Workflow permissions = "Read and write" + "Allow GitHub Actions to create and approve pull requests."
-
-### `release-container` Docker Hub push fails with auth error
-
-`DOCKERHUB_TOKEN` secret is missing or revoked. Set it (Settings → Secrets and variables → Actions). The token needs Read+Write+Delete scope on the `efterlev` namespace.
 
 ### `release-smoke` cells time out
 
@@ -210,7 +203,7 @@ Be honest about scope:
 
 - **One or two smoke cells fail (Windows, ARM-something) but the publish + container + sign all pass:** the pipeline core is sound. Decide platform-by-platform whether to block launch on those cells. Document failures in `docs/deployment-modes.md`. Most v0.1.0 launches don't block on every platform.
 
-- **Trusted Publishing or DOCKERHUB_TOKEN auth fails:** prerequisite gap, not a code bug. Fix the config, re-tag (`-rc.2`), re-run.
+- **Trusted Publishing auth fails:** prerequisite gap, not a code bug. Fix the publisher config (TestPyPI / PyPI), re-tag (`-rc.2`), re-run.
 
 - **A cosign or sigstore step fails:** treat this as a real bug. Sigstore is the trust foundation for the launch. Investigate before the next attempt.
 

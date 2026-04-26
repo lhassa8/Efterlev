@@ -20,7 +20,7 @@ This document covers:
 5. Push the tag: `git push origin v0.1.0-rc.1` (or the final tag).
 6. Observe the two release workflows fire in parallel:
    - `release-pypi.yml` (SPEC-05) — builds + uploads to Test PyPI, then to real PyPI (gated on `pypi` environment approval for final tags)
-   - `release-container.yml` (SPEC-06) — builds multi-arch container, pushes to ghcr.io + Docker Hub, signs via cosign, attaches SLSA provenance
+   - `release-container.yml` (SPEC-06) — builds multi-arch container, pushes to ghcr.io, signs via cosign, attaches SLSA provenance. (Docker Hub publish was a parallel target at design time but was dropped at v0.1.0 after Docker Hub eliminated the free organization tier; deferred to post-launch via the Docker-Sponsored Open Source program.)
 7. Once the `release-smoke.yml` matrix (SPEC-09) reports green on the same tag, approve the `pypi` environment deployment to proceed with real-PyPI upload.
 8. Cut a GitHub Release from the tag, pasting the release-notes template below.
 
@@ -46,7 +46,7 @@ scripts/verify-release.sh v0.1.0
 
 The script checks:
 1. PyPI wheel + sdist are signed by the expected workflow identity (`release-pypi.yml` on the tag's refs).
-2. Container images on ghcr.io and Docker Hub are signed by the expected workflow identity.
+2. Container images on ghcr.io are signed by the expected workflow identity.
 3. SLSA build provenance is attached to every container image.
 
 Exit 0 means all checks passed. Exit 1 means at least one check failed; do not install the release.
@@ -88,13 +88,12 @@ scripts/verify-release.sh v<VERSION>
 
 The script checks:
 - PyPI wheel + sdist Sigstore signatures (bound to this repo's `release-pypi.yml` workflow).
-- Container images on ghcr.io and Docker Hub, cosign-signed by `release-container.yml`.
+- Container images on ghcr.io, cosign-signed by `release-container.yml`.
 - SLSA build provenance on every container image.
 
 Artifacts:
 - PyPI project: https://pypi.org/project/efterlev/<VERSION>/
 - Container (GHCR): `ghcr.io/efterlev/efterlev:v<VERSION>`
-- Container (Docker Hub): `docker.io/efterlev/efterlev:v<VERSION>`
 
 ## What hasn't been independently verified
 

@@ -67,14 +67,14 @@ jobs:
             method: pipx
           # Docker install paths — Linux-only at v0.1.0 (Windows and macOS
           # Docker paths deferred per SPEC-06 non-goals).
+          # Docker Hub cells dropped 2026-04-26: Docker Hub eliminated the
+          # free organization tier in 2024 and the project doesn't publish
+          # there at v0.1.0 (only ghcr.io). See release-container.yml for
+          # the rationale.
           - os: ubuntu-22.04
             method: docker-ghcr
           - os: ubuntu-24.04-arm
             method: docker-ghcr
-          - os: ubuntu-22.04
-            method: docker-dockerhub
-          - os: ubuntu-24.04-arm
-            method: docker-dockerhub
     steps:
       - uses: actions/checkout@v5
 
@@ -133,26 +133,13 @@ jobs:
             sleep 30
           done
 
-      - name: Install from Docker Hub (with retry-and-wait)
-        if: matrix.method == 'docker-dockerhub'
-        shell: bash
-        env:
-          VERSION: ${{ needs.resolve-version.outputs.version }}
-        run: |
-          set -euo pipefail
-          IMAGE="docker.io/efterlev/efterlev:v${VERSION}"
-          for attempt in $(seq 1 20); do
-            if docker pull "$IMAGE"; then
-              echo "EFTERLEV_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
-              break
-            fi
-            if [ "$attempt" -eq 20 ]; then
-              echo "::error::docker.io did not serve ${IMAGE} within 10 minutes"
-              exit 1
-            fi
-            echo "Attempt ${attempt}/20 failed; waiting 30s..."
-            sleep 30
-          done
+      # Docker Hub install path was a parallel cell to the ghcr.io one
+      # at v0.1.0 design time. Removed 2026-04-26 because the project
+      # doesn't publish to Docker Hub at v0.1.0 (Docker Hub eliminated
+      # the free organization tier in 2024). The matrix above no longer
+      # has `docker-dockerhub` cells; this step would never fire even
+      # if it remained, but removing it keeps the workflow self-
+      # consistent.
 
       - name: Version check
         shell: bash

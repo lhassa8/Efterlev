@@ -120,7 +120,7 @@ v0 is complete on `main`. v1 Phase 1 and Phase 2, plus six post-review fixups, h
 - Repo transfer `lhassa8/Efterlev` → `efterlev/efterlev`.
 - Apply branch protection per `.github/BRANCH_PROTECTION.md` on the destination repo.
 - Enable GitHub Pages (Source: GitHub Actions) on the destination while still private.
-- Docker Hub `efterlev` org claim, npm namespace hold, DCO bot install on the org.
+- npm namespace hold, DCO bot install on the org. (Docker Hub publish was dropped at v0.1.0 — Docker Hub eliminated the free organization tier in 2024; ghcr.io is the only container registry at launch. Docker Hub republish is a post-launch DSOS-program follow-up.)
 - PyPI Trusted Publishing config pointed at `efterlev/efterlev`.
 - Maintainer §8 sign-off on `docs/security-review-2026-04.md`.
 - 24-hour pause + fresh-eyes walk through `docs/launch/runbook.md` (one human, one read).

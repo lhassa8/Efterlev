@@ -18,9 +18,7 @@ A mode is one of three states:
 | **Ubuntu 24.04 arm64 — pipx** | 🟢 CI-verified | release-smoke matrix cell `ubuntu-24.04-arm / pipx` | GitHub's hosted ARM Linux runners. |
 | **Windows 2022 x86_64 — pipx** | 🟢 CI-verified | release-smoke matrix cell `windows-2022 / pipx` | Git Bash compatibility verified by `tests/smoke/assert.py` (Python; runs identically across platforms). |
 | **Ubuntu 22.04 x86_64 — Docker (ghcr.io)** | 🟢 CI-verified | release-smoke matrix cell `ubuntu-22.04 / docker-ghcr` | `ghcr.io/efterlev/efterlev:latest`. |
-| **Ubuntu 22.04 x86_64 — Docker (Docker Hub)** | 🟢 CI-verified | release-smoke matrix cell `ubuntu-22.04 / docker-dockerhub` | `docker.io/efterlev/efterlev:latest`. |
 | **Ubuntu 24.04 arm64 — Docker (ghcr.io)** | 🟢 CI-verified | release-smoke matrix cell `ubuntu-24.04-arm / docker-ghcr` | Multi-arch image built via QEMU during release. |
-| **Ubuntu 24.04 arm64 — Docker (Docker Hub)** | 🟢 CI-verified | release-smoke matrix cell `ubuntu-24.04-arm / docker-dockerhub` | Multi-arch image. |
 | **GitLab CI (any host)** | ⚪ Documented but unverified | runbook: [`tutorials/ci-gitlab.md`](tutorials/ci-gitlab.md) | Pattern is `image: ghcr.io/efterlev/efterlev:latest`. Verification graduates to 🟡 when a customer or maintainer reports a successful pipeline. |
 | **CircleCI** | ⚪ Documented but unverified | runbook: [`tutorials/ci-circleci.md`](tutorials/ci-circleci.md) | Same pattern as GitLab — container-based job. |
 | **Jenkins** | ⚪ Documented but unverified | runbook: [`tutorials/ci-jenkins.md`](tutorials/ci-jenkins.md) | Container-based pipeline-stage skeleton. |
