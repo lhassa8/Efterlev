@@ -97,9 +97,25 @@ jobs:
           set -euo pipefail
           # uv tool install creates an isolated venv and puts the CLI on PATH.
           # Retry loop absorbs lag between tag push and Test PyPI indexing.
+          #
+          # `--extra-index-url https://pypi.org/simple/` is critical:
+          # TestPyPI carries only `efterlev` itself; third-party
+          # dependencies (anthropic, pydantic, typer, …) live only on
+          # real PyPI. Without the extra-index-url, the resolver
+          # fails to find any of those and bails on `efterlev` itself.
+          # Found 2026-04-26 in the v0.0.1-rc.1 dry-run when every
+          # pipx cell failed with "anthropic was not found in the
+          # package registry."
+          #
+          # `--index-strategy unsafe-best-match` lets uv consult both
+          # indexes for the same package name (otherwise uv pins the
+          # first index it finds a match on, which would re-trigger
+          # the failure for any package that happens to ship a
+          # placeholder on TestPyPI).
           for attempt in $(seq 1 20); do
             if uv tool install \
                 --index-url https://test.pypi.org/simple/ \
+                --extra-index-url https://pypi.org/simple/ \
                 --index-strategy unsafe-best-match \
                 "efterlev==${VERSION}"; then
               break
