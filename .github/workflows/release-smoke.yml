@@ -113,10 +113,20 @@ jobs:
           # the failure for any package that happens to ship a
           # placeholder on TestPyPI).
           for attempt in $(seq 1 20); do
+            # `--prerelease=allow` is required because we install rc
+            # versions for the smoke matrix. uv ≥ 0.11 enforces stricter
+            # prerelease handling than older versions: an explicit
+            # `==0.0.1rc2` constraint is no longer enough on its own;
+            # the resolver also needs the prerelease policy set
+            # explicitly, otherwise it reports "no version of
+            # efterlev==0.0.1rc2" even when the version IS in the
+            # index. Found 2026-04-26 in the v0.0.1-rc.2 dry-run when
+            # local uv 0.8.13 succeeded but CI uv 0.11.7 failed.
             if uv tool install \
                 --index-url https://test.pypi.org/simple/ \
                 --extra-index-url https://pypi.org/simple/ \
                 --index-strategy unsafe-best-match \
+                --prerelease=allow \
                 "efterlev==${VERSION}"; then
               break
             fi
@@ -160,7 +170,14 @@ jobs:
       - name: Version check
         shell: bash
         env:
-          EXPECTED_VERSION: ${{ needs.resolve-version.outputs.version }}
+          # `efterlev --version` reports the PEP 440-normalized form
+          # baked into the wheel (e.g. `0.0.1rc2`), not the semver-shaped
+          # tag (`v0.0.1-rc.2`). Match against pep440. Found 2026-04-26
+          # in the v0.0.1-rc.2 dry-run when this check failed against
+          # the tag form on the docker-ghcr cells (where docker pull +
+          # version output worked correctly but the assertion compared
+          # the wrong shape).
+          EXPECTED_VERSION: ${{ needs.resolve-version.outputs.pep440 }}
         run: |
           set -euo pipefail
           if [ -n "${EFTERLEV_IMAGE:-}" ]; then
