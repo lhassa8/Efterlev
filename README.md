@@ -337,7 +337,7 @@ KSIs below are from FRMR 0.9.43-beta (vendored at `catalogs/frmr/`). Each detect
 | `aws.cloudtrail_audit_logging` | **KSI-MLA-LET** (Logging Event Types), **KSI-MLA-OSM** (Operating SIEM Capability) | AU-2, AU-12 | `aws_cloudtrail` |
 | `aws.backup_retention_configured` | **KSI-RPL-ABO** (Aligning Backups with Objectives) | CP-9 | `aws_db_instance`, `aws_rds_cluster`, `aws_s3_bucket_versioning` |
 
-> **Note on SC-28 (encryption at rest).** FRMR 0.9.43-beta does not list SC-28 in any KSI's `controls` array. Per [DECISIONS 2026-04-21 design call #1](./DECISIONS.md), the detector declares `ksis=[]` rather than shoehorning SC-28 into a thematically-adjacent KSI (we considered KSI-SVC-VRI — integrity via crypto — but rejected it since SC-28 is specifically about confidentiality at rest, not integrity). The evidence still surfaces in the gap report's **Unmapped findings** section, honest about the current FRMR mapping gap. We expect this to resolve as FRMR moves from beta toward GA.
+> **Note on SC-28 (encryption at rest).** FRMR 0.9.43-beta does not list SC-28 in any KSI's `controls` array. Per [DECISIONS 2026-04-21 design call #1](./DECISIONS.md) — and re-confirmed in the [2026-04-27 honesty pass](./docs/v1-readiness-plan.md) — the five SC-28 detectors (`encryption_s3_at_rest`, `encryption_ebs`, `rds_encryption_at_rest`, `sqs_queue_encryption`, `sns_topic_encryption`) declare `ksis=[]` rather than shoehorning SC-28 into a thematically-adjacent KSI. We considered KSI-SVC-VRI (integrity via crypto), KSI-SVC-PRR ("Preventing Residual Risk"), and KSI-SVC-RUD ("Removing Unwanted Data"), but rejected each: SC-28 is specifically about confidentiality at rest, while VRI's controls center on SC-13 (integrity), PRR's only control is SC-4 (Information in Shared System Resources), and RUD's controls are SI-12.3 / SI-18.4 (data integrity). The evidence still surfaces in the gap report's **Unmapped findings** section, honest about the current FRMR mapping gap. The 2026-04-27 honesty pass revisited this and confirmed the SC-28 gap is upstream in FRMR 0.9.43-beta, not an Efterlev mapping mistake; tracked as a v0.1.x followup to file an upstream issue with a proposed mapping. **By contrast, the 2026-04-27 honesty pass DID rehome `kms_key_rotation`** from `ksis=[]` to KSI-SVC-ASM ("Automating Secret Management"), whose statement explicitly names "rotation of digital keys" — a mapping the original conservative read missed.
 
 > **Note on KSI-IAM-MFA.** The indicator requires *phishing-resistant* MFA. Our detector evidences that MFA is enforced via IAM policy condition keys (`aws:MultiFactorAuthPresent`), which is MFA presence but not phishing resistance. The phishing-resistance layer lives in IdP configuration (Okta, Entra, Cognito) and is procedural — outside what a scanner can see. The detector README and every per-KSI narrative calls this out explicitly.
 
@@ -394,12 +394,20 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 `aws.iam_inline_policies_audit`, `aws.iam_admin_policy_usage`, `aws.iam_service_account_keys_age`, `aws.elb_access_logs`.
 All self-contained under `src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml,
 fixtures/ (including .plan.json equivalence fixtures), and README.md. Each detector's README names what it proves
-and what it does not. Detectors evidence **14 of 60 FRMR-Moderate KSIs** at the infrastructure layer, spanning
-**5 of 11 themes** (CNA, IAM, MLA, RPL, SVC); the remaining six themes (AFR, CMT, CED, INR, PIY, SCR) are
-procedural/governance and require Evidence Manifests rather than detector evidence. Eight of the 30 detectors
-carry `ksis=[]` (SC-28 / SC-12 / AC-3 / password-policy families) per the existing precedent because FRMR
-0.9.43-beta has no KSI whose `controls` array contains those controls — those detectors surface findings at
-the 800-53 layer only and contribute nothing to KSI classification today.
+and what it does not.
+
+**Detector breakdown — 30 total = 23 KSI-mapped + 7 supplementary 800-53-only.**
+- **23 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **14 of 60 KSIs** at
+  the infrastructure layer, spanning **5 of 11 themes** (CNA, IAM, MLA, RPL, SVC). The remaining six themes
+  (AFR, CMT, CED, INR, PIY, SCR) are procedural/governance and require Evidence Manifests rather than
+  detector evidence — see Priority 1 of `docs/v1-readiness-plan.md` for the planned breadth expansion to
+  ≥30 KSIs across ≥8 themes.
+- **7 supplementary 800-53-only detectors** carry `ksis=[]` because their underlying control (SC-28 for
+  encryption-at-rest families; IA-5 for password policy; AC-3 for S3 public-access blocks) is not listed in
+  any KSI's `controls` array in FRMR 0.9.43-beta. Their evidence surfaces in the gap report's "Unmapped
+  findings" section — honest about the current FRMR mapping gap, not invented KSI attribution. SC-28
+  specifically is the largest gap (5 of the 7 detectors) and is being raised upstream to the FRMR project.
+  See "Note on SC-28" below for the full rationale.
 
 **Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit per-run-nonced-fence rules and cite-by-fenced-id discipline (see Phase 2 post-review fixup F below).
 
@@ -464,7 +472,7 @@ Designed to not break once the repo flips public (per the 2026-04-23 open-source
 
 ### Tests
 
-652 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 130 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
+653 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 130 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
 
 ### What's NOT in scope right now (per v1 lock)
 

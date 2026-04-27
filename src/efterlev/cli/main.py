@@ -1254,13 +1254,28 @@ def detectors_list() -> None:
         typer.echo("(no detectors registered)")
         return
     for spec in specs:
-        ksis = ", ".join(spec.ksis) if spec.ksis else "—"
+        # Priority 6 (2026-04-27): visually distinguish KSI-mapped detectors
+        # from supplementary 800-53-only ones. The latter still emit valid
+        # evidence; they just don't contribute to KSI roll-ups because their
+        # underlying controls (SC-28, IA-5, AC-3) are not in any FRMR
+        # 0.9.43-beta KSI's `controls` array. Tracked upstream.
+        if spec.ksis:
+            tag = ""
+            ksis = ", ".join(spec.ksis)
+        else:
+            tag = "  [800-53 only]"
+            ksis = "—"
         controls = ", ".join(spec.controls) if spec.controls else "—"
-        typer.echo(f"  {spec.id}@{spec.version}  source={spec.source}")
+        typer.echo(f"  {spec.id}@{spec.version}  source={spec.source}{tag}")
         typer.echo(f"      ksis:     {ksis}")
         typer.echo(f"      controls: {controls}")
     typer.echo("")
-    typer.echo(f"  total: {len(specs)} detectors")
+    ksi_mapped_count = sum(1 for s in specs if s.ksis)
+    only_800_53_count = len(specs) - ksi_mapped_count
+    typer.echo(
+        f"  total: {len(specs)} detectors  "
+        f"({ksi_mapped_count} KSI-mapped, {only_800_53_count} 800-53 only)"
+    )
 
 
 if __name__ == "__main__":

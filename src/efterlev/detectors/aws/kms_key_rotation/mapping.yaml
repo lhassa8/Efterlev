@@ -1,9 +1,16 @@
 detector_id: aws.kms_key_rotation
 
-# DECISIONS 2026-04-21 Option C: SC-12 has no FRMR KSI in 0.9.43-beta.
-# KSI-SVC-VRI carries SC-13 (protection) but not SC-12 (key management) —
-# different semantic territory.
-ksis: []
+# Priority 6 (2026-04-27 honesty pass): KSI-SVC-ASM ("Automating Secret
+# Management") includes SC-12 in its controls array, and its statement
+# explicitly names "rotation of digital keys, certificates, and other
+# secrets" — KMS key rotation is the canonical example. The original
+# 2026-04-21 design call left this empty under the assumption that no
+# clean mapping existed; the honesty pass re-evaluated and found this
+# fit. KSI-SVC-VRI was considered (carries SC-13 cryptographic
+# protection) but SC-12 is specifically about key management, not
+# integrity validation.
+ksis:
+  - KSI-SVC-ASM
 
 controls:
   - id: SC-12

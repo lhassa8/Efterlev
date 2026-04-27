@@ -11,12 +11,15 @@ Asymmetric KMS keys (`customer_master_key_spec` starting with "RSA_",
 `rotation_status="not_applicable"` so the Gap Agent doesn't conflate
 them with genuine rotation gaps.
 
-Per DECISIONS 2026-04-21 design call #1, Option C: FRMR 0.9.43-beta lists
-no KSI whose `controls` array contains SC-12, so this detector declares
-`ksis=[]` and surfaces at the 800-53 level only. KSI-SVC-VRI is close
-(its controls include SC-13 cryptographic protection) but SC-12 is
-specifically about key *management* — establishment, storage, rotation,
-escrow — a distinct concern. We do not fudge the mapping.
+KSI mapping: KSI-SVC-ASM ("Automating Secret Management"). Statement:
+"Automate management, protection, and regular rotation of digital keys,
+certificates, and other secrets." SC-12 is in KSI-SVC-ASM's `controls`
+array in FRMR 0.9.43-beta, and the KSI's statement explicitly names
+"rotation of digital keys" — KMS key rotation is the canonical example.
+The original 2026-04-21 design call left this `ksis=[]` because the
+mapping wasn't immediately clear; the 2026-04-27 honesty pass (Priority
+6 of `docs/v1-readiness-plan.md`) re-evaluated and confirmed
+KSI-SVC-ASM is the right home.
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ _ASYMMETRIC_SPEC_PREFIXES = ("RSA_", "ECC_", "HMAC_", "SM2")
 
 @detector(
     id="aws.kms_key_rotation",
-    ksis=[],  # DECISIONS 2026-04-21: SC-12 has no FRMR KSI in 0.9.43-beta
+    ksis=["KSI-SVC-ASM"],
     controls=["SC-12", "SC-12(2)"],
     source="terraform",
     version="0.1.0",
@@ -43,8 +46,11 @@ def detect(resources: list[TerraformResource]) -> list[Evidence]:
     Evidences (800-53):  SC-12 (Cryptographic Key Establishment and
                          Management). SC-12(2) (Symmetric Keys) when
                          rotation is confirmed on a symmetric CMK.
-    Evidences (KSI):     None — SC-12 is not currently mapped to any FRMR
-                         KSI in 0.9.43-beta; see detector README.
+    Evidences (KSI):     KSI-SVC-ASM (Automating Secret Management).
+                         FRMR 0.9.43-beta includes SC-12 in this KSI's
+                         controls; the KSI statement explicitly names
+                         "rotation of digital keys" which is what KMS
+                         key rotation provides.
     Does NOT prove:      external HSM / BYOK posture, key-escrow or
                          multi-region replica key handling, whether
                          applications actually use the declared CMK (vs.
@@ -93,7 +99,7 @@ def _emit_kms_evidence(r: TerraformResource, now: datetime) -> Evidence:
 
     return Evidence.create(
         detector_id="aws.kms_key_rotation",
-        ksis_evidenced=[],
+        ksis_evidenced=["KSI-SVC-ASM"],
         controls_evidenced=controls,
         source_ref=r.source_ref,
         content=content,

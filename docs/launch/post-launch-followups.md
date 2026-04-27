@@ -156,6 +156,25 @@ While investigating, audit all 30 detectors for the same shape (controls populat
 
 ---
 
+### File upstream FRMR issue: SC-28 has no KSI mapping in 0.9.43-beta
+
+**Item:** the 2026-04-27 Priority 6 honesty pass confirmed that SC-28 ("Protection of Information at Rest") is not in any FRMR 0.9.43-beta KSI's `controls` array, even though encryption-at-rest is one of the most fundamental confidentiality controls in any compliance posture. As a result, 5 of Efterlev's 30 detectors (`encryption_s3_at_rest`, `encryption_ebs`, `rds_encryption_at_rest`, `sqs_queue_encryption`, `sns_topic_encryption`) cannot map to any KSI and surface as "supplementary 800-53 evidence" only.
+
+We considered KSI-SVC-VRI ("Validating Resource Integrity"), KSI-SVC-PRR ("Preventing Residual Risk"), and KSI-SVC-RUD ("Removing Unwanted Data") as candidate homes; all rejected as off-thematically (VRI's controls center on SC-13 integrity, PRR has only SC-4 — Information in Shared System Resources, RUD has SI-12.3 / SI-18.4 data integrity). The natural KSI for SC-28 would either be a new "Protecting Information at Rest" KSI in the SVC theme, or extension of an existing SVC KSI to include SC-28 in its controls.
+
+**Resolution path:**
+1. File an upstream issue at the FRMR repo (`FedRAMP/docs` or wherever FRMR is maintained) describing the gap with concrete evidence of dispositive IaC-level encryption-at-rest evidence Efterlev produces.
+2. Propose a mapping (likely either: extend KSI-SVC-PRR to include SC-28, OR add a new KSI for "encryption at rest" specifically).
+3. When FRMR ships a version with the mapping, bump the catalog and rehome the 5 detectors from `ksis=[]` to the new mapping.
+
+**Owner:** Maintainer (file upstream); upstream FRMR maintainers (decide on resolution).
+
+**Target:** v0.2.0 catalog bump if FRMR resolves; otherwise this stays open and the 5 detectors stay supplementary-only with documented rationale.
+
+**Cross-references:** `docs/v1-readiness-plan.md` Priority 6, README "Note on SC-28" stanza, individual detector READMEs under `src/efterlev/detectors/aws/encryption_*/`, DECISIONS 2026-04-21 and 2026-04-27 honesty pass.
+
+---
+
 ## v0.2.0+ — minor-release follow-ups
 
 ### Docker Hub republishing via DSOS

@@ -30,12 +30,16 @@ automatic rotation (AWS ignores `enable_key_rotation` on those).
 
 ## KSI mapping
 
-**None.** FRMR 0.9.43-beta lists no KSI whose `controls` array contains
-SC-12. KSI-SVC-VRI is the nearest thematic fit but its controls center
-on SC-13 (cryptographic protection of integrity), not SC-12 (key
-management lifecycle). Per DECISIONS 2026-04-21 design call #1 (Option
-C), the detector declares `ksis=[]` and the Gap Agent renders findings
-as "unmapped to any current KSI."
+**KSI-SVC-ASM ("Automating Secret Management").** FRMR 0.9.43-beta
+includes SC-12 in this KSI's `controls` array, and the KSI statement
+explicitly names "rotation of digital keys, certificates, and other
+secrets" — KMS key rotation is the canonical example. The 2026-04-21
+design call originally left this `ksis=[]` under the assumption that
+no clean mapping existed; the 2026-04-27 honesty pass (Priority 6 of
+`docs/v1-readiness-plan.md`) re-evaluated and confirmed
+KSI-SVC-ASM is the right home. KSI-SVC-VRI was considered but its
+controls center on SC-13 (cryptographic integrity), not SC-12 (key
+management lifecycle).
 
 ## Asymmetric keys
 
@@ -61,7 +65,7 @@ Output:
 ```json
 {
   "detector_id": "aws.kms_key_rotation",
-  "ksis_evidenced": [],
+  "ksis_evidenced": ["KSI-SVC-ASM"],
   "controls_evidenced": ["SC-12", "SC-12(2)"],
   "content": {
     "resource_type": "aws_kms_key",

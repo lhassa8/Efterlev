@@ -55,9 +55,52 @@ def test_detectors_list_lists_all_thirty_detectors(tmp_path: pytest.TempPathFact
     # 30 detectors per the A4 catalog (see tests/test_smoke.py:
     # test_every_detector_folder_registers).
     assert "total: 30 detectors" in result.output
+    # Priority 6 honesty pass (2026-04-27): summary breaks down KSI-mapped
+    # vs supplementary 800-53-only detectors so a reader knows the marketed
+    # 30 isn't 30 KSI contributions.
+    assert "23 KSI-mapped" in result.output
+    assert "7 800-53 only" in result.output
     # Spot-check a couple of detector ids appear.
     assert "aws.encryption_s3_at_rest" in result.output
     assert "aws.access_analyzer_enabled" in result.output
+
+
+def test_detectors_list_tags_supplementary_800_53_only_detectors(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Supplementary detectors (those with ksis=[]) get a visible tag so a
+    reader scanning the list knows which detectors contribute to KSI
+    roll-ups vs which provide supplementary 800-53 evidence only.
+    Priority 6 (2026-04-27 honesty pass)."""
+    result = runner.invoke(app, ["detectors", "list"])
+    assert result.exit_code == 0
+    # The 5 SC-28 detectors are the canonical supplementary cohort.
+    for det_id in (
+        "aws.encryption_s3_at_rest",
+        "aws.encryption_ebs",
+        "aws.rds_encryption_at_rest",
+        "aws.sns_topic_encryption",
+        "aws.sqs_queue_encryption",
+    ):
+        # Each line for one of these detectors should carry the [800-53 only] tag.
+        line_with_tag = next(
+            (
+                line
+                for line in result.output.splitlines()
+                if det_id in line and "[800-53 only]" in line
+            ),
+            None,
+        )
+        assert line_with_tag is not None, (
+            f"expected `{det_id}` line to carry `[800-53 only]` tag; output:\n{result.output}"
+        )
+    # And kms_key_rotation, rehomed in this same pass, should NOT carry the tag.
+    line_with_kms = next(
+        (line for line in result.output.splitlines() if "aws.kms_key_rotation" in line),
+        None,
+    )
+    assert line_with_kms is not None
+    assert "[800-53 only]" not in line_with_kms
 
 
 def test_provenance_verify_clean_store_passes(tmp_path: pytest.TempPathFactory) -> None:
