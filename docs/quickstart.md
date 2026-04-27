@@ -95,7 +95,7 @@ Scanning .
   ✓ aws.tls_on_lb_listeners          — 1 evidence record
   ✓ aws.security_group_open_ingress  — 2 findings
   ...
-39 detectors run, 67 evidence records, 14 findings.
+40 detectors run, 67 evidence records, 14 findings.
 HTML report: .efterlev/reports/scan-20260425T140530Z.html
 ```
 

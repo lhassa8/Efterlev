@@ -1,0 +1,27 @@
+detector_id: aws.cloudfront_viewer_protocol_https
+
+ksis:
+  - id: KSI-SVC-VCM
+    coverage: partial
+    notes: >
+      Validating Communications. CloudFront's viewer-protocol policy +
+      minimum-TLS-version are the canonical edge-side authenticity
+      controls. Detector emits one Evidence per distribution covering
+      both knobs; Gap Agent reasons over per-distribution exposure.
+
+controls:
+  - id: SC-23
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Session Authenticity. HTTPS-only viewer policy prevents
+      session-hijack via downgrade; TLSv1.2+ rejects the deprecated
+      cipher suites that defeat session authenticity in practice.
+  - id: SI-7(1)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Software, Firmware, and Information Integrity — Integrity Checks.
+      TLS provides per-message HMAC integrity at the wire layer.
+      Detector evidences the wire-layer integrity check; application-
+      layer integrity (HMAC on payloads, signed JWTs) is outside scope.

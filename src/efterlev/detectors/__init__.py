@@ -18,6 +18,7 @@ from __future__ import annotations
 from efterlev.detectors.aws import (
     access_analyzer_enabled,  # noqa: F401
     backup_retention_configured,  # noqa: F401
+    cloudfront_viewer_protocol_https,  # noqa: F401
     cloudtrail_audit_logging,  # noqa: F401
     cloudtrail_log_file_validation,  # noqa: F401
     cloudwatch_alarms_critical,  # noqa: F401

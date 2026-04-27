@@ -1,0 +1,57 @@
+detector_id: aws.cloudfront_viewer_protocol_https
+
+# Evidence content shape this detector emits. One Evidence per
+# `aws_cloudfront_distribution` resource.
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_cloudfront_distribution"]
+    notes: Always "aws_cloudfront_distribution".
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name (the second label after the type).
+
+  viewer_state:
+    type: enum
+    values: ["https_only", "allows_http", "mixed", "unknown"]
+    notes: |
+      `https_only` — every cache behavior (default + ordered) has
+      `viewer_protocol_policy` ∈ {"https-only", "redirect-to-https"}.
+      Strongest evidence shape.
+
+      `allows_http` — at least one behavior allows plaintext HTTP via
+      `viewer_protocol_policy = "allow-all"`. Gap field populated.
+
+      `mixed` — at least one behavior is unknown/unset and not all the
+      rest are https-only. Gap field populated.
+
+      `unknown` — no parseable cache behavior found. Rare; happens when
+      the distribution body is built dynamically (e.g. via `dynamic`
+      blocks).
+
+  behavior_count:
+    type: int
+    notes: >
+      Number of cache-behavior blocks counted (default + ordered).
+
+  minimum_protocol_version:
+    type: string | absent
+    notes: >
+      `viewer_certificate.minimum_protocol_version` if set
+      (e.g. "TLSv1.2_2021", "TLSv1.3"). When absent, CloudFront
+      defaults to TLSv1 — below the FedRAMP bar; gap populated.
+
+  tls_meets_fedramp_bar:
+    type: bool
+    notes: >
+      True when `minimum_protocol_version` ∈ {"TLSv1.2_2018",
+      "TLSv1.2_2019", "TLSv1.2_2021", "TLSv1.3"}. False otherwise
+      (including the unset case).
+
+  gap:
+    type: string | absent
+    notes: |
+      Present whenever `viewer_state ∈ {"allows_http", "mixed"}` OR
+      `tls_meets_fedramp_bar = false`. Names the specific gap so the
+      Remediation Agent can propose a targeted diff.
