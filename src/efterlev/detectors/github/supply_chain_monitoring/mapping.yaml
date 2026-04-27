@@ -1,0 +1,29 @@
+detector_id: github.supply_chain_monitoring
+
+# KSI-SCR-MON ("Monitoring Supply Chain Risk") is evidenced by automated
+# monitoring of third-party software for upstream vulnerabilities. CI
+# workflows running SBOM generators (syft) + vulnerability scanners
+# (grype, trivy, snyk, pip-audit, etc.) are the canonical IaC-evidenceable
+# signal.
+#
+# FRMR 0.9.43-beta lists ra-5 (Vulnerability Monitoring and Scanning),
+# sa-9 (External System Services), si-5 (Security Alerts/Advisories),
+# sr-5/sr-6/sr-8 (Supply Chain Risk Management) in this KSI's controls.
+# This detector evidences ra-5 directly. The other controls are partly
+# procedural (notification agreements, contractual posture); a future
+# detector reading SECURITY.md / contract metadata could complement.
+ksis:
+  - KSI-SCR-MON
+
+controls:
+  - id: RA-5
+    enhancements: []
+    evidence_type: repo-metadata
+    coverage: partial
+    notes: >
+      Evidences vulnerability monitoring/scanning by surfacing whether CI
+      workflows run any SBOM-generation or upstream-CVE-scanning tooling.
+      Coverage is partial: the detector confirms tools run in CI but does
+      NOT verify their signature databases are current, that findings
+      gate the merge, or that detected vulnerabilities are reviewed and
+      acted on.

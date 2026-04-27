@@ -1,0 +1,47 @@
+detector_id: github.supply_chain_monitoring
+
+# Evidence content shape this detector emits. One Evidence per workflow
+# file in `.github/workflows/` (each parsed `WorkflowFile`).
+content_fields:
+  resource_type:
+    type: string
+    values: ["github_workflow"]
+    notes: Always "github_workflow"; carried for symmetry with sibling detectors.
+
+  resource_name:
+    type: string
+    notes: Workflow `name:` field if set; otherwise the filename stem.
+
+  sbom_tools_detected:
+    type: list[string]
+    notes: >
+      SBOM-generation tooling detected in the workflow's `run:` commands
+      or `uses:` action references. Currently: syft, cyclonedx (run-based);
+      anchore/syft-action (uses-based). Empty when no SBOM tool is found.
+
+  cve_scan_tools_detected:
+    type: list[string]
+    notes: >
+      Vulnerability-scanning tooling detected. Run-based: grype, trivy
+      (fs/image modes), snyk, pip-audit, npm audit, yarn audit, cargo
+      audit, osv-scanner. Uses-based actions: anchore/scan-action,
+      aquasecurity/trivy-action, snyk/actions, ossf/scorecard-action,
+      actions/dependency-review-action, github/codeql-action.
+
+  monitoring_state:
+    type: enum
+    values: ["present", "absent"]
+    notes: |
+      `present` — at least one SBOM or CVE-scanning tool detected.
+      Evidences RA-5 (Vulnerability Monitoring and Scanning).
+
+      `absent` — workflow runs but neither tool family detected.
+      Workflow contributes no evidence for KSI-SCR-MON; gap field
+      names canonical tools the customer could add.
+
+  gap:
+    type: string | absent
+    notes: |
+      Present on `monitoring_state="absent"` Evidence. Names the canonical
+      SBOM and CVE-scanner tools so a customer reading the gap field knows
+      what would have evidenced the KSI.

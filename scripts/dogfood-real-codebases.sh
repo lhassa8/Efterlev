@@ -32,7 +32,7 @@ terraform-aws-s3-bucket|terraform-aws-modules/terraform-aws-s3-bucket|6c5e082b5d
 terraform-aws-security-group|terraform-aws-modules/terraform-aws-security-group|3cf4e1a48a4649179e8ea27308daf0b551cb0bfa|25|8|0
 terraform-aws-control-tower|aws-ia/terraform-aws-control_tower_account_factory|22f754aca0aa572e8970dc1b81e40a27bc08d6bd|300|80|3'
 
-EXPECTED_DETECTOR_COUNT=32
+EXPECTED_DETECTOR_COUNT=33
 
 # Derive REPO_ROOT from the script's own location rather than `git
 # rev-parse --show-toplevel` — the latter follows whatever symlink

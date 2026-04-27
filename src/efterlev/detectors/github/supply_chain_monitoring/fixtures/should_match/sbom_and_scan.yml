@@ -1,0 +1,19 @@
+name: Security
+on:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  sbom_and_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM
+        uses: anchore/syft-action@v1
+      - name: Scan with grype
+        run: grype dir:.
+      - name: Python dependency audit
+        run: pip-audit
+      - name: OSSF Scorecard
+        uses: ossf/scorecard-action@v2

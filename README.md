@@ -396,15 +396,15 @@ All self-contained under `src/efterlev/detectors/aws/<capability>/` with detecto
 fixtures/ (including .plan.json equivalence fixtures), and README.md. Each detector's README names what it proves
 and what it does not.
 
-**Detector breakdown — 32 total = 25 KSI-mapped + 7 supplementary 800-53-only.**
-- **25 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **16 of 60 KSIs** at
-  the infrastructure layer, spanning **6 of 11 themes** (CNA, CMT, IAM, MLA, RPL, SVC). The remaining five
-  themes (AFR, CED, INR, PIY, SCR) are procedural/governance and require Evidence Manifests rather than
+**Detector breakdown — 33 total = 26 KSI-mapped + 7 supplementary 800-53-only.**
+- **26 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **17 of 60 KSIs** at
+  the infrastructure layer, spanning **7 of 11 themes** (CNA, CMT, IAM, MLA, RPL, SCR, SVC). The remaining
+  four themes (AFR, CED, INR, PIY) are procedural/governance and require Evidence Manifests rather than
   detector evidence — see Priority 1 of `docs/v1-readiness-plan.md` for the planned breadth expansion to
   ≥30 KSIs across ≥8 themes.
 - Detector sources: **31 from `terraform`** (read `.tf` files or `terraform show -json` output) +
-  **1 from `github-workflows`** (reads `.github/workflows/*.yml` for CI/CD posture KSIs that have no
-  IaC analog).
+  **2 from `github-workflows`** (read `.github/workflows/*.yml` for CI/CD and supply-chain-monitoring
+  KSIs that have no IaC analog).
 - **7 supplementary 800-53-only detectors** carry `ksis=[]` because their underlying control (SC-28 for
   encryption-at-rest families; IA-5 for password policy; AC-3 for S3 public-access blocks) is not listed in
   any KSI's `controls` array in FRMR 0.9.43-beta. Their evidence surfaces in the gap report's "Unmapped
@@ -475,7 +475,7 @@ Designed to not break once the repo flips public (per the 2026-04-23 open-source
 
 ### Tests
 
-707 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 139 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
+711 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 141 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
 
 ### What's NOT in scope right now (per v1 lock)
 
