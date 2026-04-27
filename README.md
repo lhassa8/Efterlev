@@ -16,6 +16,14 @@ cd efterlev
 uv sync --extra dev
 cd /path/to/your-repo
 uv run efterlev init --baseline fedramp-20x-moderate
+
+# If your Terraform composes upstream modules (the dominant pattern),
+# scan the resolved plan rather than the raw .tf files — detectors
+# don't follow module sources without it. See Quickstart > Scan below.
+terraform init && terraform plan -out plan.bin && terraform show -json plan.bin > plan.json
+uv run efterlev scan --plan plan.json
+
+# OR — if your Terraform is mostly raw `resource` declarations:
 uv run efterlev scan
 ```
 
@@ -212,26 +220,36 @@ You'll need an Anthropic API key for the generative agents (narrative drafting, 
 ### Scan
 
 ```bash
-efterlev scan                              # local-dev mode: parse .tf files directly
-efterlev scan --plan plan.json             # CI mode: scan a pre-generated Terraform plan
+efterlev scan --plan plan.json             # module-composed codebases (the dominant pattern)
+efterlev scan                              # raw `resource` declarations only
 ```
 
 Runs all applicable detectors against your Terraform. Produces findings with full provenance. Scanner-only — no LLM calls, no network; FRMR and 800-53 catalogs are loaded from the local `catalogs/` directory.
 
-Two modalities:
+**Pick the path that matches your codebase.** Most ICP-A Terraform composes upstream modules (`module "eks" { source = "terraform-aws-modules/eks/aws" ... }`); the actual workload — EKS clusters, VPCs, IAM roles, KMS keys, security groups, CloudTrail — lives inside those modules. Detectors look at root-level `resource` declarations only, so module-composed codebases need plan-JSON expansion to surface their resources.
 
-- **Local-dev (HCL directory)** — `--target DIR` (default: cwd). Parses `.tf` files statically via python-hcl2. Fast, no Terraform CLI dependency. Limitation: cannot resolve `for_each`/`count`/module expansion or `jsonencode(data.X)` references, so module-heavy codebases underreport.
-- **CI (plan JSON)** — `--plan FILE`. Reads a `terraform show -json <plan>` output produced by your pipeline. Every resource — including those created via `for_each` over a module map — is visible with resolved values, so the detector library covers ~60% more evidence in real-world codebases. See `docs/dogfood-2026-04-22.md` for the measured lift.
-
-Generating the plan file (once per CI run):
+#### Module-composed (the dominant pattern)
 
 ```bash
-terraform plan -out=efterlev.tfplan
-terraform show -json efterlev.tfplan > efterlev.plan.json
-efterlev scan --target . --plan efterlev.plan.json
+terraform init
+terraform plan -out plan.bin
+terraform show -json plan.bin > plan.json
+efterlev scan --plan plan.json
 ```
 
+`terraform show -json` resolves every `for_each`, `count`, and module expansion into concrete resources. The detector library sees ~60% more evidence than HCL mode against real-world codebases (`docs/dogfood-2026-04-22.md` has the measured lift; `docs/dogfood-findings-2026-04-27.md` has a worked example where HCL mode produced 1 evidence record and plan-JSON would produce ≥10).
+
 If your plan fails on "for_each argument derived from apply-time results" because the `buckets` map (or similar) contains `(known after apply)` values, you're in the first-plan-after-init case: `terraform apply -target=<prereq>` the prerequisite resources first, then re-plan. This matches standard Terraform-CI practice.
+
+#### Raw `resource` declarations only
+
+```bash
+efterlev scan
+```
+
+Parses `.tf` files statically via python-hcl2. Fast, no Terraform CLI dependency, no AWS credentials required. Use this when your Terraform is mostly raw `resource "aws_*" {}` blocks rather than `module {}` invocations — small workloads, demo fixtures, single-purpose modules.
+
+When the scanner detects a module-composed codebase being scanned in HCL mode (a common honest-mistake), it emits a structured warning at scan time recommending plan-JSON expansion with the exact command sequence above. Exit code stays 0 — the scan succeeded; coverage is just limited.
 
 ### Analyze
 
