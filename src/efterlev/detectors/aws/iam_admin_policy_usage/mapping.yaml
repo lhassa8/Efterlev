@@ -1,7 +1,26 @@
 detector_id: aws.iam_admin_policy_usage
 
 ksis:
-  - KSI-IAM-ELP
+  - id: KSI-IAM-ELP
+    coverage: partial
+    notes: >
+      AdministratorAccess (`*:*`) attached to a principal is the
+      direct opposite of least privilege. Detector emits per-attachment
+      so the Gap Agent can render which principals carry the privilege
+      and reason about justification (break-glass roles legitimately
+      have it; not all attachments are gaps).
+  - id: KSI-IAM-JIT
+    coverage: partial
+    notes: >
+      Cross-mapped 2026-04-27 (Priority 1.10). KSI-IAM-JIT ("Authorizing
+      Just-in-Time") asks for least-privileged, role-based, attribute-based,
+      and just-in-time authorization. AC-6 is in KSI-IAM-JIT's `controls`
+      array per FRMR 0.9.43-beta — clean cross-map, not invented.
+      AdministratorAccess attached as a permanent grant is direct
+      anti-JIT signal: no time-bound elevation, no contextual scope.
+      Does NOT prove this isn't a JIT-broker-managed standing role
+      (e.g., SSM Session Manager + permission boundaries) — that's a
+      runtime-config concern outside the IaC layer.
 
 controls:
   - id: AC-6

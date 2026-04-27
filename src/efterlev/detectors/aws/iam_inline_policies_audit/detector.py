@@ -10,6 +10,9 @@ whether the inline use is justified.
 
 KSI mapping per FRMR 0.9.43-beta:
   - KSI-IAM-ELP (Ensuring Least Privilege) lists ac-2 and ac-6.
+  - KSI-IAM-JIT (Authorizing Just-in-Time) lists ac-2 AND ac-6 — inline
+    policies bypass central managed-policy review and are typically
+    standing grants, the inverse of just-in-time authorization.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ _INLINE_POLICY_TYPES: dict[str, str] = {
 
 @detector(
     id="aws.iam_inline_policies_audit",
-    ksis=["KSI-IAM-ELP"],
+    ksis=["KSI-IAM-ELP", "KSI-IAM-JIT"],
     controls=["AC-2", "AC-6"],
     source="terraform",
     version="0.1.0",
@@ -38,7 +41,11 @@ def detect(resources: list[TerraformResource]) -> list[Evidence]:
     """Emit Evidence for each inline IAM policy attached to a principal.
 
     Evidences (800-53):  AC-2 (Account Management), AC-6 (Least Privilege).
-    Evidences (KSI):     KSI-IAM-ELP (Ensuring Least Privilege).
+    Evidences (KSI):     KSI-IAM-ELP (Ensuring Least Privilege),
+                         KSI-IAM-JIT (Authorizing Just-in-Time) — both AC-2
+                         and AC-6 overlap with JIT's controls; inline
+                         policies on principals are the standing-grant
+                         antithesis of just-in-time authorization.
     Does NOT prove:      that the inline policy is overly broad — its
                          contents render as a `${...}` placeholder when
                          built via jsonencode or data references; the
@@ -73,7 +80,7 @@ def _emit_inline_evidence(
 
     return Evidence.create(
         detector_id="aws.iam_inline_policies_audit",
-        ksis_evidenced=["KSI-IAM-ELP"],
+        ksis_evidenced=["KSI-IAM-ELP", "KSI-IAM-JIT"],
         controls_evidenced=["AC-2", "AC-6"],
         source_ref=r.source_ref,
         content={

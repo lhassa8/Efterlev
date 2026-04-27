@@ -1,7 +1,24 @@
 detector_id: aws.iam_inline_policies_audit
 
 ksis:
-  - KSI-IAM-ELP
+  - id: KSI-IAM-ELP
+    coverage: partial
+    notes: >
+      Inline policies don't violate least-privilege by themselves, but
+      they create review-blind-spots that lead to overly-broad grants
+      surviving longer than they should. Detector flags every inline
+      attachment as hygiene signal; Gap Agent reasons over justification.
+  - id: KSI-IAM-JIT
+    coverage: partial
+    notes: >
+      Cross-mapped 2026-04-27 (Priority 1.10). KSI-IAM-JIT ("Authorizing
+      Just-in-Time") lists BOTH AC-2 and AC-6 in its `controls` array per
+      FRMR 0.9.43-beta — clean cross-map, not invented. Inline policies
+      bypass central managed-policy review and are typically standing
+      grants attached to a specific principal — the inverse of just-in-time
+      authorization. Does NOT prove the inline policy isn't broker-issued
+      with a TTL (rare in practice; AWS IAM has no native expiry on
+      inline policies).
 
 controls:
   - id: AC-2

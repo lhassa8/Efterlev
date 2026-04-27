@@ -5,6 +5,7 @@ Flags every IAM principal with the AWS-managed `AdministratorAccess` policy atta
 ## What this detector evidences
 
 - **KSI-IAM-ELP** (Ensuring Least Privilege).
+- **KSI-IAM-JIT** (Authorizing Just-in-Time) — cross-mapped via AC-6, which is in KSI-IAM-JIT's FRMR `controls` array. AdministratorAccess attached as a permanent grant is direct anti-JIT signal; the Gap Agent reasons over per-attachment justification (some break-glass roles legitimately stand).
 - **800-53 controls:** AC-6, AC-6(2).
 
 ## What it proves

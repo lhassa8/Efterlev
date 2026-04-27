@@ -27,7 +27,10 @@ def test_admin_attached_to_role_emits_finding() -> None:
     assert len(results) == 1
     ev = results[0]
     assert ev.detector_id == "aws.iam_admin_policy_usage"
-    assert ev.ksis_evidenced == ["KSI-IAM-ELP"]
+    # KSI-IAM-JIT cross-mapped 2026-04-27 (Priority 1.10): AC-6 is in
+    # KSI-IAM-JIT's FRMR controls array, so an AdministratorAccess
+    # attachment is also evidence against JIT.
+    assert ev.ksis_evidenced == ["KSI-IAM-ELP", "KSI-IAM-JIT"]
     assert "AC-6" in ev.controls_evidenced
     assert "AC-6(2)" in ev.controls_evidenced
     assert ev.content["principal_kind"] == "role"

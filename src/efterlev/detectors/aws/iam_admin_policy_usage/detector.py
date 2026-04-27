@@ -9,6 +9,10 @@ can reason about justification per principal.
 
 KSI mapping per FRMR 0.9.43-beta:
   - KSI-IAM-ELP (Ensuring Least Privilege) lists ac-2 and ac-6.
+  - KSI-IAM-JIT (Authorizing Just-in-Time) lists ac-6 (among others) —
+    AdministratorAccess attached as a permanent grant is direct
+    anti-JIT signal; the Gap Agent reasons over per-attachment
+    duration/justification.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ _ATTACHMENT_TYPES: dict[str, str] = {
 
 @detector(
     id="aws.iam_admin_policy_usage",
-    ksis=["KSI-IAM-ELP"],
+    ksis=["KSI-IAM-ELP", "KSI-IAM-JIT"],
     controls=["AC-6", "AC-6(2)"],
     source="terraform",
     version="0.1.0",
@@ -40,7 +44,10 @@ def detect(resources: list[TerraformResource]) -> list[Evidence]:
 
     Evidences (800-53):  AC-6 (Least Privilege),
                          AC-6(2) (Privileged Functions / Non-Privileged Use).
-    Evidences (KSI):     KSI-IAM-ELP (Ensuring Least Privilege).
+    Evidences (KSI):     KSI-IAM-ELP (Ensuring Least Privilege),
+                         KSI-IAM-JIT (Authorizing Just-in-Time) — AC-6
+                         overlap; an AdministratorAccess attachment is
+                         anti-JIT signal absent compensating controls.
     Does NOT prove:      that the principal is actually used at runtime;
                          that the privilege is unjustified — emergency
                          break-glass roles legitimately have this. The
@@ -69,7 +76,7 @@ def _emit_admin_attachment_evidence(
 ) -> Evidence:
     return Evidence.create(
         detector_id="aws.iam_admin_policy_usage",
-        ksis_evidenced=["KSI-IAM-ELP"],
+        ksis_evidenced=["KSI-IAM-ELP", "KSI-IAM-JIT"],
         controls_evidenced=["AC-6", "AC-6(2)"],
         source_ref=r.source_ref,
         content={

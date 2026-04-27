@@ -5,6 +5,7 @@ Inventories inline-policy resources attached to IAM principals.
 ## What this detector evidences
 
 - **KSI-IAM-ELP** (Ensuring Least Privilege).
+- **KSI-IAM-JIT** (Authorizing Just-in-Time) — cross-mapped via both AC-2 and AC-6, which appear in KSI-IAM-JIT's FRMR `controls` array. Inline policies on principals are the standing-grant antithesis of just-in-time authorization.
 - **800-53 controls:** AC-2, AC-6.
 
 ## What it proves

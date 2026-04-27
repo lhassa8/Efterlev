@@ -27,7 +27,10 @@ def test_role_inline_policy_emits_evidence() -> None:
     assert len(results) == 1
     ev = results[0]
     assert ev.detector_id == "aws.iam_inline_policies_audit"
-    assert ev.ksis_evidenced == ["KSI-IAM-ELP"]
+    # KSI-IAM-JIT cross-mapped 2026-04-27 (Priority 1.10): both AC-2 and
+    # AC-6 are in KSI-IAM-JIT's FRMR controls array, so inline policies
+    # are also evidence against JIT.
+    assert ev.ksis_evidenced == ["KSI-IAM-ELP", "KSI-IAM-JIT"]
     assert "AC-2" in ev.controls_evidenced
     assert "AC-6" in ev.controls_evidenced
     assert ev.content["principal_kind"] == "role"

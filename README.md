@@ -397,7 +397,7 @@ fixtures/ (including .plan.json equivalence fixtures), and README.md. Each detec
 and what it does not.
 
 **Detector breakdown — 38 total = 31 KSI-mapped + 7 supplementary 800-53-only.**
-- **31 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **23 of 60 KSIs** at
+- **31 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **24 of 60 KSIs** at
   the infrastructure layer, spanning **8 of 11 themes** (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). The remaining
   three themes (AFR, CED, INR) are entirely procedural/governance and require Evidence Manifests rather than
   detector evidence. See Priority 1 of `docs/v1-readiness-plan.md` for the planned breadth expansion to
