@@ -153,6 +153,7 @@ class DocumentationAgent(Agent):
                 narrative_output,
                 fenced_prompt=system_prompt + "\n" + user_message,
                 nonce=nonce,
+                classification_evidence_ids=clf.evidence_ids,
             )
 
             final_draft = AttestationDraft(
@@ -264,8 +265,26 @@ def _build_user_message(
     )
 
 
-def _validate_cited_ids(output: NarrativeOutput, *, fenced_prompt: str, nonce: str) -> None:
-    """Enforce design call #3: every cited id must correspond to a real fence."""
+def _validate_cited_ids(
+    output: NarrativeOutput,
+    *,
+    fenced_prompt: str,
+    nonce: str,
+    classification_evidence_ids: list[str],
+) -> None:
+    """Two-sided citation discipline:
+
+    - Forbid fabrication (design call #3): every cited id must correspond to a
+      real fence. Otherwise a model could invent `sha256:…` strings the human
+      reader cannot trace back to evidence.
+    - Forbid silent decitation: when the Gap Agent cited evidence for this
+      KSI, the narrative MUST cite at least one of those ids. Otherwise a
+      confidently-worded narrative can land in the persisted Claim with an
+      empty `derived_from`, breaking the provenance graph and matching the
+      same failure mode `KsiClassification._positive_status_requires_evidence`
+      blocks on the Gap side. A `not_implemented` KSI with no Gap-cited
+      evidence is the legitimate empty-cite path and is allowed through.
+    """
     fenced_ids = parse_evidence_fence_ids(fenced_prompt, nonce=nonce)
     cited = set(output.cited_evidence_ids)
     fabricated = cited - fenced_ids
@@ -273,6 +292,13 @@ def _validate_cited_ids(output: NarrativeOutput, *, fenced_prompt: str, nonce: s
         raise AgentError(
             "documentation agent narrative cites evidence IDs not present in the prompt: "
             f"{sorted(fabricated)[:5]}. Prompt-injection guard refuses fabricated citations."
+        )
+    if classification_evidence_ids and not cited:
+        raise AgentError(
+            "documentation agent narrative has empty cited_evidence_ids despite the Gap "
+            f"classification citing {len(classification_evidence_ids)} evidence id(s). "
+            "Every narrative grounded in classified evidence must cite at least one "
+            "of the underlying evidence ids — empty-cites would break the provenance graph."
         )
 
 

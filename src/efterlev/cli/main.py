@@ -135,13 +135,17 @@ def init(
         None,
         "--llm-model",
         help=(
-            "LLM model ID. Defaults to 'claude-opus-4-7' (anthropic) or "
-            "'us.anthropic.claude-opus-4-7-v1:0' (bedrock)."
+            "LLM model ID. When omitted, each agent uses its per-task "
+            "default (Opus 4.7 for Gap and Remediation; Sonnet 4.6 for "
+            "Documentation, ~5x cheaper for narrative drafting). When "
+            "set, every agent uses this model uniformly. Bedrock backend "
+            "always populates a Bedrock-shaped ID (e.g. "
+            "'us.anthropic.claude-opus-4-7-v1:0')."
         ),
     ),
 ) -> None:
     """Initialize `.efterlev/` in the target repo with a provenance store and config."""
-    from efterlev.config import DEFAULT_ANTHROPIC_MODEL, LLMConfig
+    from efterlev.config import LLMConfig
     from efterlev.errors import CatalogLoadError, ConfigError
     from efterlev.workspace import init_workspace
 
@@ -169,12 +173,23 @@ def init(
 
     # Build LLMConfig explicitly so the Pydantic validator enforces the
     # invariants one more time (defense in depth).
-    default_model = (
-        "us.anthropic.claude-opus-4-7-v1:0" if llm_backend == "bedrock" else DEFAULT_ANTHROPIC_MODEL
-    )
+    #
+    # Anthropic backend: when --llm-model is not passed, store None so the
+    # per-agent default_model values (Sonnet for Documentation, Opus for
+    # Gap and Remediation) stay live at agent runtime. Passing --llm-model
+    # at init overrides every agent's default uniformly.
+    #
+    # Bedrock backend: always populate model with a Bedrock-shaped ID
+    # because the per-agent default_model values use Anthropic short-form
+    # IDs that Bedrock does not accept. The LLMConfig validator rejects
+    # `backend=bedrock, model=None` to enforce this.
+    if llm_backend == "bedrock":
+        configured_model: str | None = llm_model or "us.anthropic.claude-opus-4-7-v1:0"
+    else:
+        configured_model = llm_model
     llm_config = LLMConfig(
         backend=llm_backend,  # type: ignore[arg-type]
-        model=llm_model or default_model,
+        model=configured_model,
         region=llm_region,
     )
 
@@ -504,6 +519,7 @@ def agent_gap(
 ) -> None:
     """Classify each KSI as implemented / partial / not implemented / NA."""
     from efterlev.agents import GapAgent, GapAgentInput
+    from efterlev.config import load_config
     from efterlev.errors import AgentError
     from efterlev.frmr.loader import FrmrDocument
     from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
@@ -529,6 +545,8 @@ def agent_gap(
     frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
     indicators = list(frmr_doc.indicators.values())
 
+    config = load_config(root / ".efterlev" / "config.toml")
+
     scan_id = _new_scan_id()
     ledger = RedactionLedger()
 
@@ -543,7 +561,7 @@ def agent_gap(
                 raise typer.Exit(code=1)
 
             with active_store(store), active_redaction_ledger(ledger):
-                agent = GapAgent()
+                agent = GapAgent(model=config.llm.model)
                 report = agent.run(GapAgentInput(indicators=indicators, evidence=evidence))
     except AgentError as e:
         typer.echo(f"error: {e}", err=True)
@@ -603,6 +621,7 @@ def agent_document(
         DocumentationAgentInput,
         reconstruct_classifications_from_store,
     )
+    from efterlev.config import load_config
     from efterlev.errors import AgentError
     from efterlev.frmr.loader import FrmrDocument
     from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
@@ -631,6 +650,7 @@ def agent_document(
         raise typer.Exit(code=1)
 
     frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
+    config = load_config(root / ".efterlev" / "config.toml")
 
     # Single ProvenanceStore context for the whole command: agent invocation
     # and FRMR-attestation generation both write records, and both belong to
@@ -659,7 +679,7 @@ def agent_document(
                 )
                 raise typer.Exit(code=1)
 
-            agent = DocumentationAgent()
+            agent = DocumentationAgent(model=config.llm.model)
             report = agent.run(
                 DocumentationAgentInput(
                     indicators=frmr_doc.indicators,
@@ -756,6 +776,7 @@ def agent_remediate(
         RemediationAgentInput,
         reconstruct_classifications_from_store,
     )
+    from efterlev.config import load_config
     from efterlev.errors import AgentError
     from efterlev.frmr.loader import FrmrDocument
     from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
@@ -786,6 +807,8 @@ def agent_remediate(
             err=True,
         )
         raise typer.Exit(code=1)
+
+    config = load_config(root / ".efterlev" / "config.toml")
 
     scan_id = _new_scan_id()
     ledger = RedactionLedger()
@@ -883,7 +906,7 @@ def agent_remediate(
                     source_files[rel] = tf_path.read_text(encoding="utf-8")
 
             with active_store(store), active_redaction_ledger(ledger):
-                agent = RemediationAgent()
+                agent = RemediationAgent(model=config.llm.model)
                 proposal = agent.run(
                     RemediationAgentInput(
                         indicator=indicator,

@@ -260,6 +260,72 @@ def test_documentation_agent_rejects_fabricated_evidence_citation(tmp_path: Path
         )
 
 
+def test_documentation_agent_rejects_empty_citations_when_gap_cited_evidence(
+    tmp_path: Path,
+) -> None:
+    """A narrative grounded in Gap-cited evidence must cite at least one of those ids.
+
+    Mirrors `KsiClassification._positive_status_requires_evidence` on the Gap
+    side. Without this check, a confidently-worded narrative lands in the
+    persisted Claim with empty `derived_from`, breaking the provenance graph
+    and leaving the human reader no evidence to verify against.
+    """
+    ev = _ev()
+    bogus = json.dumps(
+        {
+            "narrative": "Encryption is implemented; the scanner found nothing missing.",
+            "cited_evidence_ids": [],
+        }
+    )
+    stub = StubLLMClient(response_text=bogus)
+    with (
+        ProvenanceStore(tmp_path) as store,
+        active_store(store),
+        pytest.raises(AgentError, match="empty cited_evidence_ids"),
+    ):
+        agent = DocumentationAgent(client=stub)
+        agent.run(
+            DocumentationAgentInput(
+                indicators={"KSI-SVC-VRI": _ind()},
+                evidence=[ev],
+                classifications=[_clf(evidence_ids=[ev.evidence_id])],
+                baseline_id="fedramp-20x-moderate",
+                frmr_version="0.9.43-beta",
+            )
+        )
+
+
+def test_documentation_agent_allows_empty_citations_when_no_evidence_in_classification(
+    tmp_path: Path,
+) -> None:
+    """`not_implemented` with no Gap-cited evidence is the legitimate empty-cite path.
+
+    The narrative explains the absence of evidence rather than grounding a
+    positive claim, so cited_evidence_ids may be empty.
+    """
+    response = json.dumps(
+        {
+            "narrative": "No evidence of resource-integrity validation was produced; "
+            "this KSI requires an Evidence Manifest attestation to establish posture.",
+            "cited_evidence_ids": [],
+        }
+    )
+    stub = StubLLMClient(response_text=response)
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        agent = DocumentationAgent(client=stub)
+        report = agent.run(
+            DocumentationAgentInput(
+                indicators={"KSI-SVC-VRI": _ind()},
+                evidence=[],
+                classifications=[_clf(status="not_implemented", evidence_ids=[])],
+                baseline_id="fedramp-20x-moderate",
+                frmr_version="0.9.43-beta",
+            )
+        )
+    assert len(report.attestations) == 1
+    assert report.attestations[0].draft.status == "not_implemented"
+
+
 # -- Gap→Doc evidence attribution flow -------------------------------------
 
 
