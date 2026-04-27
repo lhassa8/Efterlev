@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from efterlev.config import (
-    DEFAULT_ANTHROPIC_MODEL,
     BaselineConfig,
     Config,
     LLMConfig,
@@ -21,7 +20,11 @@ from efterlev.errors import ConfigError
 def test_defaults_are_efterlev_v0_expectations() -> None:
     cfg = Config()
     assert cfg.llm.backend == "anthropic"
-    assert cfg.llm.model == DEFAULT_ANTHROPIC_MODEL
+    # `model` defaults to None — the canonical "use the agent's per-task
+    # default" sentinel. DocumentationAgent picks Sonnet for cost; Gap and
+    # Remediation pick Opus for reasoning. A non-None value overrides every
+    # agent's default uniformly.
+    assert cfg.llm.model is None
     assert cfg.scan.target_dir == "."
     assert cfg.scan.output_dir == "./out"
     assert cfg.baseline.id == "fedramp-20x-moderate"
@@ -185,3 +188,95 @@ def test_config_toml_anthropic_omits_region_line(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     save_config(cfg, path)
     assert "region" not in path.read_text()
+
+
+# --- model: None sentinel + wire-through ---------------------------------
+
+
+def test_save_config_omits_model_line_when_none(tmp_path: Path) -> None:
+    """`model = None` is the canonical "use the agent's per-task default"
+    sentinel. Writing `model = "None"` would round-trip as a literal string
+    and silently override every agent with a nonsense identifier; instead
+    save_config omits the line entirely."""
+    cfg = Config()  # model=None by default
+    path = tmp_path / "config.toml"
+    save_config(cfg, path)
+    text = path.read_text()
+    # No `model = "..."` line; `fallback_model` still appears so a substring
+    # check on "model" is too broad — check the specific assignment instead.
+    assert "\nmodel = " not in text
+    # Round-trip preserves None.
+    restored = load_config(path)
+    assert restored.llm.model is None
+
+
+def test_load_config_accepts_missing_model_line(tmp_path: Path) -> None:
+    """A hand-edited config without a `model` line should load cleanly
+    and set llm.model to None — the per-agent default applies at runtime."""
+    toml = tmp_path / "no_model.toml"
+    toml.write_text(
+        "[llm]\n"
+        'backend = "anthropic"\n'
+        'fallback_model = "claude-sonnet-4-6"\n'
+        "\n[scan]\n"
+        'target_dir = "."\n'
+        'output_dir = "./out"\n'
+        "\n[baseline]\n"
+        'id = "fedramp-20x-moderate"\n'
+    )
+    config = load_config(toml)
+    assert config.llm.model is None
+
+
+def test_llm_config_bedrock_rejects_none_model() -> None:
+    """SPEC-11 + 2026-04-26 wire-through: Bedrock model IDs differ from the
+    Anthropic short-form IDs the agent default_model values use, so None
+    cannot fall through to the per-agent default for Bedrock backends.
+    Init enforces this by writing a Bedrock-shaped ID; the validator is
+    the defense in depth."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="model is required when backend is 'bedrock'"):
+        LLMConfig(backend="bedrock", model=None, region="us-gov-west-1")
+
+
+def test_configured_model_flows_to_agent(tmp_path: Path) -> None:
+    """End-to-end wire-through: an explicit `model` in the loaded config
+    must reach the agent's `self.model`. Before this test, --llm-model at
+    init was dead config (configured but never read by agent runtime)."""
+    from efterlev.agents import DocumentationAgent, GapAgent, RemediationAgent
+    from efterlev.llm import StubLLMClient
+
+    toml = tmp_path / "configured.toml"
+    toml.write_text(
+        "[llm]\n"
+        'backend = "anthropic"\n'
+        'model = "claude-haiku-4-5"\n'
+        'fallback_model = "claude-sonnet-4-6"\n'
+        "\n[scan]\n"
+        'target_dir = "."\n'
+        'output_dir = "./out"\n'
+        "\n[baseline]\n"
+        'id = "fedramp-20x-moderate"\n'
+    )
+    cfg = load_config(toml)
+    assert cfg.llm.model == "claude-haiku-4-5"
+    stub = StubLLMClient(response_text="{}")
+    assert GapAgent(client=stub, model=cfg.llm.model).model == "claude-haiku-4-5"
+    assert DocumentationAgent(client=stub, model=cfg.llm.model).model == "claude-haiku-4-5"
+    assert RemediationAgent(client=stub, model=cfg.llm.model).model == "claude-haiku-4-5"
+
+
+def test_unconfigured_model_falls_through_to_agent_default(tmp_path: Path) -> None:
+    """When the user does not pass --llm-model at init, config.llm.model is
+    None and each agent uses its own default — Sonnet for Documentation
+    (cost-saving), Opus for Gap and Remediation (reasoning quality)."""
+    from efterlev.agents import DocumentationAgent, GapAgent, RemediationAgent
+    from efterlev.llm import StubLLMClient
+
+    cfg = Config()  # default — model=None
+    stub = StubLLMClient(response_text="{}")
+    assert cfg.llm.model is None
+    assert GapAgent(client=stub, model=cfg.llm.model).model == "claude-opus-4-7"
+    assert DocumentationAgent(client=stub, model=cfg.llm.model).model == "claude-sonnet-4-6"
+    assert RemediationAgent(client=stub, model=cfg.llm.model).model == "claude-opus-4-7"

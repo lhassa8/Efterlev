@@ -178,7 +178,7 @@ Efterlev pins its dependencies, scans them for known vulnerabilities as part of 
 
 **Threat:** A compromised Efterlev release transmits scanned content to an attacker.
 
-**Current state at v0 (honest):** the repo is private, the package is not yet published to PyPI (version 0.0.1 per `pyproject.toml`), and no release artifacts are signed. The "releases are signed" language previously in this section was aspirational. Users install via `uv sync --extra dev` against a cloned repo, not via a packaged release.
+**Current state at v0 (honest):** the repo is private, the package is not yet published to PyPI (currently `0.0.1rc5` per `pyproject.toml`; v0.1.0 is the launch tag), and no release artifacts are signed. The "releases are signed" language previously in this section was aspirational. Users install via `uv sync --extra dev` against a cloned repo, not via a packaged release.
 
 **Mitigations implemented today:**
 - The codebase is pre-launch private, staged for a public Apache-2.0 flip once the eight pre-launch readiness gates pass (DECISIONS 2026-04-23 "Rescind closed-source lock"). Full code auditability is a launch deliverable.

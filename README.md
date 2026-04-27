@@ -9,19 +9,20 @@ Built for the VP Eng or DevSecOps lead whose CEO just told them "we need FedRAMP
 Pronounced "EF-ter-lev." From Swedish *efterlevnad* (compliance).
 
 ```bash
-# Install (once PyPI release lands — pre-launch today):
-pipx install efterlev
-# Until then, from a cloned repo checkout:
+# Pre-launch — install from a cloned checkout. `pipx install efterlev`
+# lands at v0.1.0; until then, this is the only working path.
+git clone https://github.com/efterlev/efterlev.git
+cd efterlev
 uv sync --extra dev
-cd path/to/your-repo
+cd /path/to/your-repo
 uv run efterlev init --baseline fedramp-20x-moderate
 uv run efterlev scan
 ```
 
-`pipx install efterlev` will be the primary install path; it is not yet
-published to PyPI because PyPI release is part of the pre-launch
-distribution-readiness gate. See the "Status" block below for where that
-sits.
+Once v0.1.0 publishes to PyPI, `pipx install efterlev` becomes the
+primary install path. PyPI release is part of the pre-launch
+distribution-readiness gate; see the "Status" block below for where
+that sits.
 
 > **Status (April 2026): v0 shipped; v1 Phase 1 + Phase 2 + Plan JSON + dogfood coverage-followup + prompt hardening + GitHub Action + POA&M generator landed. Open-source-first posture locked; all eight pre-launch readiness gates closed at the spec level (2026-04-25); destination-repo operational setup complete (transfer, branch ruleset, Pages, DCO bot, environments, both Trusted Publishers, signed-commit flow validated end-to-end) and the release pipeline validated via 5 successive rc-tag dry-runs that found + fixed 5 real bugs (2026-04-26). Repo flips public after the remaining maintainer-action items (security-review §8 sign-off, 24-hour fresh-eyes pause, optional GovCloud walkthrough, then `git tag v0.1.0`).**
 > - **v0:** six AWS-Terraform detectors, three agents (Gap, Documentation, Remediation), MCP stdio server, full provenance graph, HTML reports. Phase 6-lite + dogfood coverage-follow-up + A4 detector-breadth gate bring the detector count to **30** (16 added in A4 covering SC-7 network-boundary, SI-4/AU-2 monitoring, SC-12/SC-28 key management, IA-2/AC-6 IAM-depth, and AU-2/AU-12 ELB-logging families).
@@ -168,10 +169,11 @@ For deeper architectural detail, see [docs/architecture.md](./docs/architecture.
 
 ### Install
 
-**Pre-launch today: install from a cloned checkout.** The package is at
-`0.0.1` and is not yet published to PyPI; `pipx install efterlev` will
-be the primary install path once the pre-launch distribution-readiness
-gate (A2 in the open-source launch plan) passes. Until then:
+**Pre-launch today: install from a cloned checkout.** The package
+(currently `0.0.1rc5`) is not yet published to PyPI; `pipx install
+efterlev` becomes the primary install path once v0.1.0 lands and the
+pre-launch distribution-readiness gate (A2 in the open-source launch
+plan) closes. Until then:
 
 ```bash
 # from a cloned checkout:
@@ -260,7 +262,6 @@ The Remediation Agent (Claude Opus 4.7) proposes a `git apply`-ready Terraform d
 
 ```bash
 efterlev poam                               # every open KSI
-efterlev poam --ksi KSI-SVC-SNT             # one KSI
 efterlev poam --output poam.md              # write to a specific path
 ```
 
@@ -375,8 +376,12 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 `aws.iam_inline_policies_audit`, `aws.iam_admin_policy_usage`, `aws.iam_service_account_keys_age`, `aws.elb_access_logs`.
 All self-contained under `src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml,
 fixtures/ (including .plan.json equivalence fixtures), and README.md. Each detector's README names what it proves
-and what it does not. KSI coverage spans 9 of 11 FRMR-Moderate themes; SC-28 detectors carry `ksis=[]` per the
-existing precedent because FRMR 0.9.43-beta has no KSI whose `controls` array contains SC-28.
+and what it does not. Detectors evidence **14 of 60 FRMR-Moderate KSIs** at the infrastructure layer, spanning
+**5 of 11 themes** (CNA, IAM, MLA, RPL, SVC); the remaining six themes (AFR, CMT, CED, INR, PIY, SCR) are
+procedural/governance and require Evidence Manifests rather than detector evidence. Eight of the 30 detectors
+carry `ksis=[]` (SC-28 / SC-12 / AC-3 / password-policy families) per the existing precedent because FRMR
+0.9.43-beta has no KSI whose `controls` array contains those controls — those detectors surface findings at
+the 800-53 layer only and contribute nothing to KSI classification today.
 
 **Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit per-run-nonced-fence rules and cite-by-fenced-id discipline (see Phase 2 post-review fixup F below).
 
@@ -441,7 +446,7 @@ Designed to not break once the repo flips public (per the 2026-04-23 open-source
 
 ### Tests
 
-621 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 129 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
+628 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 129 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
 
 ### What's NOT in scope right now (per v1 lock)
 

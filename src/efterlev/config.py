@@ -24,6 +24,12 @@ from efterlev.errors import ConfigError
 DEFAULT_BASELINE = "fedramp-20x-moderate"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-7"
 DEFAULT_FALLBACK_MODEL = "claude-sonnet-4-6"
+# Bedrock-shaped model ID for the Bedrock backend. The Anthropic short-form
+# IDs the per-agent default_model values use (e.g. "claude-opus-4-7") are
+# not valid Bedrock model identifiers, so the Bedrock backend always
+# populates LLMConfig.model — None cannot fall through to the per-agent
+# default the way it does for the Anthropic backend.
+DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-opus-4-7-v1:0"
 
 
 class LLMConfig(BaseModel):
@@ -54,7 +60,17 @@ class LLMConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     backend: Literal["anthropic", "bedrock"] = "anthropic"
-    model: str = DEFAULT_ANTHROPIC_MODEL
+    # `model` is the user's project-level model preference. None means
+    # "use the agent's per-task default" — DocumentationAgent picks
+    # Sonnet 4.6 for cost; Gap and Remediation pick Opus 4.7 for
+    # reasoning quality. A non-None value overrides every agent's
+    # default uniformly. Init writes None when the user does not pass
+    # `--llm-model`, so the per-agent defaults stay live unless the
+    # user explicitly opts into a single project-wide model.
+    # Bedrock backend always populates this with a Bedrock-shaped
+    # model ID (the Anthropic short-form IDs that the per-agent
+    # defaults use are not valid Bedrock model identifiers).
+    model: str | None = None
     fallback_model: str = DEFAULT_FALLBACK_MODEL
     region: str | None = None
 
@@ -69,6 +85,12 @@ class LLMConfig(BaseModel):
             raise ValueError(
                 "LLMConfig.region must be unset when backend is 'anthropic' "
                 "(region is only used by the Bedrock backend)."
+            )
+        if self.backend == "bedrock" and self.model is None:
+            raise ValueError(
+                "LLMConfig.model is required when backend is 'bedrock'; "
+                "Bedrock model IDs differ from the Anthropic short-form IDs "
+                f"the agent defaults use (e.g. '{DEFAULT_BEDROCK_MODEL}')."
             )
         return self
 
@@ -121,9 +143,15 @@ def save_config(config: Config, path: Path) -> None:
     llm_lines = [
         "[llm]",
         f'backend = "{config.llm.backend}"',
-        f'model = "{config.llm.model}"',
-        f'fallback_model = "{config.llm.fallback_model}"',
     ]
+    # Skip the `model` line when None — pydantic accepts a missing field via
+    # the LLMConfig.model default, and writing `model = "None"` would be
+    # interpreted as a literal string "None" by tomllib on the next load.
+    # None means "use the agent's per-task default"; the absence of the line
+    # is the canonical encoding of that intent.
+    if config.llm.model is not None:
+        llm_lines.append(f'model = "{config.llm.model}"')
+    llm_lines.append(f'fallback_model = "{config.llm.fallback_model}"')
     # SPEC-11: emit region only when backend=bedrock to keep the default
     # (anthropic) config visually minimal. Pydantic validator guarantees
     # region is set iff backend==bedrock.

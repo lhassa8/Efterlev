@@ -157,12 +157,12 @@ time and the renderer appends `source=<file>:<start>-<end>` at
 evidence leaves. Non-Evidence evidence-typed records (init receipts,
 mcp_tool_call records) cleanly omit the line.
 
-**PyPI release and `pipx install efterlev`:** the package is `0.0.1`
-and there is no PyPI release yet. The PyPI name is held by an inert
-`0.0.0` placeholder (DECISIONS 2026-04-23 "PyPI name held"). Users
-install from a cloned checkout via `uv sync --extra dev`. Per the
-open-source-first posture locked 2026-04-23, PyPI release (along with
-container images on ghcr.io and a composite GitHub Action on the
+**PyPI release and `pipx install efterlev`:** the package is currently
+`0.0.1rc5` and there is no PyPI release yet. The PyPI name is held by
+an inert `0.0.0` placeholder (DECISIONS 2026-04-23 "PyPI name held").
+Users install from a cloned checkout via `uv sync --extra dev`. Per
+the open-source-first posture locked 2026-04-23, PyPI release (along
+with container images on ghcr.io and a composite GitHub Action on the
 Marketplace) lands as pre-launch readiness gate A2 — the trusted-
 publishing pipeline (`release-pypi.yml`) and Sigstore-signed container
 pipeline (`release-container.yml`) are checked in and gate-closed at

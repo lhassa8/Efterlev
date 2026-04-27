@@ -27,7 +27,11 @@ def test_anthropic_config_returns_anthropic_client() -> None:
 
 
 def test_bedrock_config_returns_bedrock_client() -> None:
-    config = LLMConfig(backend="bedrock", region="us-gov-west-1")
+    config = LLMConfig(
+        backend="bedrock",
+        model="us.anthropic.claude-opus-4-7-v1:0",
+        region="us-gov-west-1",
+    )
     client = get_client_from_config(config)
     assert isinstance(client, AnthropicBedrockClient)
     assert client.region == "us-gov-west-1"
@@ -36,6 +40,7 @@ def test_bedrock_config_returns_bedrock_client() -> None:
 def test_bedrock_config_passes_fallback_through() -> None:
     config = LLMConfig(
         backend="bedrock",
+        model="us.anthropic.claude-opus-4-7-v1:0",
         region="us-east-1",
         fallback_model="us.anthropic.claude-sonnet-4-6-v1:0",
     )
