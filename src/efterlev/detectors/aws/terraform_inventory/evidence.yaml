@@ -1,0 +1,41 @@
+detector_id: aws.terraform_inventory
+
+# Evidence content shape this detector emits. Exactly ONE Evidence per
+# scan when at least one resource is declared. Empty codebases produce
+# no evidence — the customer hasn't declared anything yet.
+content_fields:
+  resource_type:
+    type: string
+    values: ["terraform_inventory"]
+    notes: Always "terraform_inventory" — synthetic; this is a meta-evidence about the workspace.
+
+  resource_name:
+    type: string
+    values: ["(workspace)"]
+    notes: Synthetic placeholder — the Evidence is workspace-scoped, not anchored on one resource.
+
+  inventory_state:
+    type: enum
+    values: ["tracked"]
+    notes: >
+      Always `tracked` when the detector emits at all. The workspace having
+      any declared resources means the inventory is being maintained; the
+      Gap Agent decides between `partial` and `implemented` based on size
+      and breadth.
+
+  total_resources:
+    type: int
+    notes: Total count of `aws_*`-shaped (and other) resources declared in the scanned tree.
+
+  distinct_resource_types:
+    type: int
+    notes: How many unique Terraform resource types appear (e.g. `aws_s3_bucket`, `aws_iam_role`).
+
+  top_resource_types:
+    type: list[object]
+    notes: |
+      Top 10 most-declared resource types, sorted by count desc then name
+      asc. Each entry: `{"resource_type": "aws_s3_bucket", "count": 12}`.
+      Caps at 10 to keep the Evidence content tight; reviewers can read
+      `efterlev detectors list` for full per-detector visibility into
+      what each type evidences.

@@ -73,10 +73,12 @@ def test_scan_persists_evidence_and_one_primitive_invocation_record(tmp_path: Pa
         result = scan_terraform(ScanTerraformInput(target_dir=tmp_path))
         record_ids = store.iter_records()
 
-    # Two buckets, one encryption-at-rest hit each; other detectors no-op on S3.
-    assert result.evidence_count == 2
-    # Two detector-emitted Evidence + one scan_terraform invocation record.
-    assert len(record_ids) == 3
+    # Two buckets: one encryption-at-rest hit each (= 2 evidence), plus one
+    # `aws.terraform_inventory` summary (Priority 1.4, 2026-04-27) for the
+    # workspace's resource catalog (= 1 evidence). Other detectors no-op on S3.
+    assert result.evidence_count == 3
+    # 3 detector-emitted Evidence + one scan_terraform invocation record.
+    assert len(record_ids) == 4
 
 
 def test_scan_without_tf_files_is_a_clean_noop(tmp_path: Path) -> None:

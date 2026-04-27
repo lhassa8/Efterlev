@@ -185,7 +185,9 @@ def test_init_then_scan_produces_evidence_via_mcp_layer(tmp_path: Path) -> None:
 
     scan_result = dispatch_tool("efterlev_scan", {"target": str(tmp_path)})
     assert scan_result["resources_parsed"] == 1
-    assert scan_result["evidence_count"] == 1
+    # 1 from aws.encryption_s3_at_rest (the bucket has SSE) + 1 from
+    # aws.terraform_inventory (Priority 1.4, 2026-04-27 — workspace summary).
+    assert scan_result["evidence_count"] == 2
     assert scan_result["detectors_run"] >= 1
     assert scan_result["evidence_record_ids"]
 

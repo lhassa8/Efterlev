@@ -44,6 +44,7 @@ from efterlev.detectors.aws import (
     security_group_open_ingress,  # noqa: F401
     sns_topic_encryption,  # noqa: F401
     sqs_queue_encryption,  # noqa: F401
+    terraform_inventory,  # noqa: F401
     tls_on_lb_listeners,  # noqa: F401
     vpc_flow_logs_enabled,  # noqa: F401
     vpc_logical_segmentation,  # noqa: F401

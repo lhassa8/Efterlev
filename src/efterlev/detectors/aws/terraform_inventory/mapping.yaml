@@ -1,0 +1,22 @@
+detector_id: aws.terraform_inventory
+
+# KSI-PIY-GIV ("Generating Inventories") asks the customer to use authoritative
+# sources to automatically generate real-time inventories of all information
+# resources. A Terraform codebase IS such an inventory — every resource block
+# is a tracked component, and `terraform apply` automatically updates state.
+# FRMR 0.9.43-beta lists cm-8 and cm-8.1 in this KSI's controls; this detector
+# evidences both directly via the inventory summary.
+ksis:
+  - KSI-PIY-GIV
+
+controls:
+  - id: CM-8
+    enhancements: [CM-8(1)]
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Evidences System Component Inventory by surfacing the count and breadth
+      of resources declared in Terraform. Coverage is partial: the detector
+      reports what's declared in this codebase, but does NOT verify that
+      runtime state matches (drift detection is v1.5+) or that the inventory
+      covers infrastructure declared in other repos / state files.
