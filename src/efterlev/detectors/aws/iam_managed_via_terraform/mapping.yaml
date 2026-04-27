@@ -1,0 +1,23 @@
+detector_id: aws.iam_managed_via_terraform
+
+# KSI-IAM-AAM ("Automating Account Management") asks the customer to
+# manage account/role/group lifecycles through automation. A Terraform
+# codebase declaring `aws_iam_*` resources IS that automation — changes
+# flow through `terraform plan` + `terraform apply`, are reviewable, and
+# the state file is the authoritative record.
+ksis:
+  - KSI-IAM-AAM
+
+controls:
+  - id: AC-2(2)
+    enhancements: []
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Evidences Automated System Account Management at the IaC layer.
+      Coverage is partial: the detector reports IAM-via-Terraform usage
+      but does NOT verify automated account-disable on suspicious
+      activity (KSI-IAM-SUS, AC-2(3)/AC-2(13)), identity-proofing rigor
+      (IA-12 family, procedural), or that IAM principals outside this
+      codebase (AWS SSO / Identity Center, console-created users) are
+      also managed via automation.

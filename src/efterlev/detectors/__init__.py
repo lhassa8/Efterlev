@@ -30,6 +30,7 @@ from efterlev.detectors.aws import (
     guardduty_enabled,  # noqa: F401
     iam_admin_policy_usage,  # noqa: F401
     iam_inline_policies_audit,  # noqa: F401
+    iam_managed_via_terraform,  # noqa: F401
     iam_password_policy,  # noqa: F401
     iam_service_account_keys_age,  # noqa: F401
     iam_user_access_keys,  # noqa: F401

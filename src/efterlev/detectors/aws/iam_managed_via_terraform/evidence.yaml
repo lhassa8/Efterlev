@@ -1,0 +1,34 @@
+detector_id: aws.iam_managed_via_terraform
+
+# Evidence content shape this detector emits. Exactly ONE summary
+# Evidence per scan when ≥1 `aws_iam_*` resource is declared.
+content_fields:
+  resource_type:
+    type: string
+    values: ["iam_managed_via_terraform"]
+    notes: Synthetic — meta-evidence about the workspace's IAM posture.
+
+  resource_name:
+    type: string
+    values: ["(workspace)"]
+    notes: Synthetic placeholder — the Evidence is workspace-scoped.
+
+  automation_state:
+    type: enum
+    values: ["tracked"]
+    notes: Always `tracked` when the detector emits at all.
+
+  iam_resource_count:
+    type: int
+    notes: Total `aws_iam_*` resources declared in the scanned tree.
+
+  distinct_iam_kinds:
+    type: int
+    notes: How many unique `aws_iam_*` types appear (e.g. roles, policies, groups).
+
+  by_kind:
+    type: object
+    notes: |
+      Map of short-form IAM kind name → count. Shortforms strip the
+      `aws_iam_` prefix: `role`, `policy`, `policy_attachment`, etc.
+      Easy for a 3PAO to skim ("oh, 12 roles, 8 policies, 4 groups").
