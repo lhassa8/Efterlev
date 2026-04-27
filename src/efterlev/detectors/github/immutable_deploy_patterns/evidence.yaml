@@ -1,0 +1,28 @@
+detector_id: github.immutable_deploy_patterns
+
+# Evidence content shape this detector emits. One Evidence per workflow
+# file in `.github/workflows/`.
+content_fields:
+  resource_type:
+    type: string
+    values: ["github_workflow"]
+  resource_name:
+    type: string
+    notes: Workflow `name:` field if set; otherwise the filename stem.
+  declarative_tools_detected:
+    type: list[string]
+    notes: >
+      Substrings matched. Run-based: terraform apply, helm upgrade/install,
+      kubectl apply, kustomize build, argocd app sync, fluxctl sync, pulumi
+      up, cdk deploy. Uses-based actions also resolved to canonical names.
+  redeploy_pattern_state:
+    type: enum
+    values: ["present", "absent"]
+    notes: |
+      `present` — at least one declarative-deploy tool detected.
+      Evidences CM-2 + CM-7.
+      `absent` — no declarative tooling detected. Workflow contributes
+      no evidence for KSI-CMT-RMV; gap field names the canonical tools.
+  gap:
+    type: string | absent
+    notes: Present on `redeploy_pattern_state="absent"`.

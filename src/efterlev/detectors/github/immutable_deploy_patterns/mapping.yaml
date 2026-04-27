@@ -1,0 +1,30 @@
+detector_id: github.immutable_deploy_patterns
+
+# KSI-CMT-RMV ("Redeploying vs Modifying") asks the customer to execute
+# changes through redeployment of version-controlled immutable resources
+# rather than direct modification of running systems. Declarative-deploy
+# tooling in CI workflows (terraform apply, helm upgrade, kubectl apply)
+# is the canonical signal — every change is a fresh deploy from version
+# control rather than an ad-hoc edit on a live system.
+ksis:
+  - KSI-CMT-RMV
+
+controls:
+  - id: CM-2
+    enhancements: []
+    evidence_type: repo-metadata
+    coverage: partial
+    notes: >
+      Declarative-deploy tools re-apply a versioned baseline on every run,
+      evidencing CM-2 (Configuration Baseline). Coverage is partial: the
+      detector confirms a tool runs, NOT that it runs against the production
+      environment, that the workflow is wired into branch protection, or
+      that imperative side-edits are blocked.
+  - id: CM-7
+    enhancements: []
+    evidence_type: repo-metadata
+    coverage: partial
+    notes: >
+      Declarative deploys deliver only what's declared in source — Least
+      Functionality at the deploy boundary. Same partial-coverage caveat
+      as CM-2.

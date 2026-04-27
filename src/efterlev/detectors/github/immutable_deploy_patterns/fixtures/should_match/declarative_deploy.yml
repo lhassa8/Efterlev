@@ -1,0 +1,15 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform apply
+        run: terraform apply -auto-approve
+      - name: Helm upgrade
+        run: helm upgrade --install app ./chart

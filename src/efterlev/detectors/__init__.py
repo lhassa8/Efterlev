@@ -57,5 +57,6 @@ from efterlev.detectors.aws import (
 # detectors that read `.github/workflows/*.yml` rather than IaC.
 from efterlev.detectors.github import (
     ci_validation_gates,  # noqa: F401
+    immutable_deploy_patterns,  # noqa: F401
     supply_chain_monitoring,  # noqa: F401
 )
