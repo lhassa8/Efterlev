@@ -1,0 +1,35 @@
+detector_id: github.action_pinning
+
+ksis:
+  - id: KSI-SCR-MIT
+    coverage: partial
+    notes: >
+      Mitigating Supply Chain Risk. Pin-by-SHA on `uses:` step refs is
+      the canonical mitigation for compromised-tag attacks like
+      tj-actions/changed-files (CVE-2025-30066): a SHA pin makes the
+      action immutable, so a hostile retag of `@v1` cannot poison the
+      workflow run. Detector emits per-workflow so the Gap Agent can
+      reason about per-workflow posture (some lower-risk workflows
+      legitimately tag-pin; the pattern matters more in deploy/release
+      workflows).
+
+controls:
+  - id: SR-5
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Acquisition Strategies, Tools, and Methods. Pin-by-SHA combined
+      with a renovate/dependabot dependency-update flow IS the
+      acquisition strategy for OSS GitHub Actions: integrity-verifiable
+      ingestion plus a controlled update cadence. Detector evidences
+      the integrity-verifiable side; the cadence side is partial because
+      we don't here cross-reference dependabot.yml.
+  - id: SI-7(1)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Software, Firmware, and Information Integrity — Integrity Checks.
+      Pin-by-SHA enforces an integrity check at workflow start: a SHA
+      mismatch between the recorded pin and the upstream object fails
+      the run. This is the closest IaC-evidenceable signal for SI-7(1)
+      at the CI/CD layer.
