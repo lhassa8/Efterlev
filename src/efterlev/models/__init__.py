@@ -32,6 +32,7 @@ from efterlev.models.evidence import Evidence
 from efterlev.models.indicator import Baseline, Indicator, Theme
 from efterlev.models.manifest import AttestationType, EvidenceManifest, ManifestAttestation
 from efterlev.models.provenance import ProvenanceRecord, RecordType
+from efterlev.models.scan_summary import ScanSummary
 from efterlev.models.source import TerraformResource
 from efterlev.models.source_ref import SourceRef
 
@@ -58,6 +59,7 @@ __all__ = [
     "ManifestAttestation",
     "ProvenanceRecord",
     "RecordType",
+    "ScanSummary",
     "SourceRef",
     "TerraformResource",
     "Theme",

@@ -22,6 +22,7 @@ import line in `efterlev/detectors/__init__.py`.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -74,6 +75,12 @@ class ScanTerraformOutput(BaseModel):
 
     resources_parsed: int
     detectors_run: int
+    # Which scan mode produced this output. `hcl` parses .tf files directly
+    # (this primitive); `plan` reads `terraform show -json` output (see
+    # `scan_terraform_plan`). Surfaced to downstream agents so their narratives
+    # can reflect coverage limitations when HCL mode hits a module-composed
+    # codebase. Priority 0 (2026-04-27).
+    scan_mode: Literal["hcl", "plan"] = "hcl"
     # Count of `module "<name>" {}` declarations the parser saw across the
     # tree. Detectors look at root-level `resource "aws_*"` declarations only;
     # resources defined inside upstream modules (the dominant ICP-A pattern)

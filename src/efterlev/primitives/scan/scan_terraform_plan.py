@@ -90,6 +90,7 @@ def scan_terraform_plan(input: ScanTerraformPlanInput) -> ScanTerraformOutput:
     return ScanTerraformOutput(
         resources_parsed=len(resources),
         detectors_run=len(detectors),
+        scan_mode="plan",
         evidence=evidence,
         evidence_record_ids=evidence_record_ids,
         per_detector=per_detector,

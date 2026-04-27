@@ -255,3 +255,50 @@ def test_claim_is_frozen() -> None:
     claim = _make_claim()
     with pytest.raises(ValidationError):
         claim.confidence = "low"  # type: ignore[misc]
+
+
+# --- ScanSummary (Priority 0, 2026-04-27) ---------------------------------
+
+
+def test_scan_summary_recommend_plan_json_when_modules_outnumber_resources() -> None:
+    """The dogfood-2026-04-27 worked example: 11 modules, 9 resources, HCL mode.
+    Trigger condition fires; agents see the coverage note."""
+    from efterlev.models import ScanSummary
+
+    s = ScanSummary(scan_mode="hcl", resources_parsed=9, module_calls=11, evidence_count=1)
+    assert s.recommend_plan_json is True
+
+
+def test_scan_summary_recommend_plan_json_at_three_modules_threshold() -> None:
+    """Even when resources outnumber modules, 3+ modules fire the warning —
+    any non-trivial use of upstream modules already risks invisible workload."""
+    from efterlev.models import ScanSummary
+
+    s = ScanSummary(scan_mode="hcl", resources_parsed=10, module_calls=3, evidence_count=2)
+    assert s.recommend_plan_json is True
+
+
+def test_scan_summary_no_recommend_plan_json_when_resource_only() -> None:
+    """A clean resource-only HCL scan should not surface the coverage note —
+    nothing useful to suggest."""
+    from efterlev.models import ScanSummary
+
+    s = ScanSummary(scan_mode="hcl", resources_parsed=10, module_calls=0, evidence_count=4)
+    assert s.recommend_plan_json is False
+
+
+def test_scan_summary_no_recommend_plan_json_in_plan_mode() -> None:
+    """Plan-mode scans never trigger the coverage note — modules are already
+    expanded by `terraform show -json` so the threshold is meaningless there."""
+    from efterlev.models import ScanSummary
+
+    s = ScanSummary(scan_mode="plan", resources_parsed=20, module_calls=0, evidence_count=8)
+    assert s.recommend_plan_json is False
+
+
+def test_scan_summary_is_frozen() -> None:
+    from efterlev.models import ScanSummary
+
+    s = ScanSummary(scan_mode="hcl", resources_parsed=1, module_calls=0, evidence_count=0)
+    with pytest.raises(ValidationError):
+        s.module_calls = 99  # type: ignore[misc]

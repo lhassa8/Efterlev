@@ -35,7 +35,7 @@ from efterlev.agents.base import (
 )
 from efterlev.errors import AgentError
 from efterlev.llm import LLMClient
-from efterlev.models import Claim, Evidence, Indicator
+from efterlev.models import Claim, Evidence, Indicator, ScanSummary
 from efterlev.provenance.context import get_active_store
 
 GapStatus = Literal[
@@ -61,6 +61,13 @@ class GapAgentInput(BaseModel):
 
     indicators: list[Indicator]
     evidence: list[Evidence]
+    # Slim summary of the scan that produced `evidence`. When the scan was
+    # HCL-mode against a module-composed codebase, the agent's prompt surfaces
+    # this so narratives can reflect the coverage limitation ("findings
+    # classified `not_implemented` may be coverage gaps, not real gaps").
+    # None when the agent is invoked directly (e.g. unit tests) without a
+    # prior scan in the active store. Priority 0 (2026-04-27).
+    scan_summary: ScanSummary | None = None
 
 
 class KsiClassification(BaseModel):
@@ -156,7 +163,11 @@ class GapAgent(Agent):
         # matching tags (DECISIONS 2026-04-22 Phase 2 post-review fixup F).
         nonce = new_fence_nonce()
         user_message = _build_user_message(
-            input.indicators, mapped_evidence, unmapped_evidence, nonce=nonce
+            input.indicators,
+            mapped_evidence,
+            unmapped_evidence,
+            nonce=nonce,
+            scan_summary=input.scan_summary,
         )
 
         # 16384 to fit classifications for the full FedRAMP 20x baseline (60
@@ -224,6 +235,7 @@ def _build_user_message(
     unmapped_evidence: list[Evidence],
     *,
     nonce: str,
+    scan_summary: ScanSummary | None = None,
 ) -> str:
     """Assemble the single user message with fenced evidence blocks."""
     ksi_lines: list[str] = []
@@ -234,9 +246,12 @@ def _build_user_message(
     fenced_mapped = format_evidence_for_prompt(mapped_evidence, nonce=nonce)
     fenced_unmapped = format_evidence_for_prompt(unmapped_evidence, nonce=nonce)
 
+    summary_block = _format_scan_summary_block(scan_summary)
+
     return (
         "Classify the following KSIs from the loaded FedRAMP 20x baseline.\n\n"
-        "## KSIs to classify\n\n"
+        + summary_block
+        + "## KSIs to classify\n\n"
         + "\n".join(ksi_lines)
         + "\n\n## Evidence attached to one or more KSIs\n\n"
         + fenced_mapped
@@ -244,6 +259,35 @@ def _build_user_message(
         + fenced_unmapped
         + "\n\nReturn JSON matching the schema in the system prompt. "
         "No prose, no code fences, no commentary."
+    )
+
+
+def _format_scan_summary_block(scan_summary: ScanSummary | None) -> str:
+    """When the scan was thin-evidence due to module composition, surface that
+    fact to the model so its rationales can reflect the coverage limitation
+    rather than treating thin evidence as a real implementation gap.
+
+    Plan-mode scans (modules already expanded) and HCL-mode scans against
+    resource-only codebases produce no block — the prompt stays focused on
+    the evidence itself.
+    """
+    if scan_summary is None or not scan_summary.recommend_plan_json:
+        return ""
+    return (
+        "## Scan coverage note\n\n"
+        f"This scan was HCL-mode (parsed `.tf` files directly). The codebase "
+        f"contains {scan_summary.module_calls} `module` calls alongside "
+        f"{scan_summary.resources_parsed} root-level `resource` declarations, "
+        f"and produced {scan_summary.evidence_count} evidence records. "
+        "Detectors do not follow into upstream module sources, so resources "
+        "defined inside those modules (typically EKS clusters, VPCs, IAM "
+        "roles, KMS keys, security groups, CloudTrail) are invisible in this "
+        "mode. Plan-JSON expansion would surface them.\n\n"
+        "When classifying a KSI as `not_implemented` against this scan, "
+        "explicitly note in your rationale that the absence may be a coverage "
+        "gap rather than a real implementation gap, and suggest plan-JSON "
+        "scanning if the KSI is one a Terraform-defined workload would "
+        "typically address.\n\n"
     )
 
 
