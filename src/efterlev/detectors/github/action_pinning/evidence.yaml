@@ -1,0 +1,59 @@
+detector_id: github.action_pinning
+
+# Evidence content shape this detector emits. One Evidence per workflow
+# file in `.github/workflows/` (each parsed `WorkflowFile`).
+content_fields:
+  resource_type:
+    type: string
+    values: ["github_workflow"]
+    notes: Always "github_workflow"; carried for symmetry with sibling detectors.
+
+  resource_name:
+    type: string
+    notes: Workflow `name:` field if set; otherwise the filename stem.
+
+  external_action_count:
+    type: int
+    notes: >
+      Total `uses:` step refs in this workflow that point to a public
+      action (`owner/repo@ref`). Local refs (`./...`) and Docker refs
+      (`docker://...`) are excluded — they have different supply-chain
+      semantics scoped elsewhere.
+
+  pinned_action_count:
+    type: int
+    notes: >
+      Subset of external_action_count whose `@ref` is exactly 40 hex
+      characters (a Git commit SHA — immutable).
+
+  mutable_action_refs:
+    type: list[string]
+    notes: >
+      Sorted list of full `owner/repo@ref` strings whose ref is a tag,
+      branch, or unspecified (mutable). The Gap Agent reads these to
+      reason about per-workflow risk and to suggest specific pins
+      via the Remediation Agent.
+
+  pin_state:
+    type: enum
+    values: ["all_pinned", "mixed", "none_pinned", "no_external_actions"]
+    notes: |
+      `all_pinned` — every external action is SHA-pinned. Evidences
+      SR-5 + SI-7(1) at full strength for the workflow.
+
+      `mixed` — some pinned, some mutable. Evidences SR-5 + SI-7(1)
+      partially. Gap field populated with mutable refs.
+
+      `none_pinned` — every external action is mutable. Gap field
+      populated; control claim is weak.
+
+      `no_external_actions` — workflow has no `uses:` refs to external
+      actions (e.g. only inline scripts or local actions). Detector
+      doesn't have an opinion on pin posture; Evidence is informational.
+
+  gap:
+    type: string | absent
+    notes: |
+      Present on `pin_state="none_pinned"` or `pin_state="mixed"`. Names
+      a sample of mutable refs and the implication for KSI-SCR-MIT
+      coverage.

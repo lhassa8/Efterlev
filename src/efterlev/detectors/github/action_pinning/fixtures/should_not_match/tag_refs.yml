@@ -1,0 +1,16 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4.0.2
+      - uses: hashicorp/setup-terraform@v3
+      - name: Test
+        run: npm test
+      - uses: codecov/codecov-action@main

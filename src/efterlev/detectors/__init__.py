@@ -56,6 +56,7 @@ from efterlev.detectors.aws import (
 # GitHub-source detectors (Priority 1.2, 2026-04-27): repo-metadata
 # detectors that read `.github/workflows/*.yml` rather than IaC.
 from efterlev.detectors.github import (
+    action_pinning,  # noqa: F401
     ci_validation_gates,  # noqa: F401
     immutable_deploy_patterns,  # noqa: F401
     supply_chain_monitoring,  # noqa: F401
