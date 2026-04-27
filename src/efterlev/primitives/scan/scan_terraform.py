@@ -74,6 +74,12 @@ class ScanTerraformOutput(BaseModel):
 
     resources_parsed: int
     detectors_run: int
+    # Count of `module "<name>" {}` declarations the parser saw across the
+    # tree. Detectors look at root-level `resource "aws_*"` declarations only;
+    # resources defined inside upstream modules (the dominant ICP-A pattern)
+    # are invisible to HCL-mode scans. The CLI uses this count to surface a
+    # plan-JSON-recommended warning when a codebase is module-heavy. Priority 0.
+    module_calls: int = 0
     evidence: list[Evidence] = Field(default_factory=list)
     evidence_record_ids: list[str] = Field(default_factory=list)
     per_detector: list[DetectorRunSummary] = Field(default_factory=list)
@@ -86,6 +92,18 @@ class ScanTerraformOutput(BaseModel):
     @property
     def files_failed(self) -> int:
         return len(self.parse_failures)
+
+    @property
+    def should_recommend_plan_json(self) -> bool:
+        """True when the codebase is module-composed enough that HCL-mode
+        coverage is meaningfully limited. Threshold derived from the
+        2026-04-27 dogfood pass: that target had 11 module calls and 9
+        resources, returned 1 evidence record. The threshold catches both
+        "module-heavier than resource-heavier" and "any non-trivial use of
+        modules" — a codebase with 3+ module calls is already at risk of
+        having the bulk of its real workload invisible without plan-JSON.
+        """
+        return self.module_calls > self.resources_parsed or self.module_calls >= 3
 
 
 @primitive(capability="scan", side_effects=False, version="0.1.0", deterministic=True)
@@ -134,6 +152,7 @@ def scan_terraform(input: ScanTerraformInput) -> ScanTerraformOutput:
     return ScanTerraformOutput(
         resources_parsed=len(resources),
         detectors_run=len(terraform_detectors),
+        module_calls=parse_result.module_call_count,
         evidence=evidence,
         evidence_record_ids=evidence_record_ids,
         per_detector=per_detector,

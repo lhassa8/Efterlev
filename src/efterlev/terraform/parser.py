@@ -24,6 +24,12 @@ from efterlev.errors import DetectorError
 from efterlev.models import SourceRef, TerraformResource
 
 _RESOURCE_HEADER_RE = re.compile(r'^\s*resource\s+"([^"]+)"\s+"([^"]+)"')
+# Module-call counting (Priority 0, 2026-04-27): not used for evidence
+# extraction — `v0 scope: resource blocks only` per the module docstring.
+# Counted alongside resources so the scan layer can warn when a codebase
+# is module-heavy and would benefit from plan-JSON expansion. See
+# `docs/v1-readiness-plan.md` Priority 0.
+_MODULE_HEADER_RE = re.compile(r'^\s*module\s+"([^"]+)"')
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,14 @@ class TerraformParseResult:
 
     resources: list[TerraformResource]
     parse_failures: list[ParseFailure]
+    # Count of `module "<name>" {}` declarations across all parsed .tf files.
+    # Detectors do not currently follow into upstream modules — they look for
+    # `resource "aws_*"` declarations at the root. Module-composed codebases
+    # (the dominant ICP-A pattern) require plan-JSON expansion to surface
+    # the resources inside those modules. The scan layer uses this count to
+    # warn the user when plan-JSON would meaningfully change the result.
+    # See `docs/v1-readiness-plan.md` Priority 0.
+    module_call_count: int = 0
 
     @property
     def files_failed(self) -> int:
@@ -77,8 +91,24 @@ def parse_terraform_tree(target_dir: Path) -> TerraformParseResult:
         raise DetectorError(f"target is not a directory: {target_dir}")
     resources: list[TerraformResource] = []
     parse_failures: list[ParseFailure] = []
+    module_call_count = 0
     for tf_file in sorted(target_dir.rglob("*.tf")):
         relative = tf_file.relative_to(target_dir)
+        # Count `module "<name>" {}` declarations independently of the HCL
+        # parse so a python-hcl2 failure on a sibling block doesn't drop the
+        # module-density signal. The regex is tolerant of slight formatting
+        # variation (whitespace, trailing brace presence). Module-call
+        # counting drives the plan-JSON-recommended warning at the scan
+        # layer (Priority 0).
+        try:
+            text = tf_file.read_text(encoding="utf-8")
+            for raw in text.splitlines():
+                if _MODULE_HEADER_RE.search(raw):
+                    module_call_count += 1
+        except OSError:
+            # Unreadable files surface as ParseFailures via parse_terraform_file
+            # below; no need to double-report here.
+            pass
         try:
             resources.extend(parse_terraform_file(tf_file, record_as=relative))
         except DetectorError as e:
@@ -86,7 +116,11 @@ def parse_terraform_tree(target_dir: Path) -> TerraformParseResult:
             # the failure record relative-path-clean, matching `file`.
             reason = str(e).replace(f"failed to parse {tf_file}: ", "")
             parse_failures.append(ParseFailure(file=relative, reason=reason))
-    return TerraformParseResult(resources=resources, parse_failures=parse_failures)
+    return TerraformParseResult(
+        resources=resources,
+        parse_failures=parse_failures,
+        module_call_count=module_call_count,
+    )
 
 
 def parse_terraform_file(

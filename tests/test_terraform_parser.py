@@ -187,3 +187,85 @@ def test_get_nested_returns_none_on_missing_path(tmp_path: Path) -> None:
     tf.write_text('resource "aws_s3_bucket" "plain" { bucket = "p" }\n')
     [r] = parse_terraform_file(tf)
     assert r.get_nested("does", "not", "exist") is None
+
+
+# --- module-call density (Priority 0, 2026-04-27) ---
+
+
+def test_module_call_count_zero_on_resource_only_codebase(tmp_path: Path) -> None:
+    """A codebase with no module calls should report `module_call_count == 0`."""
+    (tmp_path / "main.tf").write_text(
+        'resource "aws_s3_bucket" "a" { bucket = "a" }\n'
+        'resource "aws_s3_bucket" "b" { bucket = "b" }\n'
+    )
+    result = parse_terraform_tree(tmp_path)
+    assert result.module_call_count == 0
+    assert len(result.resources) == 2
+
+
+def test_module_call_count_counts_module_blocks(tmp_path: Path) -> None:
+    """`module "name" {}` blocks should be counted, even when the file has
+    no `resource` declarations and even when modules use various brace styles."""
+    (tmp_path / "vpc.tf").write_text(
+        'module "vpc" {\n  source = "terraform-aws-modules/vpc/aws"\n  cidr   = "10.0.0.0/16"\n}\n'
+    )
+    (tmp_path / "eks.tf").write_text(
+        'module "eks" {\n'
+        '  source = "terraform-aws-modules/eks/aws"\n'
+        "}\n"
+        'module "irsa" {\n'
+        '  source = "terraform-aws-modules/iam/aws//modules/irsa"\n'
+        "}\n"
+    )
+    result = parse_terraform_tree(tmp_path)
+    assert result.module_call_count == 3
+    assert result.resources == []
+
+
+def test_module_call_count_alongside_resources(tmp_path: Path) -> None:
+    """Mixed codebase with both resources and modules — both counts populated."""
+    (tmp_path / "main.tf").write_text(
+        'resource "aws_route53_zone" "primary" { name = "example.com" }\n'
+        'module "vpc" {\n'
+        '  source = "terraform-aws-modules/vpc/aws"\n'
+        "}\n"
+        'module "eks" {\n'
+        '  source = "terraform-aws-modules/eks/aws"\n'
+        "}\n"
+    )
+    result = parse_terraform_tree(tmp_path)
+    assert result.module_call_count == 2
+    assert len(result.resources) == 1
+
+
+def test_module_call_count_survives_parse_failures(tmp_path: Path) -> None:
+    """Module-density signal must not be lost when sibling files fail to parse.
+
+    The dogfood-2026-04-27 worked example involves a real-world codebase where
+    some files might fail to parse due to python-hcl2 lag. The module-density
+    warning depends on the count being accurate even in partial-success scans,
+    so it's gathered independently of HCL parsing.
+    """
+    (tmp_path / "good.tf").write_text(
+        'module "vpc" {\n  source = "terraform-aws-modules/vpc/aws"\n}\n'
+    )
+    (tmp_path / "bad.tf").write_text("this is not { valid terraform")
+    result = parse_terraform_tree(tmp_path)
+    assert result.module_call_count == 1
+    assert len(result.parse_failures) == 1
+
+
+def test_module_call_count_does_not_count_string_module_in_comment(tmp_path: Path) -> None:
+    """The regex anchors at line-start with optional whitespace, so the word
+    `module` in a comment or as a substring inside another keyword should not
+    count. Tolerance vs precision: the regex is line-anchored to
+    `^\\s*module\\s+"name"`, which a comment line (`#`, `//`, `/*`) does not
+    match. False positives on common formatting are minimized."""
+    (tmp_path / "main.tf").write_text(
+        "# module is what we use\n"
+        '/* module "fake" — this is a comment block */\n'
+        '// module "also_fake" — single-line comment\n'
+        'resource "aws_s3_bucket" "ok" { bucket = "ok" }\n'
+    )
+    result = parse_terraform_tree(tmp_path)
+    assert result.module_call_count == 0

@@ -319,6 +319,10 @@ def scan(
     scan_mode = f"plan {plan_path}" if plan_path is not None else str(root)
     typer.echo(f"Scanned {scan_mode}")
     typer.echo(f"  resources parsed:    {scan_result.resources_parsed}")
+    if scan_result.module_calls > 0:
+        # Surfaced alongside resources so the imbalance (5 resources / 11
+        # module calls) is visible at the top of the summary, not buried.
+        typer.echo(f"  module calls:        {scan_result.module_calls}")
     typer.echo(f"  detectors run:       {scan_result.detectors_run}")
     typer.echo(f"  manifest files:      {manifest_result.files_found}")
     typer.echo(f"  manifests loaded:    {manifest_result.manifests_loaded}")
@@ -334,6 +338,30 @@ def scan(
         # Primitive already deduplicates; join for display.
         skipped = ", ".join(manifest_result.skipped_unknown_ksi)
         typer.echo(f"  skipped manifest(s) for unknown KSI(s): {skipped}")
+
+    # Priority 0 (2026-04-27): warn the user when an HCL-mode scan is hitting
+    # a module-composed codebase. Detectors look at root-level resource blocks
+    # only; resources defined inside upstream modules (the dominant ICP-A
+    # pattern) are invisible without plan-JSON expansion. The 2026-04-27
+    # dogfood pass against `aws-ia/terraform-aws-eks-blueprints/patterns/
+    # blue-green-upgrade` is the worked example: 11 module calls, 9 resources,
+    # 30 detectors, 1 firing. Plan-mode scans never trigger this warning
+    # because module_calls defaults to 0 there (modules are already expanded).
+    if plan_path is None and scan_result.should_recommend_plan_json:
+        typer.echo("")
+        typer.echo(
+            f"  ⚠ {scan_result.module_calls} module calls detected; "
+            f"detector coverage is limited in HCL mode."
+        )
+        typer.echo(
+            "    Detectors look at root-level `resource` declarations only. Resources defined"
+        )
+        typer.echo("    inside upstream modules (the dominant ICP-A pattern) are invisible without")
+        typer.echo("    plan-JSON expansion. For full coverage:")
+        typer.echo("      terraform init")
+        typer.echo("      terraform plan -out plan.bin")
+        typer.echo("      terraform show -json plan.bin > plan.json")
+        typer.echo("      efterlev scan --plan plan.json")
 
     if scan_result.parse_failures:
         # Surface unparseable files structurally so the user knows what was

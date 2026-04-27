@@ -284,6 +284,38 @@ def test_scan_after_init_produces_evidence(tmp_path: pytest.TempPathFactory) -> 
     # Evidence (Phase 1, Evidence Manifest landing).
     assert "Detector record IDs" in scan_result.output
     assert "manifest files:" in scan_result.output
+    # No `module calls:` line when there are no module declarations — the
+    # summary stays terse for the common resource-only case.
+    assert "module calls:" not in scan_result.output
+    # No plan-JSON warning either.
+    assert "module calls detected" not in scan_result.output
+
+
+def test_scan_warns_about_module_density_when_module_heavy(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """When a codebase is module-composed (the dominant ICP-A pattern),
+    `efterlev scan` (HCL mode) must surface a structured warning recommending
+    plan-JSON expansion. Documented and worked example in
+    `docs/dogfood-findings-2026-04-27.md` and `docs/v1-readiness-plan.md`
+    Priority 0."""
+    Path(str(tmp_path) + "/main.tf").write_text(
+        'module "vpc" {\n  source = "terraform-aws-modules/vpc/aws"\n}\n'
+        'module "eks" {\n  source = "terraform-aws-modules/eks/aws"\n}\n'
+        'module "iam" {\n  source = "terraform-aws-modules/iam/aws"\n}\n'
+    )
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0, init_result.output
+
+    scan_result = runner.invoke(app, ["scan", "--target", str(tmp_path)])
+    assert scan_result.exit_code == 0, scan_result.output
+    # Module-call count is surfaced in the summary block.
+    assert "module calls:        3" in scan_result.output
+    # Warning fires.
+    assert "3 module calls detected" in scan_result.output
+    assert "detector coverage is limited in HCL mode" in scan_result.output
+    # Remediation is the copy-pasteable plan-JSON command.
+    assert "efterlev scan --plan plan.json" in scan_result.output
 
 
 def test_init_succeeds_and_prints_summary(tmp_path: pytest.TempPathFactory) -> None:
