@@ -25,6 +25,7 @@ from efterlev.detectors.aws import (
     elb_access_logs,  # noqa: F401
     encryption_ebs,  # noqa: F401
     encryption_s3_at_rest,  # noqa: F401
+    federated_identity_providers,  # noqa: F401
     fips_ssl_policies_on_lb_listeners,  # noqa: F401
     guardduty_enabled,  # noqa: F401
     iam_admin_policy_usage,  # noqa: F401

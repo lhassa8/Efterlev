@@ -1,0 +1,46 @@
+detector_id: aws.federated_identity_providers
+
+# Evidence content shape this detector emits. One Evidence per declared
+# `aws_iam_openid_connect_provider` or `aws_iam_saml_provider`.
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_iam_openid_connect_provider", "aws_iam_saml_provider"]
+    notes: The Terraform resource type — distinguishes OIDC vs SAML at a glance.
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name.
+
+  provider_kind:
+    type: enum
+    values: ["oidc", "saml"]
+    notes: Same information as resource_type, normalized to a short token.
+
+  url:
+    type: string | null
+    notes: OIDC providers only — the OIDC issuer URL (e.g. token.actions.githubusercontent.com for GitHub Actions OIDC, oidc.eks.<region>.amazonaws.com/id/<id> for IRSA).
+
+  client_id_count:
+    type: int
+    notes: OIDC providers only — count of client IDs allowed to use this provider.
+
+  thumbprint_count:
+    type: int
+    notes: OIDC providers only — count of TLS thumbprints declared.
+
+  name:
+    type: string | null
+    notes: SAML providers only — the provider's IAM-name attribute.
+
+  metadata_inline:
+    type: bool
+    notes: SAML providers only — true when the SAML metadata document is embedded inline.
+
+  federation_state:
+    type: enum
+    values: ["declared"]
+    notes: >
+      Always `declared` — the resource is in the codebase. There is no
+      "absent" state because the detector is anchored on the provider
+      resource itself; codebases without providers produce no evidence.

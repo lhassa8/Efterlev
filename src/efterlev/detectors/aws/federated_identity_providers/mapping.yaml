@@ -1,0 +1,27 @@
+detector_id: aws.federated_identity_providers
+
+# KSI-IAM-APM ("Adopting Passwordless Methods") asks the customer to use
+# secure passwordless authentication where feasible. Federated identity
+# providers (OIDC for workload identity, SAML for human users) are the
+# canonical IaC-evidenceable signal that the customer is moving away from
+# long-lived AWS access keys + IAM-username-and-password.
+ksis:
+  - KSI-IAM-APM
+
+controls:
+  - id: IA-2
+    enhancements: [IA-5(2)]
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Evidences IA-2 (Identification and Authentication — Organizational
+      Users) at the declaration layer when an OIDC or SAML provider is
+      declared. IA-5(2) (Public Key-Based Authentication) fires for
+      OIDC providers specifically — OIDC tokens are signed with the
+      IdP's PKI, putting the auth flow on a PKI footing. SAML providers
+      evidence IA-2 alone (XML signatures are different territory).
+      Coverage is partial: the detector confirms providers are declared
+      but does NOT verify the IdP's MFA posture (that's IAM-MFA / IdP
+      config, separate concern), the provider's thumbprint rotation
+      cadence, or that all principals use the provider rather than
+      legacy access keys.

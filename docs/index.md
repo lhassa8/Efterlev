@@ -74,7 +74,7 @@ Three layers, each with a clear job.
 
 ## Status
 
-- **v0.1.0 released:** PyPI + container + GitHub Action + AWS GovCloud Bedrock backend + 35 detectors + full provenance graph.
+- **v0.1.0 released:** PyPI + container + GitHub Action + AWS GovCloud Bedrock backend + 36 detectors + full provenance graph.
 - **Open source:** Apache 2.0. Pure OSS — no commercial tier, no paid layer, no managed SaaS, ever. [Why](https://github.com/efterlev/efterlev/blob/main/DECISIONS.md).
 - **Governance:** BDFL today, technical steering committee at 10 sustained contributors. [Details](https://github.com/efterlev/efterlev/blob/main/GOVERNANCE.md).
 
