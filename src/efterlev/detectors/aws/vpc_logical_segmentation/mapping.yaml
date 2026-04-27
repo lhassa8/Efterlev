@@ -1,0 +1,31 @@
+detector_id: aws.vpc_logical_segmentation
+
+# KSI-CNA-ULN ("Using Logical Networking") asks customers to use logical
+# networking constructs to enforce traffic flow. An explicit VPC declaration
+# is the structural precondition; private+public subnet split-tier is the
+# canonical "logical networking" pattern customers are expected to demonstrate.
+ksis:
+  - KSI-CNA-ULN
+
+controls:
+  - id: SC-7
+    enhancements: []
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Evidences boundary protection at the structural-declaration level —
+      "the customer declared an explicit VPC rather than relying on the
+      AWS default-VPC sprawl." Per-rule strictness is covered by sibling
+      detectors `aws.security_group_open_ingress` and `aws.nacl_open_egress`.
+
+  - id: SC-7(7)
+    enhancements: []
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Evidences subsystem-separation when the VPC has both private and
+      public subnets declared. Single-tier VPCs (only-private or
+      only-public) do not evidence SC-7(7); they evidence SC-7 alone.
+      Route-table correctness (NAT vs IGW attachment) is NOT verified —
+      a subnet flagged "private" in this detector could still route to
+      the internet via misconfigured route tables.
