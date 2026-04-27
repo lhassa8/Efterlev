@@ -1,0 +1,57 @@
+detector_id: aws.s3_lifecycle_policies
+
+# Evidence content shape this detector emits. One Evidence per
+# `aws_s3_bucket_lifecycle_configuration` resource.
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_s3_bucket_lifecycle_configuration"]
+    notes: Always the canonical Terraform resource type.
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name.
+
+  bucket_ref:
+    type: string | null
+    notes: >
+      The `bucket` attribute (the S3 bucket the lifecycle config attaches
+      to). Often a reference like `aws_s3_bucket.X.id` or an explicit
+      bucket name. Null when not statically resolvable.
+
+  rule_count:
+    type: int
+    notes: Total `rule {}` blocks declared in the configuration.
+
+  enabled_rule_count:
+    type: int
+    notes: Rules with `status="Enabled"` (or status omitted — AWS default).
+
+  expiration_rule_count:
+    type: int
+    notes: Rules that contain an `expiration {}` block (delete-after-N).
+
+  transition_rule_count:
+    type: int
+    notes: Rules that contain a `transition {}` block (storage-class change).
+
+  lifecycle_state:
+    type: enum
+    values: ["configured_with_expiration", "configured_no_expiration", "placeholder"]
+    notes: |
+      `configured_with_expiration` — at least one enabled rule has an
+      expiration block. Evidences SI-12 + SI-12(3).
+
+      `configured_no_expiration` — rules are enabled but none have
+      expiration (transitions only). Evidences SI-12 alone with a gap
+      noting that storage-class transitions reduce cost but do not
+      evidence the destruction commitment.
+
+      `placeholder` — config declared but no enabled rules with action
+      blocks. Resource is a no-op. Evidences SI-12 structurally only.
+
+  gap:
+    type: string | absent
+    notes: >
+      Present on `configured_no_expiration` and `placeholder` states with
+      a one-line explanation of what's needed to evidence SI-12(3).
