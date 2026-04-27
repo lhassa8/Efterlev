@@ -24,6 +24,12 @@ from efterlev.errors import ConfigError
 DEFAULT_BASELINE = "fedramp-20x-moderate"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-7"
 DEFAULT_FALLBACK_MODEL = "claude-sonnet-4-6"
+# Bedrock-shaped model ID for the Bedrock backend. The Anthropic short-form
+# IDs the per-agent default_model values use (e.g. "claude-opus-4-7") are
+# not valid Bedrock model identifiers, so the Bedrock backend always
+# populates LLMConfig.model — None cannot fall through to the per-agent
+# default the way it does for the Anthropic backend.
+DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-opus-4-7-v1:0"
 
 
 class LLMConfig(BaseModel):
@@ -84,7 +90,7 @@ class LLMConfig(BaseModel):
             raise ValueError(
                 "LLMConfig.model is required when backend is 'bedrock'; "
                 "Bedrock model IDs differ from the Anthropic short-form IDs "
-                "the agent defaults use (e.g. 'us.anthropic.claude-opus-4-7-v1:0')."
+                f"the agent defaults use (e.g. '{DEFAULT_BEDROCK_MODEL}')."
             )
         return self
 

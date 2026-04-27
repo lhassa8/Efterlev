@@ -145,7 +145,7 @@ def init(
     ),
 ) -> None:
     """Initialize `.efterlev/` in the target repo with a provenance store and config."""
-    from efterlev.config import LLMConfig
+    from efterlev.config import DEFAULT_BEDROCK_MODEL, LLMConfig
     from efterlev.errors import CatalogLoadError, ConfigError
     from efterlev.workspace import init_workspace
 
@@ -184,7 +184,7 @@ def init(
     # IDs that Bedrock does not accept. The LLMConfig validator rejects
     # `backend=bedrock, model=None` to enforce this.
     if llm_backend == "bedrock":
-        configured_model: str | None = llm_model or "us.anthropic.claude-opus-4-7-v1:0"
+        configured_model: str | None = llm_model or DEFAULT_BEDROCK_MODEL
     else:
         configured_model = llm_model
     llm_config = LLMConfig(
@@ -520,7 +520,7 @@ def agent_gap(
     """Classify each KSI as implemented / partial / not implemented / NA."""
     from efterlev.agents import GapAgent, GapAgentInput
     from efterlev.config import load_config
-    from efterlev.errors import AgentError
+    from efterlev.errors import AgentError, ConfigError
     from efterlev.frmr.loader import FrmrDocument
     from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
     from efterlev.models import Evidence
@@ -545,7 +545,11 @@ def agent_gap(
     frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
     indicators = list(frmr_doc.indicators.values())
 
-    config = load_config(root / ".efterlev" / "config.toml")
+    try:
+        config = load_config(root / ".efterlev" / "config.toml")
+    except ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
 
     scan_id = _new_scan_id()
     ledger = RedactionLedger()
@@ -622,7 +626,7 @@ def agent_document(
         reconstruct_classifications_from_store,
     )
     from efterlev.config import load_config
-    from efterlev.errors import AgentError
+    from efterlev.errors import AgentError, ConfigError
     from efterlev.frmr.loader import FrmrDocument
     from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
     from efterlev.models import Evidence
@@ -650,7 +654,11 @@ def agent_document(
         raise typer.Exit(code=1)
 
     frmr_doc = FrmrDocument.model_validate_json(frmr_cache.read_text(encoding="utf-8"))
-    config = load_config(root / ".efterlev" / "config.toml")
+    try:
+        config = load_config(root / ".efterlev" / "config.toml")
+    except ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
 
     # Single ProvenanceStore context for the whole command: agent invocation
     # and FRMR-attestation generation both write records, and both belong to
@@ -777,7 +785,7 @@ def agent_remediate(
         reconstruct_classifications_from_store,
     )
     from efterlev.config import load_config
-    from efterlev.errors import AgentError
+    from efterlev.errors import AgentError, ConfigError
     from efterlev.frmr.loader import FrmrDocument
     from efterlev.llm.scrubber import RedactionLedger, active_redaction_ledger
     from efterlev.models import Evidence
@@ -808,7 +816,11 @@ def agent_remediate(
         )
         raise typer.Exit(code=1)
 
-    config = load_config(root / ".efterlev" / "config.toml")
+    try:
+        config = load_config(root / ".efterlev" / "config.toml")
+    except ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
 
     scan_id = _new_scan_id()
     ledger = RedactionLedger()
