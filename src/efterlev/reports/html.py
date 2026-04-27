@@ -138,6 +138,76 @@ h3 { font-size: 15px; margin-top: 0; }
   border: 1px solid #e0c88a;
 }
 
+/* Authorization-boundary indicators (Priority 4.2, 2026-04-27).
+   A boundary-pill is a sibling visual to status-pill — it answers a
+   different question ("is this finding inside the customer's declared
+   FedRAMP scope?") so it lives on its own dimension. */
+.boundary-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  margin-left: 6px;
+}
+.boundary-in_boundary       { background: #e0f0ff; color: #0a3a7a; }
+.boundary-out_of_boundary   { background: #f0e0e0; color: #5a3a3a; }
+.boundary-boundary_undeclared { background: #f0f0f0; color: #555; }
+
+/* Workspace-level banner shown when no boundary is declared. Placed
+   above the meta line so a reviewer immediately sees the scope caveat. */
+.boundary-banner {
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.boundary-banner.boundary-undeclared {
+  background: #f3eef9;
+  border: 1px solid #c8b3e0;
+  color: #3e2d6a;
+}
+.boundary-banner code {
+  background: #ffffff;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+/* Out-of-boundary classifications collapse under <details>. The summary
+   row carries the same status + boundary pills so a reviewer scanning
+   collapsed sections sees what they'd skip. */
+details.out-of-boundary-collapsed {
+  background: #fafbfd;
+  border-color: #d0d7de;
+}
+details.out-of-boundary-collapsed > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+details.out-of-boundary-collapsed > summary::-webkit-details-marker { display: none; }
+details.out-of-boundary-collapsed > summary::before {
+  content: "▸";
+  font-size: 11px;
+  color: #6a737d;
+}
+details[open].out-of-boundary-collapsed > summary::before {
+  content: "▾";
+}
+.boundary-collapsed-hint {
+  font-size: 11px;
+  color: #6a737d;
+  font-style: italic;
+  margin-left: auto;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

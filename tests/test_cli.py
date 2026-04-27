@@ -392,3 +392,145 @@ def test_remediate_requires_ksi_option() -> None:
     # not reach the stub body.
     assert result.exit_code == 2
     assert result.exception is None or not isinstance(result.exception, NotImplementedError)
+
+
+# --- boundary CLI verbs (Priority 4.2, 2026-04-27) ------------------------
+
+
+def test_boundary_show_on_undeclared_workspace(tmp_path: Path) -> None:
+    """Fresh workspace has no boundary; `boundary show` says so + suggests next step."""
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0, init_result.output
+
+    show = runner.invoke(app, ["boundary", "show", "--target", str(tmp_path)])
+    assert show.exit_code == 0, show.output
+    assert "No boundary declared" in show.output
+    assert "boundary_undeclared" in show.output
+    assert "boundary set --include" in show.output
+
+
+def test_boundary_set_then_show_round_trips(tmp_path: Path) -> None:
+    """`set` writes patterns; `show` reads them back including counts."""
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0
+
+    set_result = runner.invoke(
+        app,
+        [
+            "boundary",
+            "set",
+            "--target",
+            str(tmp_path),
+            "--include",
+            "boundary/**",
+            "--include",
+            "infra/prod/**",
+            "--exclude",
+            "**/test/**",
+        ],
+    )
+    assert set_result.exit_code == 0, set_result.output
+    assert "include (2)" in set_result.output
+    assert "exclude (1)" in set_result.output
+
+    show = runner.invoke(app, ["boundary", "show", "--target", str(tmp_path)])
+    assert show.exit_code == 0
+    assert "boundary/**" in show.output
+    assert "infra/prod/**" in show.output
+    assert "**/test/**" in show.output
+    assert "exclude wins over include" in show.output
+
+
+def test_boundary_set_appends_by_default(tmp_path: Path) -> None:
+    """Calling `set` twice appends — typical 'add another pattern' workflow."""
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0
+    runner.invoke(app, ["boundary", "set", "--target", str(tmp_path), "--include", "a/**"])
+    runner.invoke(app, ["boundary", "set", "--target", str(tmp_path), "--include", "b/**"])
+
+    show = runner.invoke(app, ["boundary", "show", "--target", str(tmp_path)])
+    assert "a/**" in show.output
+    assert "b/**" in show.output
+    assert "include (2)" in show.output
+
+
+def test_boundary_set_replace_overwrites_existing(tmp_path: Path) -> None:
+    """`--replace` swaps the pattern set rather than appending."""
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0
+    runner.invoke(app, ["boundary", "set", "--target", str(tmp_path), "--include", "old/**"])
+    runner.invoke(
+        app,
+        [
+            "boundary",
+            "set",
+            "--target",
+            str(tmp_path),
+            "--replace",
+            "--include",
+            "new/**",
+        ],
+    )
+
+    show = runner.invoke(app, ["boundary", "show", "--target", str(tmp_path)])
+    assert "new/**" in show.output
+    assert "old/**" not in show.output
+
+
+def test_boundary_set_with_no_patterns_errors(tmp_path: Path) -> None:
+    """`boundary set` with no --include/--exclude is a usage error.
+
+    Typer can't catch this (both options are list-typed and default to []),
+    so the command checks at runtime and exits with code 2."""
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0
+    result = runner.invoke(app, ["boundary", "set", "--target", str(tmp_path)])
+    assert result.exit_code == 2
+    assert "at least one --include or --exclude" in result.output
+
+
+def test_boundary_check_classifies_path(tmp_path: Path) -> None:
+    """`boundary check <path>` echoes the resolved state."""
+    init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
+    assert init_result.exit_code == 0
+    runner.invoke(
+        app,
+        [
+            "boundary",
+            "set",
+            "--target",
+            str(tmp_path),
+            "--include",
+            "boundary/**",
+            "--exclude",
+            "**/test/**",
+        ],
+    )
+
+    in_check = runner.invoke(
+        app, ["boundary", "check", "--target", str(tmp_path), "boundary/main.tf"]
+    )
+    assert in_check.exit_code == 0
+    assert "in_boundary" in in_check.output
+
+    out_check = runner.invoke(
+        app, ["boundary", "check", "--target", str(tmp_path), "commercial/eks.tf"]
+    )
+    assert out_check.exit_code == 0
+    assert "out_of_boundary" in out_check.output
+
+    excluded_check = runner.invoke(
+        app, ["boundary", "check", "--target", str(tmp_path), "boundary/test/iam.tf"]
+    )
+    assert excluded_check.exit_code == 0
+    assert "out_of_boundary" in excluded_check.output
+
+
+def test_boundary_set_missing_workspace_errors(tmp_path: Path) -> None:
+    """Without a workspace at the target, `boundary set` exits cleanly."""
+    result = runner.invoke(
+        app,
+        ["boundary", "set", "--target", str(tmp_path), "--include", "boundary/**"],
+    )
+    assert result.exit_code == 1
+    assert "config not found" in result.output

@@ -67,6 +67,13 @@ detectors_app = typer.Typer(
 )
 app.add_typer(detectors_app, name="detectors")
 
+boundary_app = typer.Typer(
+    name="boundary",
+    help="Declare and inspect the FedRAMP authorization boundary scope.",
+    no_args_is_help=True,
+)
+app.add_typer(boundary_app, name="boundary")
+
 
 def _stub(phase: str, command: str) -> None:
     """Raise a stub error with a clear phase pointer.
@@ -494,6 +501,34 @@ def poam(
             )
             raise typer.Exit(code=1)
 
+        # Priority 4.2 (2026-04-27): build a {evidence_id -> boundary_state}
+        # map from the store so we can drop POA&M items whose cited evidence
+        # is entirely `out_of_boundary`. Out-of-scope findings are not in
+        # the customer's FedRAMP boundary and don't belong in the POA&M.
+        # `boundary_undeclared` and classifications with no cited evidence
+        # (typical for `not_implemented` against a procedural KSI) flow
+        # through — undeclared means "we don't know your scope" and an
+        # uncited not_implemented is a real gap that needs tracking.
+        evidence_boundary_state: dict[str, str] = {}
+        for _rid, payload in store.iter_evidence():
+            ev_id = payload.get("evidence_id")
+            state = payload.get("boundary_state", "boundary_undeclared")
+            if isinstance(ev_id, str):
+                evidence_boundary_state[ev_id] = state
+
+        kept_classifications = []
+        skipped_out_of_boundary = 0
+        for c in classifications:
+            if not c.evidence_ids:
+                # Uncited — keep. Real gap, not boundary-filterable.
+                kept_classifications.append(c)
+                continue
+            states = [evidence_boundary_state.get(e, "boundary_undeclared") for e in c.evidence_ids]
+            if all(s == "out_of_boundary" for s in states):
+                skipped_out_of_boundary += 1
+                continue
+            kept_classifications.append(c)
+
         poam_inputs = [
             PoamClassificationInput(
                 ksi_id=c.ksi_id,
@@ -502,7 +537,7 @@ def poam(
                 evidence_ids=list(c.evidence_ids),
                 claim_record_id=None,  # the reconstructed shape doesn't carry record_id
             )
-            for c in classifications
+            for c in kept_classifications
         ]
         result = generate_poam_markdown(
             GeneratePoamMarkdownInput(
@@ -520,6 +555,11 @@ def poam(
 
     typer.echo(f"POA&M: {output_path}")
     typer.echo(f"  open items:       {result.item_count}")
+    if skipped_out_of_boundary > 0:
+        typer.echo(
+            f"  out-of-boundary:  {skipped_out_of_boundary} item(s) excluded "
+            "(their cited evidence is entirely out_of_boundary)"
+        )
     if result.skipped_unknown_ksi:
         skipped = ", ".join(result.skipped_unknown_ksi)
         typer.echo(f"  skipped unknown:  {skipped}")
@@ -1292,6 +1332,170 @@ def detectors_list() -> None:
         f"  total: {len(specs)} detectors  "
         f"({ksi_mapped_count} KSI-mapped, {only_800_53_count} 800-53 only)"
     )
+
+
+# --- boundary CLI (Priority 4.2, 2026-04-27) ------------------------------
+
+# A FedRAMP customer typically has GovCloud Terraform in scope and commercial
+# Terraform out of scope. These verbs let them declare scope and inspect it.
+# `set` writes the workspace's `[boundary]` config; `show` reads it; `check`
+# tests one path against the current rules. Acts on `.efterlev/config.toml`
+# under `--target` (default: cwd), the same convention as every other
+# workspace-touching command.
+
+
+@boundary_app.command("set")
+def boundary_set(
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the workspace whose `.efterlev/config.toml` will be modified.",
+    ),
+    include: list[str] = typer.Option(
+        [],
+        "--include",
+        help=(
+            "Glob pattern (gitignore-style) for paths IN the boundary. "
+            "Pass multiple times for multiple patterns."
+        ),
+    ),
+    exclude: list[str] = typer.Option(
+        [],
+        "--exclude",
+        help=(
+            "Glob pattern (gitignore-style) for paths OUT of the boundary. "
+            "Pass multiple times. Exclude takes precedence over include."
+        ),
+    ),
+    replace: bool = typer.Option(
+        False,
+        "--replace",
+        help=(
+            "Replace existing patterns instead of appending. By default, new "
+            "patterns are added to whatever was already configured."
+        ),
+    ),
+) -> None:
+    """Declare which paths are inside the FedRAMP authorization boundary.
+
+    Patterns are gitignore-style: `boundary/**` matches anything under
+    `boundary/`, `**/main.tf` matches all `main.tf` anywhere. Exclude
+    takes precedence over include — a path matching both is `out_of_boundary`.
+
+    Without an explicit declaration, every Evidence is `boundary_undeclared`
+    and the workspace cannot produce a defensible scope statement to a 3PAO.
+    """
+    from efterlev.config import BoundaryConfig, load_config, save_config
+    from efterlev.errors import ConfigError
+
+    if not include and not exclude:
+        typer.echo(
+            "error: pass at least one --include or --exclude pattern (use "
+            "`efterlev boundary show` to view current rules).",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    root = target.resolve()
+    config_path = root / ".efterlev" / "config.toml"
+    try:
+        config = load_config(config_path)
+    except ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    if replace:
+        new_include = list(include)
+        new_exclude = list(exclude)
+    else:
+        new_include = list(config.boundary.include) + list(include)
+        new_exclude = list(config.boundary.exclude) + list(exclude)
+
+    new_boundary = BoundaryConfig(include=new_include, exclude=new_exclude)
+    new_config = config.model_copy(update={"boundary": new_boundary})
+    save_config(new_config, config_path)
+
+    typer.echo(f"Updated {config_path}")
+    if new_include:
+        typer.echo(f"  include ({len(new_include)}): {', '.join(new_include)}")
+    if new_exclude:
+        typer.echo(f"  exclude ({len(new_exclude)}): {', '.join(new_exclude)}")
+
+
+@boundary_app.command("show")
+def boundary_show(
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the workspace whose boundary will be displayed.",
+    ),
+) -> None:
+    """Show the workspace's current boundary declaration.
+
+    When no patterns are configured, the workspace is `boundary_undeclared`
+    and Evidence flows through unfiltered — agents cannot tell a 3PAO which
+    findings represent the in-scope boundary.
+    """
+    from efterlev.config import load_config
+    from efterlev.errors import ConfigError
+
+    root = target.resolve()
+    try:
+        config = load_config(root / ".efterlev" / "config.toml")
+    except ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    boundary = config.boundary
+    if not boundary.include and not boundary.exclude:
+        typer.echo("No boundary declared (status: boundary_undeclared).")
+        typer.echo("")
+        typer.echo("Run `efterlev boundary set --include 'boundary/**'` to declare scope.")
+        return
+
+    typer.echo("Boundary patterns (gitignore-style):")
+    if boundary.include:
+        typer.echo(f"  include ({len(boundary.include)}):")
+        for p in boundary.include:
+            typer.echo(f"    {p}")
+    if boundary.exclude:
+        typer.echo(f"  exclude ({len(boundary.exclude)}):")
+        for p in boundary.exclude:
+            typer.echo(f"    {p}")
+    typer.echo("")
+    typer.echo("Decision precedence: exclude wins over include.")
+
+
+@boundary_app.command("check")
+def boundary_check(
+    path: str = typer.Argument(
+        ...,
+        help="Repo-relative path to test against the boundary patterns.",
+    ),
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the workspace whose boundary patterns will be applied.",
+    ),
+) -> None:
+    """Test whether a repo-relative path is in/out of the declared boundary.
+
+    Useful when adjusting boundary patterns to verify the rules behave
+    as expected before re-running a scan.
+    """
+    from efterlev.boundary import compute_boundary_state
+    from efterlev.config import load_config
+    from efterlev.errors import ConfigError
+
+    root = target.resolve()
+    try:
+        config = load_config(root / ".efterlev" / "config.toml")
+    except ConfigError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    state = compute_boundary_state(path, config.boundary)
+    typer.echo(f"{path}  →  {state}")
 
 
 if __name__ == "__main__":

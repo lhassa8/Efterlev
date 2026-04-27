@@ -314,3 +314,114 @@ def test_citations_without_evidence_kwarg_render_unbadged() -> None:
     assert "sha256:abc" in html
     # Stylesheet still defines `.source-manifest`; no badge element should fire.
     assert ">attestation</span>" not in html
+
+
+# --- boundary scoping rendering (Priority 4.2, 2026-04-27) ----------------
+
+
+def _ev(
+    *,
+    boundary_state: str = "boundary_undeclared",
+    detector_id: str = "aws.encryption_s3_at_rest",
+    resource_name: str = "logs",
+):
+    """Test helper that constructs an Evidence with an explicit boundary_state."""
+    from pathlib import Path
+
+    from efterlev.models import Evidence, SourceRef
+
+    return Evidence.create(
+        detector_id=detector_id,
+        source_ref=SourceRef(file=Path("infra/main.tf"), line_start=1, line_end=10),
+        ksis_evidenced=["KSI-SVC-VRI"],
+        controls_evidenced=["SC-28"],
+        content={"resource_name": resource_name, "encryption_state": "present"},
+        timestamp=datetime(2026, 4, 27, tzinfo=UTC),
+        boundary_state=boundary_state,  # type: ignore[arg-type]
+    )
+
+
+def test_undeclared_workspace_renders_boundary_banner() -> None:
+    """When every Evidence is `boundary_undeclared`, the report includes the
+    top-of-report banner directing the customer to declare scope."""
+    ev = _ev(boundary_state="boundary_undeclared")
+    clf = KsiClassification(
+        ksi_id="KSI-SVC-VRI", status="partial", rationale="ok", evidence_ids=[ev.evidence_id]
+    )
+    html = render_gap_report_html(
+        _report(classifications=[clf]), evidence=[ev], **_baseline_kwargs()
+    )
+    assert "boundary-banner" in html
+    assert "FedRAMP boundary not declared" in html
+    assert "efterlev boundary set" in html
+
+
+def test_declared_workspace_omits_boundary_banner() -> None:
+    """When ANY Evidence has a real boundary classification, the workspace has
+    a declaration and the banner doesn't render."""
+    ev = _ev(boundary_state="in_boundary")
+    clf = KsiClassification(
+        ksi_id="KSI-SVC-VRI", status="partial", rationale="ok", evidence_ids=[ev.evidence_id]
+    )
+    html = render_gap_report_html(
+        _report(classifications=[clf]), evidence=[ev], **_baseline_kwargs()
+    )
+    # The CSS class definition stays in the stylesheet (other reports may use it);
+    # what we assert is that no rendered <div> in the body uses the banner classes.
+    assert '<div class="boundary-banner' not in html
+    assert "FedRAMP boundary not declared" not in html
+
+
+def test_in_boundary_classification_renders_in_boundary_pill() -> None:
+    """A classification whose cited evidence is `in_boundary` gets a badge."""
+    ev = _ev(boundary_state="in_boundary")
+    clf = KsiClassification(
+        ksi_id="KSI-SVC-VRI", status="partial", rationale="ok", evidence_ids=[ev.evidence_id]
+    )
+    html = render_gap_report_html(
+        _report(classifications=[clf]), evidence=[ev], **_baseline_kwargs()
+    )
+    assert "boundary-in_boundary" in html
+    # Not a collapsed details — in-boundary findings stay visible. The CSS
+    # stylesheet contains the class definition (and the word `<details>` in
+    # one of its comments); the assertion targets actual HTML element usage.
+    assert "<details class=" not in html
+
+
+def test_out_of_boundary_classification_collapses_under_details() -> None:
+    """A classification whose cited evidence is entirely out_of_boundary
+    renders inside a `<details>` element so reviewers focus on in-scope
+    findings while still being able to expand and inspect."""
+    ev = _ev(boundary_state="out_of_boundary")
+    clf = KsiClassification(
+        ksi_id="KSI-SVC-VRI",
+        status="not_implemented",
+        rationale="something",
+        evidence_ids=[ev.evidence_id],
+    )
+    html = render_gap_report_html(
+        _report(classifications=[clf]), evidence=[ev], **_baseline_kwargs()
+    )
+    assert "out-of-boundary-collapsed" in html
+    assert "<details" in html
+    assert "boundary-out_of_boundary" in html
+    # The "click to expand" hint is part of the collapsed UX.
+    assert "click to expand" in html
+
+
+def test_mixed_boundary_classification_resolves_to_in_boundary() -> None:
+    """When a classification cites both in-boundary and out-of-boundary evidence,
+    the in-boundary one wins — the finding is worth surfacing."""
+    in_ev = _ev(boundary_state="in_boundary", resource_name="prod_logs")
+    out_ev = _ev(boundary_state="out_of_boundary", resource_name="staging_logs")
+    clf = KsiClassification(
+        ksi_id="KSI-SVC-VRI",
+        status="partial",
+        rationale="ok",
+        evidence_ids=[in_ev.evidence_id, out_ev.evidence_id],
+    )
+    html = render_gap_report_html(
+        _report(classifications=[clf]), evidence=[in_ev, out_ev], **_baseline_kwargs()
+    )
+    assert "<details class=" not in html
+    assert "boundary-in_boundary" in html
