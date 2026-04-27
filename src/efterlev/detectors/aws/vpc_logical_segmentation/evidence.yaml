@@ -1,0 +1,53 @@
+detector_id: aws.vpc_logical_segmentation
+
+# Evidence content shape this detector emits. One Evidence per `aws_vpc`
+# resource found in the scanned codebase.
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_vpc"]
+    notes: Always "aws_vpc"; carried for symmetry with sibling detectors.
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name (e.g. "main", "primary").
+
+  cidr_block:
+    type: string | null
+    notes: >
+      The VPC's `cidr_block` attribute. Null when not statically resolvable
+      (variable-driven) — fine; agents can flag absence as a separate concern.
+
+  subnet_count:
+    type: int
+    notes: How many `aws_subnet` resources matched this VPC's `vpc_id` reference.
+
+  private_subnet_count:
+    type: int
+    notes: Subnets without `map_public_ip_on_launch=true`.
+
+  public_subnet_count:
+    type: int
+    notes: Subnets with `map_public_ip_on_launch=true`.
+
+  segmentation_state:
+    type: enum
+    values: ["declared", "single_tier", "undefined"]
+    notes: |
+      `declared` — VPC + at least one private AND at least one public
+      subnet. Canonical "logical networking" pattern; evidences both
+      SC-7 and SC-7(7).
+
+      `single_tier` — VPC + subnets but only one tier (private-only or
+      public-only). Evidences SC-7 alone; the gap field names which tier
+      is missing.
+
+      `undefined` — VPC declared but no subnets resolved against it in
+      this codebase. May indicate subnets live in a separate module or
+      state. Evidences SC-7 alone; gap field documents the ambiguity.
+
+  gap:
+    type: string | absent
+    notes: |
+      Present on `single_tier` and `undefined` states with a one-line
+      explanation. Absent on `declared` (no gap to flag).
