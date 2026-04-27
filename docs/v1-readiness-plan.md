@@ -11,7 +11,7 @@ The pre-2026-04-27 plan was: close the readiness gates, sign off on the security
 
 > "I don't want the first release to be 'interesting and potentially helpful'. I want it to be outstanding. The core must be strong and comprehensive."
 
-This document captures what "outstanding" means, the six concrete priorities required to get there, and what is deliberately deferred. Until every priority below clears its acceptance gate, the launch tag does not get cut. There is no calendar deadline; there is a quality bar.
+This document captures what "outstanding" means, the seven concrete priorities required to get there (six original + one added 2026-04-27 from a real-codebase dogfood pass), and what is deliberately deferred. Until every priority below clears its acceptance gate, the launch tag does not get cut. There is no calendar deadline; there is a quality bar.
 
 The DECISIONS.md entry for this reset is dated 2026-04-27 ("Strategic reset — raise v1 bar"); see there for the alternatives considered.
 
@@ -30,7 +30,30 @@ Every priority below ladders up to one or more of those four.
 
 ---
 
-## The six priorities
+## The seven priorities
+
+> **Sequencing note (added 2026-04-27 from dogfood):** Priority 0 was added after a real-codebase dogfood pass against `aws-ia/terraform-aws-eks-blueprints/patterns/blue-green-upgrade` showed that 30 detectors fire just 1× against the dominant ICP-A Terraform pattern (module composition). Without addressing module expansion, every subsequent detector built under priority 1 would fire zero against module-composed codebases, burning weeks of work on no signal. Priority 0 must land before priority 1; the rest of the priorities follow as originally sequenced. See `docs/dogfood-findings-2026-04-27.md` for the full rationale.
+
+### 0. Module-expansion handling and plan-JSON discoverability
+
+**Today:** Efterlev's detectors look for raw `resource "aws_*"` declarations. The dominant ICP-A Terraform pattern is module composition (`module "eks" { source = "terraform-aws-modules/eks/aws" ... }`). All the real workload — EKS cluster, VPC, IAM roles, KMS keys, security groups, CloudTrail — lives inside upstream modules that Efterlev never sees in HCL mode. Plan-JSON mode (`efterlev scan --plan plan.json`) IS the documented workaround, but it lives in `LIMITATIONS.md`, not the README quickstart, and requires `terraform plan` against AWS — a heavy ask for a first-time user.
+
+**Target:** a first-time ICP-A user running `efterlev scan` against a module-composed codebase gets a clear, actionable signal that they should re-run with plan-JSON for full coverage. The HCL-mode result is honest about its coverage limitations. Plan-JSON discoverability is in the README, not buried in LIMITATIONS.
+
+**Acceptance criteria:**
+- **Module-call density warning at scan time:** when `efterlev scan` (HCL mode) parses a target where `module_calls > resources` or `module_calls >= 3`, emit a structured warning to stdout: `N module calls detected; detector coverage will be limited without plan-JSON expansion. Run \`terraform init && terraform plan -out plan.bin && terraform show -json plan.bin > plan.json && efterlev scan --plan plan.json\` for full coverage.` Exit code stays 0 (the scan succeeded). The warning surfaces in the eventual JSON sidecar (priority 2) as a structured `warnings` array.
+- **README quickstart presents both paths:** "module-composed (most ICP-A codebases): use plan-JSON" and "raw resources: HCL mode works directly." The dominant path becomes the primary path. Cross-reference where to find more detail.
+- **Documentation Agent narratives reflect coverage:** when the underlying scan was thin-evidence due to module composition, the agent's narratives explicitly note "this scan was HCL-mode against a module-composed codebase; plan-JSON would surface more evidence." Today's narratives are honest but generic; this makes them honest AND specific.
+- **Re-run dogfood:** against the same `aws-ia/terraform-aws-eks-blueprints/patterns/blue-green-upgrade` SHA, the pipeline produces ≥10 evidence records (vs today's 1) when run with plan-JSON, OR emits a clear warning + actionable remediation when run without.
+- **Optional `--auto-plan` flag** that runs `terraform init && terraform plan` for the user (with explicit opt-in and credentials prompt). Stretch; defer if other Priority 0 work runs long.
+
+**Effort estimate:** 1.5–2 weeks. Module-call detection in the existing parser is small (~1 day); the warning surface, README rewrite, and Documentation Agent metadata wiring are each ~2 days. The optional `--auto-plan` flag with credentials handling is the most substantial stretch piece.
+
+**Deliberately excluded:** automatic `terraform plan` execution as the default behavior. That is too magic and crosses too many trust boundaries (running tools against the user's AWS account). Plan-JSON as an explicit user choice with clear instructions is the right v1 shape.
+
+**Why this is priority 0, not priority 7:** the dogfood made this concrete. A customer running Efterlev against their real codebase needs to see actual evidence, not 30 detectors firing zero against an EKS deployment. Without this, priorities 1–6 stand on a foundation that produces "1 evidence record" against real codebases — and adding 18 new detectors under priority 1 just makes it "1 evidence record from 48 detectors."
+
+---
 
 ### 1. Detector breadth to ≥30 KSI coverage at the repo-evidenceable layer
 
@@ -171,12 +194,13 @@ That is 18 candidate detectors. Land them and we go from 14 KSIs to 32 KSIs (cou
 
 The priorities are not strictly sequential, but some unblock others:
 
-1. **Priority 6 (honesty pass on `ksis=[]`)** lands first. Cheap, clarifies what we have, sets the honest baseline.
-2. **Priority 4 (boundary scoping)** lands next. Touches the data model that priorities 1, 2, 3 will all build on. Doing it early avoids retrofitting.
-3. **Priority 1 (detector breadth)** runs in parallel with priorities 2 and 3 — different surfaces, different contributors potentially. Detector work is the longest sustained effort.
-4. **Priority 2 (HTML overhaul)** can ship before all of priority 1 lands; it improves whatever evidence is present.
-5. **Priority 3 (UX/install)** can ship at any point; small enough to slot opportunistically.
-6. **Priority 5 (real customer dogfood + 3PAO)** runs continuously from now; outreach can start immediately, but the meaningful conversation requires priorities 1–4 to be visibly real.
+1. **Priority 0 (module-expansion handling)** lands first — it's the foundation that priorities 1, 2, 3 stand on. Without it, every detector built under priority 1 fires zero against the dominant ICP-A codebase shape, and priority 2's HTML output renders the same thin-evidence story more beautifully.
+2. **Priority 6 (honesty pass on `ksis=[]`)** lands second. Cheap, clarifies what we have, sets the honest baseline before priority 1 expands the catalog.
+3. **Priority 4 (boundary scoping)** lands next. Touches the data model that priorities 1, 2, 3 will all build on. Doing it early avoids retrofitting.
+4. **Priority 1 (detector breadth)** runs in parallel with priorities 2 and 3 — different surfaces, different contributors potentially. Detector work is the longest sustained effort.
+5. **Priority 2 (HTML overhaul)** can ship before all of priority 1 lands; it improves whatever evidence is present.
+6. **Priority 3 (UX/install)** can ship at any point; small enough to slot opportunistically.
+7. **Priority 5 (real customer dogfood + 3PAO)** runs continuously from now; outreach can start immediately, but the meaningful conversation requires priorities 0–4 to be visibly real.
 
 ---
 
