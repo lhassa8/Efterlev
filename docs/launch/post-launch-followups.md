@@ -124,6 +124,26 @@ Each entry names the deferral, the reason, the owner, and a target window. As it
 
 ---
 
+### Detector → KSI mapping coverage audit (SC-28 unmapped case)
+
+**Item:** during the GovCloud-shaped walkthrough (2026-04-26), an `aws.encryption_s3_at_rest` finding (S3 bucket declared without `server_side_encryption_configuration`, controls=`SC-28`) was emitted by the detector and stored as evidence, but the Gap Agent classified it under "Unmapped findings" because no KSI in FRMR v0.9.43-beta directly claims SC-28. As a result, the POA&M emit did not surface the S3 finding under any `POAM-KSI-...` item — only under the unmapped block. A real customer scan with the same shape would produce a POA&M that visibly omits the S3 weakness from the KSI roll-up, even though the evidence was correctly captured.
+
+**Reproduction:** initialize a directory with a Terraform `aws_s3_bucket` resource missing `server_side_encryption_configuration`, run `efterlev init && efterlev scan && efterlev agent gap && efterlev poam`. The S3 finding lands under "Unmapped findings (1)" in the gap-agent output.
+
+**Resolution path:** two possible fixes, in order of likelihood:
+1. **FRMR ruleset side** — verify whether SC-28 ("Protection of Information at Rest") is intended to map to KSI-SVC-RUD ("Removing Unwanted Data") or KSI-SVC-PRR ("Preventing Residual Risk"). SC-28 is squarely an encryption-at-rest control, so a KSI claim almost certainly should exist for it. If FRMR v0.9.43-beta is the canonical input and the mapping is genuinely absent, raise upstream rather than patching locally.
+2. **Detector side** — if SC-28 has no clean KSI home in the current FRMR, the detector should explicitly populate `ksis_evidenced` with the closest-matching KSI (today the field is `[]` for this detector — see evidence record `3edd02ea...`), so the Gap Agent has a hook to attach the finding.
+
+While investigating, audit all 30 detectors for the same shape (controls populated, `ksis_evidenced` empty, no FRMR-side bridge) — this likely isn't unique to S3 encryption.
+
+**Owner:** Maintainer.
+
+**Target:** v0.1.x — small, bounded investigation; likely a one-PR fix once the right side (FRMR vs. detector) is identified.
+
+**Cross-references:** v0.0.1-rc.5 walkthrough, evidence record `sha256:dd1031394b...` (the S3 unencrypted finding); FRMR `cache/frmr_document.json` v0.9.43-beta.
+
+---
+
 ### Re-add `pypi` environment required reviewer
 
 **Item:** the `pypi` GitHub environment was configured with a deployment-tag-pattern restriction (`v[0-9]*.[0-9]*.[0-9]*`) but no required-reviewer because the GitHub-Team plan didn't expose required-reviewers on private repos.
