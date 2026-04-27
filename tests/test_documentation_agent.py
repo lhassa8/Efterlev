@@ -295,6 +295,66 @@ def test_documentation_agent_rejects_empty_citations_when_gap_cited_evidence(
         )
 
 
+def test_documentation_agent_includes_scan_coverage_note_when_recommended(
+    tmp_path: Path,
+) -> None:
+    """When the underlying scan was HCL-mode against a module-composed
+    codebase, the per-KSI prompt includes a 'Scan coverage note' block
+    instructing the model to acknowledge coverage limitations in narratives
+    of `not_implemented` KSIs. Priority 0 (2026-04-27)."""
+    from efterlev.models import ScanSummary
+
+    ev = _ev()
+    summary = ScanSummary(scan_mode="hcl", resources_parsed=9, module_calls=11, evidence_count=1)
+    stub = StubLLMClient(response_text=_canned_narrative(ev.evidence_id))
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        _persist_evidence(store, [ev])
+        agent = DocumentationAgent(client=stub)
+        agent.run(
+            DocumentationAgentInput(
+                indicators={"KSI-SVC-VRI": _ind()},
+                evidence=[ev],
+                classifications=[_clf(evidence_ids=[ev.evidence_id])],
+                baseline_id="fedramp-20x-moderate",
+                frmr_version="0.9.43-beta",
+                scan_summary=summary,
+            )
+        )
+
+    user = stub.last_messages[0].content
+    assert "Scan coverage note" in user
+    assert "11 `module` calls" in user
+    assert "may reflect scanner coverage limits" in user
+
+
+def test_documentation_agent_omits_scan_coverage_note_when_unnecessary(
+    tmp_path: Path,
+) -> None:
+    """Plan-mode scans and resource-only HCL scans should not get the
+    coverage-note block — the prompt stays focused on per-KSI evidence."""
+    from efterlev.models import ScanSummary
+
+    ev = _ev()
+    summary = ScanSummary(scan_mode="plan", resources_parsed=20, module_calls=0, evidence_count=8)
+    stub = StubLLMClient(response_text=_canned_narrative(ev.evidence_id))
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        _persist_evidence(store, [ev])
+        agent = DocumentationAgent(client=stub)
+        agent.run(
+            DocumentationAgentInput(
+                indicators={"KSI-SVC-VRI": _ind()},
+                evidence=[ev],
+                classifications=[_clf(evidence_ids=[ev.evidence_id])],
+                baseline_id="fedramp-20x-moderate",
+                frmr_version="0.9.43-beta",
+                scan_summary=summary,
+            )
+        )
+
+    user = stub.last_messages[0].content
+    assert "Scan coverage note" not in user
+
+
 def test_documentation_agent_allows_empty_citations_when_no_evidence_in_classification(
     tmp_path: Path,
 ) -> None:

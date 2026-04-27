@@ -36,7 +36,7 @@ from efterlev.agents.base import (
 from efterlev.agents.gap import KsiClassification
 from efterlev.errors import AgentError
 from efterlev.llm import LLMClient
-from efterlev.models import AttestationDraft, Claim, Evidence, Indicator
+from efterlev.models import AttestationDraft, Claim, Evidence, Indicator, ScanSummary
 from efterlev.primitives.generate import GenerateFrmrSkeletonInput, generate_frmr_skeleton
 from efterlev.provenance.context import get_active_store
 
@@ -52,6 +52,13 @@ class DocumentationAgentInput(BaseModel):
     baseline_id: str
     frmr_version: str
     only_ksi: str | None = None
+    # Slim summary of the scan that produced `evidence`. When the scan was
+    # HCL-mode against a module-composed codebase, the per-KSI prompt
+    # surfaces this so each narrative can reflect the coverage limitation
+    # — `not_implemented` may mean "scanner couldn't see it" rather than
+    # "the CSP doesn't have it." None when the agent is invoked directly
+    # without a prior scan in the active store. Priority 0 (2026-04-27).
+    scan_summary: ScanSummary | None = None
 
 
 class NarrativeOutput(BaseModel):
@@ -145,7 +152,13 @@ class DocumentationAgent(Agent):
             # own fence set. See DECISIONS 2026-04-22 Phase 2 post-review
             # fixup F.
             nonce = new_fence_nonce()
-            user_message = _build_user_message(indicator, clf, ksi_evidence, nonce=nonce)
+            user_message = _build_user_message(
+                indicator,
+                clf,
+                ksi_evidence,
+                nonce=nonce,
+                scan_summary=input.scan_summary,
+            )
             narrative_output, response, system_prompt = self._invoke_llm(user_message=user_message)
             assert isinstance(narrative_output, NarrativeOutput)
 
@@ -234,6 +247,7 @@ def _build_user_message(
     evidence: list[Evidence],
     *,
     nonce: str,
+    scan_summary: ScanSummary | None = None,
 ) -> str:
     """Assemble the per-KSI user message: KSI metadata, classification, fenced evidence."""
     controls = ", ".join(indicator.controls) if indicator.controls else "(none in FRMR)"
@@ -249,9 +263,10 @@ def _build_user_message(
         indent=2,
     )
 
+    summary_block = _format_scan_summary_block(scan_summary)
+
     return (
-        "Draft an attestation narrative for the following KSI.\n\n"
-        "## KSI\n\n"
+        "Draft an attestation narrative for the following KSI.\n\n" + summary_block + "## KSI\n\n"
         f"- ID: {indicator.id}\n"
         f"- Name: {indicator.name}\n"
         f"- Statement: {statement}\n"
@@ -262,6 +277,35 @@ def _build_user_message(
         + fenced
         + "\n\nReturn JSON matching the schema in the system prompt. "
         "No prose, no code fences, no commentary."
+    )
+
+
+def _format_scan_summary_block(scan_summary: ScanSummary | None) -> str:
+    """Surface coverage limitations to the per-KSI Documentation prompt.
+
+    When the underlying scan was thin-evidence due to module composition,
+    the per-KSI narrative should reflect that — `not_implemented` may mean
+    "scanner couldn't see it" rather than "the CSP doesn't have it." Plan-
+    mode scans and HCL-mode against resource-only codebases produce no
+    block; the prompt stays focused on the per-KSI evidence.
+    """
+    if scan_summary is None or not scan_summary.recommend_plan_json:
+        return ""
+    return (
+        "## Scan coverage note\n\n"
+        f"The underlying scan was HCL-mode and saw {scan_summary.module_calls} "
+        f"`module` calls alongside {scan_summary.resources_parsed} root-level "
+        "`resource` declarations. Detectors do not follow into upstream module "
+        "sources, so resources defined inside those modules are invisible. "
+        "When this KSI's classification is `not_implemented` AND the Gap Agent's "
+        "rationale notes the absence is plausibly evidenceable from IaC, your "
+        "narrative should explicitly acknowledge that the absence may reflect "
+        "scanner coverage limits (specifically: HCL mode against module "
+        "composition) rather than a real implementation gap. Recommend "
+        "plan-JSON scanning where appropriate. Do NOT fabricate evidence; do "
+        "NOT claim the CSP has implemented controls Efterlev has no evidence "
+        "for. The honest framing is: 'this scan did not surface evidence; the "
+        "absence may be a coverage gap, not a real gap.'\n\n"
     )
 
 

@@ -308,6 +308,37 @@ class ProvenanceStore:
             raise ProvenanceError(f"blob at {record.content_ref} is not valid JSON: {e}") from e
         return data
 
+    def latest_record_with_primitive_prefix(
+        self, prefix: str
+    ) -> tuple[ProvenanceRecord, dict[str, Any]] | None:
+        """Return the most recent (record, payload) where `primitive LIKE prefix%`.
+
+        Used by `efterlev.primitives.scan.latest_scan_summary` to find the most
+        recent scan-primitive invocation (`scan_terraform@*` or
+        `scan_terraform_plan@*`) without hardcoding versions. Returns None when
+        no record matches — typical when the user runs an agent command before
+        running `efterlev scan`. The payload is the raw `{"input", "output"}`
+        dict the @primitive decorator persisted; callers extract the fields
+        they need rather than this method coupling to any specific
+        primitive's output schema.
+        """
+        like_pattern = f"{prefix}%"
+        row = self._conn.execute(
+            "SELECT record_id FROM provenance_records "
+            "WHERE primitive LIKE ? ORDER BY timestamp DESC, record_id DESC LIMIT 1",
+            (like_pattern,),
+        ).fetchone()
+        if row is None:
+            return None
+        record = self.get_record(row[0])
+        if record is None:
+            return None
+        try:
+            payload = self.read_payload(record)
+        except ProvenanceError:
+            return None
+        return record, payload
+
     def iter_records(self) -> list[str]:
         """Return every record_id in insertion order (by timestamp)."""
         rows = self._conn.execute(

@@ -216,3 +216,69 @@ def test_should_not_recommend_plan_json_with_one_or_two_modules(
     assert result.module_calls == 2
     assert result.resources_parsed == 3
     assert result.should_recommend_plan_json is False
+
+
+# --- latest_scan_summary helper (Priority 0.3) ----------------------------
+
+
+def test_latest_scan_summary_returns_none_without_scan(tmp_path: Path) -> None:
+    """When no scan has run, `latest_scan_summary` returns None — agents fall
+    back to scan_summary=None which suppresses the coverage-note prompt block.
+    """
+    from efterlev.primitives.scan import latest_scan_summary
+
+    with ProvenanceStore(tmp_path) as store:
+        assert latest_scan_summary(store) is None
+
+
+def test_latest_scan_summary_after_hcl_scan(tmp_path: Path) -> None:
+    """After an HCL-mode scan, the helper builds a ScanSummary from the
+    primitive invocation record's output payload. Module count + scan mode
+    flow through end-to-end."""
+    from efterlev.primitives.scan import latest_scan_summary
+
+    (tmp_path / "main.tf").write_text(
+        'module "vpc" { source = "..." }\n'
+        'module "eks" { source = "..." }\n'
+        'module "iam" { source = "..." }\n'
+        'resource "aws_s3_bucket" "logs" { bucket = "x" }\n'
+    )
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        scan_terraform(ScanTerraformInput(target_dir=tmp_path))
+        summary = latest_scan_summary(store)
+
+    assert summary is not None
+    assert summary.scan_mode == "hcl"
+    assert summary.module_calls == 3
+    assert summary.resources_parsed == 1
+    assert summary.recommend_plan_json is True
+
+
+def test_latest_scan_summary_picks_most_recent_when_multiple_scans(
+    tmp_path: Path,
+) -> None:
+    """When the user has run multiple scans, the helper returns the most
+    recent — typical "edit one file, re-scan" workflow. The contract is
+    agents see the latest scan's coverage shape, not a stale earlier one."""
+    from efterlev.primitives.scan import latest_scan_summary
+
+    # First scan: thin (one module, no resources) — wouldn't trigger warning.
+    (tmp_path / "main.tf").write_text('module "vpc" { source = "..." }\n')
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        scan_terraform(ScanTerraformInput(target_dir=tmp_path))
+        first = latest_scan_summary(store)
+        assert first is not None
+        assert first.module_calls == 1
+
+    # Second scan: now module-heavy — should see the new shape.
+    (tmp_path / "main.tf").write_text(
+        'module "vpc" { source = "..." }\n'
+        'module "eks" { source = "..." }\n'
+        'module "iam" { source = "..." }\n'
+    )
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        scan_terraform(ScanTerraformInput(target_dir=tmp_path))
+        second = latest_scan_summary(store)
+        assert second is not None
+        assert second.module_calls == 3
+        assert second.recommend_plan_json is True

@@ -240,6 +240,59 @@ def test_gap_agent_prompt_contains_xml_fenced_evidence() -> None:
     assert "untrusted data" in stub.last_system
 
 
+def test_gap_agent_omits_scan_coverage_note_when_no_summary() -> None:
+    """When scan_summary is None (e.g. agent invoked without prior scan), the
+    prompt does NOT include a coverage note — the model should focus on
+    the evidence in the prompt without false coverage hedging."""
+    from efterlev.models import ScanSummary
+
+    _ = ScanSummary  # importable; not used in this test
+    ev = _mk_evidence()
+    stub = StubLLMClient(response_text=_canned_report(ev.evidence_id))
+    agent = GapAgent(client=stub)
+    agent.run(GapAgentInput(indicators=[_mk_indicator()], evidence=[ev], scan_summary=None))
+
+    user = stub.last_messages[0].content
+    assert "Scan coverage note" not in user
+
+
+def test_gap_agent_omits_scan_coverage_note_in_plan_mode() -> None:
+    """Plan-mode scans never trigger the coverage note (modules are already
+    expanded into resolved resources; there's no coverage gap to flag).
+    """
+    from efterlev.models import ScanSummary
+
+    ev = _mk_evidence()
+    stub = StubLLMClient(response_text=_canned_report(ev.evidence_id))
+    agent = GapAgent(client=stub)
+    summary = ScanSummary(scan_mode="plan", resources_parsed=20, module_calls=0, evidence_count=8)
+    agent.run(GapAgentInput(indicators=[_mk_indicator()], evidence=[ev], scan_summary=summary))
+
+    user = stub.last_messages[0].content
+    assert "Scan coverage note" not in user
+
+
+def test_gap_agent_includes_scan_coverage_note_when_recommended() -> None:
+    """When the scan was HCL-mode against a module-composed codebase, the
+    Gap Agent's prompt includes a 'Scan coverage note' block instructing the
+    model to flag absences as potential coverage gaps rather than real gaps.
+    Priority 0 (2026-04-27)."""
+    from efterlev.models import ScanSummary
+
+    ev = _mk_evidence()
+    stub = StubLLMClient(response_text=_canned_report(ev.evidence_id))
+    agent = GapAgent(client=stub)
+    summary = ScanSummary(scan_mode="hcl", resources_parsed=9, module_calls=11, evidence_count=1)
+    agent.run(GapAgentInput(indicators=[_mk_indicator()], evidence=[ev], scan_summary=summary))
+
+    user = stub.last_messages[0].content
+    assert "Scan coverage note" in user
+    assert "11 `module` calls" in user
+    assert "9 root-level `resource` declarations" in user
+    # The model is told what kind of finding to soften.
+    assert "may be a coverage gap" in user
+
+
 # -- Gap Agent defensive paths ----------------------------------------------
 
 

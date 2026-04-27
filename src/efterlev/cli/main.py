@@ -592,9 +592,24 @@ def agent_gap(
                 )
                 raise typer.Exit(code=1)
 
+            # Priority 0 (2026-04-27): when the scan was HCL-mode against a
+            # module-composed codebase, pass the summary so narratives reflect
+            # the coverage limitation. None when no scan_terraform* primitive
+            # invocation exists (already guarded by the `not evidence` check
+            # above, but kept defensive).
+            from efterlev.primitives.scan import latest_scan_summary
+
+            scan_summary = latest_scan_summary(store)
+
             with active_store(store), active_redaction_ledger(ledger):
                 agent = GapAgent(model=config.llm.model)
-                report = agent.run(GapAgentInput(indicators=indicators, evidence=evidence))
+                report = agent.run(
+                    GapAgentInput(
+                        indicators=indicators,
+                        evidence=evidence,
+                        scan_summary=scan_summary,
+                    )
+                )
     except AgentError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1) from e
@@ -715,6 +730,14 @@ def agent_document(
                 )
                 raise typer.Exit(code=1)
 
+            # Priority 0 (2026-04-27): scan_summary surfaces coverage
+            # limitations to per-KSI narratives (HCL-mode against module
+            # composition makes `not_implemented` ambiguous between "real
+            # gap" and "scanner couldn't see it"). Same source as `agent gap`.
+            from efterlev.primitives.scan import latest_scan_summary
+
+            scan_summary = latest_scan_summary(store)
+
             agent = DocumentationAgent(model=config.llm.model)
             report = agent.run(
                 DocumentationAgentInput(
@@ -724,6 +747,7 @@ def agent_document(
                     baseline_id="fedramp-20x-moderate",
                     frmr_version=frmr_doc.version,
                     only_ksi=ksi,
+                    scan_summary=scan_summary,
                 )
             )
 
