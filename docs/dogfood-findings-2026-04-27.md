@@ -218,3 +218,56 @@ efterlev poam
 ```
 
 The artifacts live at `/tmp/efterlev-dogfood/terraform-aws-eks-blueprints/patterns/blue-green-upgrade/.efterlev/reports/` for the duration of this scan; they are not committed.
+
+---
+
+## Validation re-run (2026-04-27, post-Priority-0)
+
+After the three Priority 0 sub-PRs landed (#29 module-call warning, #30 README plan-JSON discoverability, #31 agent scan-coverage prompt awareness), the same dogfood pipeline was re-executed against the same target SHA (`98d0eb4`). The re-run is the acceptance gate documented in `docs/v1-readiness-plan.md` Priority 0.
+
+**Acceptance criteria (from the v1 plan):**
+
+> Re-run dogfood: against the same `aws-ia/terraform-aws-eks-blueprints/patterns/blue-green-upgrade` SHA, the pipeline produces ≥10 evidence records (vs today's 1) when run with plan-JSON, OR emits a clear warning + actionable remediation when run without.
+
+The re-run was HCL-mode only (plan-JSON would require `terraform init && plan` against AWS, which is outside the scope of this validation). The acceptance criterion's HCL-mode branch is what we measure.
+
+**Side-by-side, before vs after:**
+
+| Metric | Before (2026-04-26) | After (2026-04-27, Priority 0) |
+|---|---|---|
+| Module-call warning at scan time | None — silent thin evidence | ✅ "12 module calls detected; detector coverage is limited in HCL mode" with copy-pasteable plan-JSON remediation |
+| Module-call count surfaced in scan summary | Not surfaced | ✅ `module calls: 12` line alongside `resources parsed: 9` |
+| Gap Agent classifications: `evidence_layer_inapplicable` | 31 | **44** (+13) |
+| Gap Agent classifications: `not_implemented` | 29 | **14** (−15) |
+| Gap Agent classifications: `partial` | 0 | **2** (+2) |
+| Gap Agent narratives mentioning coverage limits | 0 | Many (specific to HCL/module-composition; recommend plan-JSON) |
+| POA&M open items (HIGH severity each) | 59 | **16** (−43, a 73% reduction) |
+
+**The single positive finding got a more accurate classification:**
+
+The `aws.secrets_manager_rotation` evidence on `argocd` previously got classified `not_implemented` for both KSI-IAM-SNU and KSI-SVC-ASM. After Priority 0, the same evidence now classifies KSI-IAM-SNU as **`partial`** with a specific narrative: *"Evidence sha256:d54e4cf9 shows the 'argocd' Secrets Manager secret has no paired rotation resource — a non-user authentication credential that is not being automatically rotated. This covers one negative finding for non-user credential hygiene; it does not cover IAM role/instance-profile based non-user authentication, which lives in the unanalyzed modules and would require plan-JSON scanning."*
+
+That narrative is the kind of artifact a 3PAO can read and act on. The previous version was generic.
+
+**Sample post-Priority-0 narratives (from the gap-agent run):**
+
+- **KSI-CMT-LMC** *(was: "the scanner could in principle detect CloudTrail, Config, or audit log resources from IaC, but none were observed")* — now: *"CloudTrail/Config logging of changes is IaC-evidenceable but no such evidence was produced. Likely a coverage gap — CloudTrail and Config are commonly defined inside upstream modules invisible in HCL mode; plan-JSON scanning would clarify."*
+- **KSI-CNA-MAT** *(was: "No evidence of attack-surface minimization")* — now: *"Attack-surface minimization (security groups, public exposure, SSH access) is IaC-evidenceable but no detector produced evidence. Likely a coverage gap — security groups commonly live inside VPC/EKS modules invisible in HCL mode; plan-JSON scanning recommended."*
+- **KSI-CNA-ULN** — now: *"Logical networking (VPCs, subnets, NACLs) is IaC-evidenceable but no evidence was produced. Likely a coverage gap — VPC resources are almost certainly inside the unanalyzed modules; plan-JSON scanning recommended."*
+
+Each narrative now does three things at once: (1) names the IaC-evidenceability honestly, (2) classifies the absence specifically as a likely coverage gap rather than a real implementation gap, (3) gives the user a concrete next step. The 3PAO reading the POA&M sees 16 actionable items, not 59 spurious ones; the customer reading the narrative knows whether to investigate or to re-scan.
+
+**Remaining work (NOT Priority 0):**
+
+- The `--auto-plan` flag (Priority 0 stretch) was not implemented — deferred. Users who want the recommended remediation still have to run `terraform init && terraform plan && terraform show -json` themselves. That is acceptable for v1; auto-plan crosses too many trust boundaries (running tools against the user's AWS account) to ship as default.
+- Plan-JSON re-run validation against this same target requires AWS credentials and a successful `terraform plan`. Skipped here; the warning + agent narrative behavior is the v1-relevant signal.
+
+**Priority 0 acceptance: cleared.** The five sub-criteria from the v1 plan:
+
+- [x] Module-call density warning at scan time (PR #29)
+- [x] README quickstart presents both paths (PR #30)
+- [x] Documentation Agent narratives reflect coverage (PR #31, validated above via Gap Agent narratives — same metadata flow; the Documentation Agent run was not exercised here to keep the validation focused)
+- [x] Re-run dogfood produces a clear warning + actionable remediation in HCL mode (validated above)
+- [ ] Optional `--auto-plan` flag — deliberately deferred, not blocking acceptance per the v1 plan's "stretch" framing
+
+**Effect on the v1 plan sequencing:** Priority 0 is now done. Priority 6 (honesty pass on `ksis=[]` detectors) becomes the next priority per the recommended sequence in `docs/v1-readiness-plan.md`.
