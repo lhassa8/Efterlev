@@ -17,6 +17,7 @@ from __future__ import annotations
 # that registers the detector with the module-level _REGISTRY.
 from efterlev.detectors.aws import (
     access_analyzer_enabled,  # noqa: F401
+    backup_restore_testing,  # noqa: F401
     backup_retention_configured,  # noqa: F401
     cloudfront_viewer_protocol_https,  # noqa: F401
     cloudtrail_audit_logging,  # noqa: F401

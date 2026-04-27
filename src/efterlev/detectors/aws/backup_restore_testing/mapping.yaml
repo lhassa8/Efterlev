@@ -1,0 +1,31 @@
+detector_id: aws.backup_restore_testing
+
+ksis:
+  - id: KSI-RPL-TRC
+    coverage: partial
+    notes: >
+      Testing Recovery Capabilities. AWS Backup's Restore Testing
+      (introduced 2023) is the cloud-native primitive for proving
+      backups can actually be restored. A scheduled plan + matched
+      selection is direct IaC-evidenceable signal. Coverage is partial
+      because runtime success of the test restores lives in AWS Backup,
+      not in Terraform.
+
+controls:
+  - id: CP-4
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Contingency Plan Testing. The Restore Testing plan IS the
+      automated contingency-plan-test primitive in AWS-managed backup.
+      Detector evidences the plan declaration; runtime test outcomes
+      are an AWS Backup artifact outside IaC.
+  - id: CP-4(1)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Coordinate with Related Plans. The selection ties the test back
+      to the production backup vault — coordinating restore tests with
+      the production backup plan. Detector evidences the linkage by
+      name; whether the linked vault truly mirrors production is a
+      reviewer concern.

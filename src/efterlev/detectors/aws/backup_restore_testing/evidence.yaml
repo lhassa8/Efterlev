@@ -1,0 +1,59 @@
+detector_id: aws.backup_restore_testing
+
+# Evidence content shape this detector emits. One Evidence per
+# `aws_backup_restore_testing_plan` resource.
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_backup_restore_testing_plan"]
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name (the second label after the type).
+
+  testing_state:
+    type: enum
+    values: ["configured", "no_selection", "incomplete"]
+    notes: |
+      `configured` — plan has both a `schedule_expression` and at least
+      one `aws_backup_restore_testing_selection` referencing it.
+      Strongest evidence shape; CP-4 + CP-4(1) fully evidenced.
+
+      `no_selection` — plan has a schedule but no selection. The plan
+      will fire on schedule but won't actually test any backups. Gap
+      field populated.
+
+      `incomplete` — plan has no schedule_expression. Won't run. Gap
+      field populated.
+
+  schedule_expression:
+    type: string | null
+    notes: >
+      The cron- or rate-style schedule expression set on the plan.
+      None when absent or non-string.
+
+  start_window_hours:
+    type: int | null
+    notes: >
+      How long the plan can wait to start, in hours. Carried for the
+      Gap Agent's reasoning about coverage; not classified.
+
+  recovery_point_selection_window_days:
+    type: int | null
+    notes: >
+      How many days back the plan's selection can pull recovery points
+      from. Carried for Gap Agent reasoning.
+
+  selection_count:
+    type: int
+    notes: >
+      Count of `aws_backup_restore_testing_selection` resources whose
+      `restore_testing_plan_id` references this plan. 0 lands the
+      `testing_state` in `no_selection`.
+
+  gap:
+    type: string | absent
+    notes: |
+      Present when `testing_state ∈ {no_selection, incomplete}`.
+      Names the specific gap so the Remediation Agent can propose a
+      targeted diff.
