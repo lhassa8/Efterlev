@@ -1,0 +1,52 @@
+detector_id: aws.ec2_imdsv2_required
+
+# Evidence content shape this detector emits. One Evidence per
+# `aws_instance` and `aws_launch_template` resource.
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_instance", "aws_launch_template"]
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name (the second label after the type).
+
+  imds_state:
+    type: enum
+    values: ["imdsv2_required", "imdsv1_allowed", "metadata_options_unset", "unknown"]
+    notes: |
+      `imdsv2_required` — `metadata_options.http_tokens = "required"`.
+      Strongest evidence shape; CM-2 fully evidenced for this resource.
+
+      `imdsv1_allowed` — `metadata_options.http_tokens = "optional"`.
+      IMDSv1 reachable. Gap field populated.
+
+      `metadata_options_unset` — no `metadata_options` block. AWS
+      default allows both IMDSv1 and IMDSv2; functionally equivalent
+      to `imdsv1_allowed` for the gap. Gap field populated.
+
+      `unknown` — `metadata_options` block exists but `http_tokens` is
+      a non-string value (e.g. dynamic from a variable rendered as
+      `${var.http_tokens}`). Plan-JSON mode resolves the variable and
+      produces concrete evidence.
+
+  http_tokens:
+    type: string | null
+    notes: >
+      The literal value of `metadata_options.http_tokens` if the body
+      contained one. `None` when the block is absent or the value is
+      a non-string interpolation.
+
+  http_put_response_hop_limit:
+    type: int | string | null
+    notes: >
+      The `metadata_options.http_put_response_hop_limit` if set.
+      Carried for the Gap Agent's reasoning; AWS recommends 1 for
+      most workloads (containers should consider 2).
+
+  gap:
+    type: string | absent
+    notes: |
+      Present whenever `imds_state ∈ {imdsv1_allowed,
+      metadata_options_unset}`. Names the specific gap so the
+      Remediation Agent can propose a targeted diff.

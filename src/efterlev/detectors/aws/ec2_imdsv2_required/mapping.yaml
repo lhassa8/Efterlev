@@ -1,0 +1,21 @@
+detector_id: aws.ec2_imdsv2_required
+
+ksis:
+  - id: KSI-CNA-IBP
+    coverage: partial
+    notes: >
+      Implementing Best Practices. IMDSv2-required IS the AWS-documented
+      EC2 baseline; CIS, AWS FSBP, and AWS Well-Architected all flag
+      http_tokens != "required" as a finding. Detector emits per-resource
+      so the Gap Agent reasons about per-instance/per-template posture.
+
+controls:
+  - id: CM-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Baseline Configuration. The `metadata_options.http_tokens =
+      "required"` knob IS the configuration baseline choice for EC2
+      metadata access. Per-resource evidence; coverage is partial
+      because runtime drift can revert the setting (AWS Config rules
+      `ec2-imdsv2-check` cover that runtime gap, outside the IaC layer).

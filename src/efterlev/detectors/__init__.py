@@ -23,6 +23,7 @@ from efterlev.detectors.aws import (
     cloudtrail_log_file_validation,  # noqa: F401
     cloudwatch_alarms_critical,  # noqa: F401
     config_enabled,  # noqa: F401
+    ec2_imdsv2_required,  # noqa: F401
     elb_access_logs,  # noqa: F401
     encryption_ebs,  # noqa: F401
     encryption_s3_at_rest,  # noqa: F401
