@@ -1,0 +1,24 @@
+detector_id: aws.s3_lifecycle_policies
+
+# KSI-SVC-RUD ("Removing Unwanted Data") asks the customer to remove unwanted
+# data on a defined cadence. S3 bucket lifecycle policies declare exactly
+# which objects expire and when — the canonical IaC-evidenceable signal for
+# data-retention discipline at the storage layer.
+ksis:
+  - KSI-SVC-RUD
+
+controls:
+  - id: SI-12
+    enhancements: [SI-12(3)]
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Evidences Information Management and Retention at the declaration
+      layer when a lifecycle configuration is declared. SI-12(3)
+      (Destruction) fires when at least one rule has an `expiration`
+      block — the explicit "delete after N days" pattern. Coverage is
+      partial: the detector confirms rules are declared and structurally
+      sound, but does NOT verify the retention period matches the
+      customer's policy or FedRAMP requirement (per-organization risk
+      decision), nor that lifecycle actions actually run at runtime
+      (operational concern beyond IaC).

@@ -39,6 +39,7 @@ from efterlev.detectors.aws import (
     rds_encryption_at_rest,  # noqa: F401
     rds_public_accessibility,  # noqa: F401
     s3_bucket_public_acl,  # noqa: F401
+    s3_lifecycle_policies,  # noqa: F401
     s3_public_access_block,  # noqa: F401
     secrets_manager_rotation,  # noqa: F401
     security_group_open_ingress,  # noqa: F401
