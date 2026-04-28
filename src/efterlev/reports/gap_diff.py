@@ -1,26 +1,24 @@
 """Diff between two Gap-Report JSON sidecars.
 
-Priority 2.10a (2026-04-28). Pure-function `compute_gap_diff` takes
-two JSON-sidecar dicts (the schema-versioned data emitted by
-`render_gap_report_json`) and produces a structured diff: which KSIs
-were added, removed, status-changed, or unchanged between two scans.
+Priority 2.10a (2026-04-28) added the pure-function `compute_gap_diff`
+that takes two JSON-sidecar dicts (from `render_gap_report_json`) and
+produces a structured `GapDiff`. Priority 2.10b (2026-04-28) adds
+`render_gap_diff_html` to render that diff as an HTML page; the CLI's
+`efterlev report diff` command drives it.
 
-This module is import-only — no CLI wiring, no HTML rendering. The
-follow-up PR (2.10b) will:
-  - Add `efterlev report --compare-to <prior>.json` to drive this.
-  - Render a `gap-diff-<ts>.html` page from a `GapDiff` instance.
-
-Why a separate module: the diff computation is reusable from the MCP
-server (`efterlev_compare_gap`-shaped tool), agent prompts that need
-to reason about regression, and the eventual Drift Agent. Keeping it
-pure-function with no IO makes that easy.
+The diff computation is reusable from the MCP server, agent prompts
+that reason about regression, and the eventual Drift Agent.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
+from jinja2 import Environment, select_autoescape
 from pydantic import BaseModel, ConfigDict, Field
+
+from efterlev.reports.html import render_base_document
 
 GapDiffOutcome = Literal[
     "added",  # KSI in current, not in prior
@@ -189,3 +187,213 @@ def _validate_input(d: dict[str, Any], label: str) -> None:
     rt = d.get("report_type")
     if rt is not None and rt != "gap":
         raise ValueError(f"{label}: report_type={rt!r}, expected 'gap'")
+
+
+# --- HTML rendering --------------------------------------------------------
+
+_DIFF_BODY_TEMPLATE = """
+<p class="meta">
+  Comparing <strong>prior</strong> ({{ prior_generated_at or "unknown time" }})
+  vs <strong>current</strong> ({{ current_generated_at or "unknown time" }}).
+  Baselines:
+  <code>{{ prior_baseline_id or "(unknown)" }}</code>
+  vs
+  <code>{{ current_baseline_id or "(unknown)" }}</code>.
+</p>
+
+<div class="diff-summary">
+  <span class="diff-pill diff-added">{{ added | length }} added</span>
+  <span class="diff-pill diff-removed">{{ removed | length }} removed</span>
+  <span class="diff-pill diff-improved">{{ improved | length }} improved</span>
+  <span class="diff-pill diff-regressed">{{ regressed | length }} regressed</span>
+  <span class="diff-pill diff-shifted">{{ shifted | length }} shifted</span>
+  <span class="diff-pill diff-unchanged">{{ unchanged | length }} unchanged</span>
+</div>
+
+{% if regressed %}
+<h2 class="diff-section diff-regressed-h">Regressed ({{ regressed | length }})</h2>
+<table>
+  <thead><tr><th>KSI</th><th>Was</th><th>Now</th></tr></thead>
+  <tbody>
+    {% for e in regressed %}
+    <tr>
+      <td><span class="ksi-id">{{ e.ksi_id }}</span></td>
+      <td><span class="status-pill status-{{ e.prior_status }}"
+            >{{ e.prior_status | replace('_', ' ') }}</span></td>
+      <td><span class="status-pill status-{{ e.current_status }}"
+            >{{ e.current_status | replace('_', ' ') }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if added %}
+<h2 class="diff-section diff-added-h">Added ({{ added | length }})</h2>
+<table>
+  <thead><tr><th>KSI</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for e in added %}
+    <tr>
+      <td><span class="ksi-id">{{ e.ksi_id }}</span></td>
+      <td><span class="status-pill status-{{ e.current_status }}"
+            >{{ e.current_status | replace('_', ' ') }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if improved %}
+<h2 class="diff-section diff-improved-h">Improved ({{ improved | length }})</h2>
+<table>
+  <thead><tr><th>KSI</th><th>Was</th><th>Now</th></tr></thead>
+  <tbody>
+    {% for e in improved %}
+    <tr>
+      <td><span class="ksi-id">{{ e.ksi_id }}</span></td>
+      <td><span class="status-pill status-{{ e.prior_status }}"
+            >{{ e.prior_status | replace('_', ' ') }}</span></td>
+      <td><span class="status-pill status-{{ e.current_status }}"
+            >{{ e.current_status | replace('_', ' ') }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if shifted %}
+<h2 class="diff-section">Shifted ({{ shifted | length }})</h2>
+<table>
+  <thead><tr><th>KSI</th><th>Was</th><th>Now</th></tr></thead>
+  <tbody>
+    {% for e in shifted %}
+    <tr>
+      <td><span class="ksi-id">{{ e.ksi_id }}</span></td>
+      <td><span class="status-pill status-{{ e.prior_status }}"
+            >{{ (e.prior_status or "?") | replace('_', ' ') }}</span></td>
+      <td><span class="status-pill status-{{ e.current_status }}"
+            >{{ (e.current_status or "?") | replace('_', ' ') }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if removed %}
+<h2 class="diff-section diff-removed-h">Removed ({{ removed | length }})</h2>
+<table>
+  <thead><tr><th>KSI</th><th>Was</th></tr></thead>
+  <tbody>
+    {% for e in removed %}
+    <tr>
+      <td><span class="ksi-id">{{ e.ksi_id }}</span></td>
+      <td><span class="status-pill status-{{ e.prior_status }}"
+            >{{ e.prior_status | replace('_', ' ') }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if unchanged %}
+<details class="unchanged-collapsed">
+  <summary>Unchanged ({{ unchanged | length }})</summary>
+  <table>
+    <thead><tr><th>KSI</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for e in unchanged %}
+      <tr>
+        <td><span class="ksi-id">{{ e.ksi_id }}</span></td>
+        <td><span class="status-pill status-{{ e.current_status }}"
+              >{{ e.current_status | replace('_', ' ') }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+"""
+
+_DIFF_CSS = """
+<style>
+  .diff-summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0 24px 0;
+  }
+  .diff-pill {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+  .diff-pill.diff-added     { background: #d1f4da; color: #0a4a17; }
+  .diff-pill.diff-removed   { background: #f0e0e0; color: #5a3a3a; }
+  .diff-pill.diff-improved  { background: #d6e5fa; color: #0a3a7a; }
+  .diff-pill.diff-regressed { background: #fddede; color: #7a1f1f; }
+  .diff-pill.diff-shifted   { background: #fff2c2; color: #6a4e00; }
+  .diff-pill.diff-unchanged { background: #eaeef2; color: #444c56; }
+  h2.diff-section.diff-regressed-h { color: #7a1f1f; }
+  h2.diff-section.diff-improved-h  { color: #0a3a7a; }
+  h2.diff-section.diff-added-h     { color: #0a4a17; }
+  h2.diff-section.diff-removed-h   { color: #5a3a3a; }
+  details.unchanged-collapsed { margin-top: 24px; }
+  details.unchanged-collapsed > summary {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    color: #4a4a4a;
+    padding: 8px 0;
+  }
+  details.unchanged-collapsed > summary:hover { color: #0a2540; }
+</style>
+"""
+
+
+def render_gap_diff_html(
+    diff: GapDiff,
+    *,
+    generated_at: datetime | None = None,
+) -> str:
+    """Return a complete HTML document rendering of a GapDiff.
+
+    Layout: top summary pills (added/removed/improved/regressed/shifted/
+    unchanged counts), then per-category sections sorted by reviewer
+    priority — Regressed first (action items), then Added, Improved,
+    Shifted, Removed, and Unchanged collapsed under a `<details>`.
+    """
+    env = Environment(autoescape=select_autoescape(["html", "xml"]))
+    template = env.from_string(_DIFF_BODY_TEMPLATE)
+
+    shifted = [e for e in diff.entries if e.severity_movement == "shifted"]
+
+    body = template.render(
+        added=diff.added,
+        removed=diff.removed,
+        improved=diff.improved,
+        regressed=diff.regressed,
+        shifted=shifted,
+        unchanged=diff.unchanged,
+        prior_generated_at=diff.prior_generated_at,
+        current_generated_at=diff.current_generated_at,
+        prior_baseline_id=diff.prior_baseline_id,
+        current_baseline_id=diff.current_baseline_id,
+    )
+
+    when = (generated_at or datetime.now().astimezone()).isoformat(timespec="seconds")
+    return render_base_document(
+        title="Gap Diff",
+        subtitle=(
+            f"{len(diff.regressed)} regressed, "
+            f"{len(diff.improved)} improved, "
+            f"{len(diff.added)} added, "
+            f"{len(diff.removed)} removed"
+        ),
+        body_html=_DIFF_CSS + body,
+        generated_at=when,
+    )

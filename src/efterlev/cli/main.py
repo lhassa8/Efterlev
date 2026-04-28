@@ -75,6 +75,13 @@ boundary_app = typer.Typer(
 )
 app.add_typer(boundary_app, name="boundary")
 
+report_app = typer.Typer(
+    name="report",
+    help="Operate on prior gap-report artifacts (diff, etc.).",
+    no_args_is_help=True,
+)
+app.add_typer(report_app, name="report")
+
 
 def _stub(phase: str, command: str) -> None:
     """Raise a stub error with a clear phase pointer.
@@ -1565,6 +1572,85 @@ def boundary_check(
 
     state = compute_boundary_state(path, config.boundary)
     typer.echo(f"{path}  →  {state}")
+
+
+@report_app.command("diff")
+def report_diff(
+    prior: Path = typer.Argument(
+        ...,
+        help="Path to a prior gap-report JSON sidecar (e.g. .efterlev/reports/gap-<ts>.json).",
+    ),
+    current: Path = typer.Argument(
+        ...,
+        help="Path to the current gap-report JSON sidecar.",
+    ),
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the workspace whose .efterlev/reports/ will receive the diff output.",
+    ),
+) -> None:
+    """Compute and render a diff between two gap-report JSON sidecars.
+
+    Emits both `gap-diff-<ts>.html` (reviewer-friendly) and
+    `gap-diff-<ts>.json` (machine-readable, schema-versioned) under
+    `.efterlev/reports/` of the target workspace. Exits non-zero if the
+    diff contains any regressed KSIs — useful in CI for blocking PRs
+    that regress posture.
+    """
+    from efterlev.reports import compute_gap_diff, render_gap_diff_html
+
+    if not prior.is_file():
+        typer.echo(f"error: prior file not found: {prior}", err=True)
+        raise typer.Exit(code=1)
+    if not current.is_file():
+        typer.echo(f"error: current file not found: {current}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        prior_data = json.loads(prior.read_text(encoding="utf-8"))
+        current_data = json.loads(current.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        typer.echo(f"error: invalid JSON: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    try:
+        diff = compute_gap_diff(prior_data, current_data)
+    except ValueError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(f"Comparing {prior.name} → {current.name}")
+    typer.echo(f"  added:      {len(diff.added)}")
+    typer.echo(f"  removed:    {len(diff.removed)}")
+    typer.echo(f"  improved:   {len(diff.improved)}")
+    typer.echo(f"  regressed:  {len(diff.regressed)}")
+    typer.echo(f"  unchanged:  {len(diff.unchanged)}")
+
+    root = target.resolve()
+    reports_dir = root / ".efterlev" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    generated_at = datetime.now().astimezone()
+
+    html_body = render_gap_diff_html(diff, generated_at=generated_at)
+    html_path = reports_dir / f"gap-diff-{timestamp}.html"
+    html_path.write_text(html_body, encoding="utf-8")
+
+    json_path = reports_dir / f"gap-diff-{timestamp}.json"
+    json_path.write_text(json.dumps(diff.model_dump(), indent=2, sort_keys=True), encoding="utf-8")
+
+    typer.echo("")
+    typer.echo(f"HTML report: {html_path}")
+    typer.echo(f"JSON sidecar: {json_path}")
+
+    if diff.regressed:
+        typer.echo("")
+        typer.echo(
+            f"warning: {len(diff.regressed)} KSI(s) regressed since the prior scan.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
 
 
 if __name__ == "__main__":
