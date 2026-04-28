@@ -376,32 +376,27 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 ## Project status
 
-**Current state (2026-04-26): v0 shipped; v1 Phases 1 & 2, Plan JSON mode, prompt hardening, POA&M generator, and the PR GitHub Action landed. All eight pre-launch readiness gates closed at the spec level (A1 identity → A8 launch rehearsal); destination-repo operational setup complete and the release pipeline validated via 5 rc-tag dry-runs (5 real bugs found + fixed). Repository pre-launch private; the public Apache-2.0 flip happens once the remaining maintainer-action items (security-review §8 sign-off, 24-hour fresh-eyes pause, optional GovCloud walkthrough) complete and the maintainer pushes `v0.1.0`.**
+**Current state (2026-04-28): v1-readiness plan Priorities 1, 2, 3 complete (35 PRs landed 2026-04-27 → 2026-04-28 — see `CHANGELOG.md`). KSI breadth at the floor (30 of 60 KSIs / 8 of 11 themes / 43 detectors). HTML report overhaul shipped (coverage matrix, search/sort/filter, drill-down, JSON sidecars, print stylesheet, diff view). UX overhaul shipped (`efterlev report run`, `efterlev doctor`, friendly errors, first-run wizard, progress indicators, `--watch` mode). Repository pre-launch private; the v0.1.0 public Apache-2.0 flip happens once the remaining maintainer-action items (security-review §8 sign-off, 24-hour fresh-eyes pause, optional GovCloud walkthrough) complete and the maintainer pushes the tag. Priority 5 (real customer dogfood + 3PAO touchpoint) is calendar-time work outside the code surface.**
 
 ### What v0 contains
 
 **Pipeline.** `init → scan → agent gap → agent document → agent remediate → provenance show` runs end-to-end. Every CLI verb is also an MCP tool.
 
-**Detectors (30).** Six v0 + Phase 6-lite six + dogfood-followup two (all 2026-04-22) + A4 detector-breadth sixteen (2026-04-24 → 2026-04-25):
-`aws.encryption_s3_at_rest`, `aws.tls_on_lb_listeners`, `aws.fips_ssl_policies_on_lb_listeners`,
-`aws.mfa_required_on_iam_policies`, `aws.cloudtrail_audit_logging`, `aws.backup_retention_configured`,
-`aws.s3_public_access_block`, `aws.rds_encryption_at_rest`, `aws.kms_key_rotation`,
-`aws.cloudtrail_log_file_validation`, `aws.vpc_flow_logs_enabled`, `aws.iam_password_policy`,
-`aws.encryption_ebs`, `aws.iam_user_access_keys`,
-`aws.security_group_open_ingress`, `aws.rds_public_accessibility`, `aws.s3_bucket_public_acl`, `aws.nacl_open_egress`,
-`aws.cloudwatch_alarms_critical`, `aws.guardduty_enabled`, `aws.config_enabled`, `aws.access_analyzer_enabled`,
-`aws.kms_customer_managed_keys`, `aws.secrets_manager_rotation`, `aws.sns_topic_encryption`, `aws.sqs_queue_encryption`,
-`aws.iam_inline_policies_audit`, `aws.iam_admin_policy_usage`, `aws.iam_service_account_keys_age`, `aws.elb_access_logs`.
-All self-contained under `src/efterlev/detectors/aws/<capability>/` with detector.py, mapping.yaml, evidence.yaml,
-fixtures/ (including .plan.json equivalence fixtures), and README.md. Each detector's README names what it proves
-and what it does not.
+**Detectors (43).** Original v0 thirty + Priority 1.x breadth thirteen (2026-04-27 → 2026-04-28):
+all 30 from the v0 set plus `aws.terraform_inventory`, `aws.s3_lifecycle_policies`,
+`aws.federated_identity_providers`, `aws.iam_managed_via_terraform`,
+`aws.cloudfront_viewer_protocol_https`, `aws.ec2_imdsv2_required`,
+`aws.backup_restore_testing`, `aws.suspicious_activity_response`, `aws.vpc_logical_segmentation`,
+`github.ci_validation_gates`, `github.supply_chain_monitoring`,
+`github.immutable_deploy_patterns`, `github.action_pinning`. All self-contained under
+`src/efterlev/detectors/<source>/<capability>/` with detector.py, mapping.yaml,
+evidence.yaml, fixtures/, and README.md.
 
 **Detector breakdown — 43 total = 36 KSI-mapped + 7 supplementary 800-53-only.**
 - **36 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **30 of 60 KSIs** at
   the infrastructure layer, spanning **8 of 11 themes** (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). The remaining
   three themes (AFR, CED, INR) are entirely procedural/governance and require Evidence Manifests rather than
-  detector evidence. See Priority 1 of `docs/v1-readiness-plan.md` for the planned breadth expansion to
-  ≥30 KSIs.
+  detector evidence. The Priority-1 floor (≥30 KSIs / ≥8 themes) is met as of PR #51.
 - Detector sources: **39 from `terraform`** (read `.tf` files or `terraform show -json` output) +
   **4 from `github-workflows`** (read `.github/workflows/*.yml` for CI/CD, supply-chain-monitoring,
   and supply-chain-mitigation KSIs that have no IaC analog).
