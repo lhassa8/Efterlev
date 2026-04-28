@@ -112,18 +112,39 @@ class DocumentationAgent(Agent):
     ) -> None:
         super().__init__(client=client, model=model)
 
-    def run(self, input: DocumentationAgentInput) -> DocumentationReport:
+    def run(
+        self,
+        input: DocumentationAgentInput,
+        *,
+        progress_callback: object | None = None,
+    ) -> DocumentationReport:
+        """Run the Documentation Agent over `input.classifications`.
+
+        Pass `progress_callback` (a ProgressCallback-shaped object) to
+        receive per-KSI completion events. The CLI uses
+        `TerminalProgressCallback` to print `[idx/total] KSI-XXX ✓`
+        for each narrative as it's drafted; tests pass a NoopProgressCallback
+        (or omit it). The Documentation Agent processes one KSI per
+        LLM call, so each completion is meaningful — the
+        prior silent-7-minute behavior was specifically what users
+        complained about.
+        """
+        from efterlev.cli.progress import NoopProgressCallback
+
         eligible, skipped = _select_classifications(input.classifications, input.only_ksi)
+        callback = progress_callback if progress_callback is not None else NoopProgressCallback()
 
         attestations: list[KsiAttestation] = []
         store = get_active_store()
+        total = len(eligible)
 
-        for clf in eligible:
+        for idx, clf in enumerate(eligible, start=1):
             indicator = input.indicators.get(clf.ksi_id)
             if indicator is None:
                 # Classification references a KSI not in the loaded baseline.
                 # Skip rather than crash — this is how baseline drift shows up.
                 skipped.append(clf.ksi_id)
+                callback.on_unit_complete(clf.ksi_id, idx, total, success=False)  # type: ignore[attr-defined]
                 continue
 
             # Resolve evidence via the Gap classification's cited IDs rather
@@ -212,6 +233,7 @@ class DocumentationAgent(Agent):
                 claim_record_id = record.record_id
 
             attestations.append(KsiAttestation(draft=final_draft, claim_record_id=claim_record_id))
+            callback.on_unit_complete(clf.ksi_id, idx, total, success=True)  # type: ignore[attr-defined]
 
         return DocumentationReport(attestations=attestations, skipped_ksi_ids=skipped)
 

@@ -853,6 +853,8 @@ def agent_document(
 
             scan_summary = latest_scan_summary(store)
 
+            from efterlev.cli.progress import TerminalProgressCallback
+
             agent = DocumentationAgent(model=config.llm.model)
             with friendly_llm_error_handler():
                 report = agent.run(
@@ -864,7 +866,8 @@ def agent_document(
                         frmr_version=frmr_doc.version,
                         only_ksi=ksi,
                         scan_summary=scan_summary,
-                    )
+                    ),
+                    progress_callback=TerminalProgressCallback(stage="documentation"),
                 )
 
             attestation_drafts = [att.draft for att in report.attestations]
