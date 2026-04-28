@@ -33,13 +33,25 @@ class FrmrDocument(BaseModel):
     indicators: dict[str, Indicator]
 
 
-def load_frmr(path: Path, *, schema_path: Path | None = None) -> FrmrDocument:
+def load_frmr(
+    path: Path,
+    *,
+    schema_path: Path | None = None,
+    level: str = "moderate",
+) -> FrmrDocument:
     """Load an FRMR JSON file into the internal model.
 
     If `schema_path` is given, the document is validated against that JSON
     Schema (draft 2020-12) before parsing; validation failures raise
     `CatalogLoadError` with the first offending path. Without `schema_path`,
     only Pydantic-level structural checks run.
+
+    `level` selects the impact-level statement to load per indicator. FRMR
+    v0.9.0-beta moved some indicator statements under
+    `varies_by_level.{level}.statement` (5 of 60 KSIs as of catalog
+    `0.9.43-beta`); the loader prefers that path and falls back to a
+    top-level `statement` for catalogs that haven't migrated. Default
+    "moderate" matches the only baseline supported in v0.
 
     Raises `CatalogLoadError` on I/O, JSON, schema, or structural failure.
     """
@@ -85,11 +97,13 @@ def load_frmr(path: Path, *, schema_path: Path | None = None) -> FrmrDocument:
             description=theme_raw.get("theme"),
         )
         for ind_id, ind_raw in theme_raw.get("indicators", {}).items():
+            level_stmt = ind_raw.get("varies_by_level", {}).get(level, {}).get("statement")
+            statement = level_stmt or ind_raw.get("statement")
             indicators[ind_id] = Indicator(
                 id=ind_id,
                 theme=theme_id,
                 name=ind_raw.get("name", ind_id),
-                statement=ind_raw.get("statement"),
+                statement=statement,
                 controls=list(ind_raw.get("controls", [])),
                 fka=ind_raw.get("fka"),
             )
