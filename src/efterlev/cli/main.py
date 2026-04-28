@@ -26,6 +26,7 @@ from typing import Any
 import typer
 
 from efterlev import __version__
+from efterlev.cli.friendly_errors import friendly_llm_error_handler
 
 app = typer.Typer(
     name="efterlev",
@@ -686,13 +687,14 @@ def agent_gap(
 
             with active_store(store), active_redaction_ledger(ledger):
                 agent = GapAgent(model=config.llm.model)
-                report = agent.run(
-                    GapAgentInput(
-                        indicators=indicators,
-                        evidence=evidence,
-                        scan_summary=scan_summary,
+                with friendly_llm_error_handler():
+                    report = agent.run(
+                        GapAgentInput(
+                            indicators=indicators,
+                            evidence=evidence,
+                            scan_summary=scan_summary,
+                        )
                     )
-                )
     except AgentError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1) from e
@@ -844,17 +846,18 @@ def agent_document(
             scan_summary = latest_scan_summary(store)
 
             agent = DocumentationAgent(model=config.llm.model)
-            report = agent.run(
-                DocumentationAgentInput(
-                    indicators=frmr_doc.indicators,
-                    evidence=evidence,
-                    classifications=classifications,
-                    baseline_id="fedramp-20x-moderate",
-                    frmr_version=frmr_doc.version,
-                    only_ksi=ksi,
-                    scan_summary=scan_summary,
+            with friendly_llm_error_handler():
+                report = agent.run(
+                    DocumentationAgentInput(
+                        indicators=frmr_doc.indicators,
+                        evidence=evidence,
+                        classifications=classifications,
+                        baseline_id="fedramp-20x-moderate",
+                        frmr_version=frmr_doc.version,
+                        only_ksi=ksi,
+                        scan_summary=scan_summary,
+                    )
                 )
-            )
 
             attestation_drafts = [att.draft for att in report.attestations]
             claim_record_ids = {
@@ -1090,16 +1093,17 @@ def agent_remediate(
 
             with active_store(store), active_redaction_ledger(ledger):
                 agent = RemediationAgent(model=config.llm.model)
-                proposal = agent.run(
-                    RemediationAgentInput(
-                        indicator=indicator,
-                        classification=clf,
-                        evidence=ksi_evidence,
-                        source_files=source_files,
-                        baseline_id="fedramp-20x-moderate",
-                        frmr_version=frmr_doc.version,
+                with friendly_llm_error_handler():
+                    proposal = agent.run(
+                        RemediationAgentInput(
+                            indicator=indicator,
+                            classification=clf,
+                            evidence=ksi_evidence,
+                            source_files=source_files,
+                            baseline_id="fedramp-20x-moderate",
+                            frmr_version=frmr_doc.version,
+                        )
                     )
-                )
     except AgentError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=1) from e
