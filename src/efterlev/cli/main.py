@@ -1618,6 +1618,90 @@ def doctor(
         raise typer.Exit(code=1)
 
 
+@report_app.command("run")
+def report_run(
+    target: Path = typer.Option(
+        Path("."),
+        "--target",
+        help="Path to the repo to run the full pipeline against.",
+    ),
+    skip_init: bool = typer.Option(
+        False,
+        "--skip-init",
+        help="Skip the init step. Useful when re-running on a workspace already initialized.",
+    ),
+    skip_document: bool = typer.Option(
+        False,
+        "--skip-document",
+        help=(
+            "Skip the Documentation Agent stage. Useful for fast iteration "
+            "loops where you only care about gap classification."
+        ),
+    ),
+    skip_poam: bool = typer.Option(
+        False,
+        "--skip-poam",
+        help="Skip the POA&M generation stage.",
+    ),
+) -> None:
+    """Run the full pipeline: init → scan → agent gap → agent document → poam.
+
+    Each stage runs in sequence; if any stage exits non-zero, the
+    pipeline stops and propagates the exit code. Per-stage flags
+    (--skip-init, --skip-document, --skip-poam) let you tailor the
+    pipeline to your situation:
+
+      - First-time scan in a fresh repo:  efterlev report run
+      - Re-running on initialized repo:   efterlev report run --skip-init
+      - Iterating on detectors only:      efterlev report run --skip-document --skip-poam
+    """
+    target_str = str(target.resolve())
+
+    # If `.efterlev/` already exists, skip init by default to avoid the
+    # "directory exists" error that init raises without --force.
+    efterlev_dir_exists = (target.resolve() / ".efterlev").is_dir()
+    skip_init_effective = skip_init or efterlev_dir_exists
+
+    stages: list[tuple[str, list[str]]] = []
+    if not skip_init_effective:
+        stages.append(("init", ["init", "--target", target_str]))
+    stages.append(("scan", ["scan", "--target", target_str]))
+    stages.append(("agent gap", ["agent", "gap", "--target", target_str]))
+    if not skip_document:
+        stages.append(("agent document", ["agent", "document", "--target", target_str]))
+    if not skip_poam:
+        stages.append(("poam", ["poam", "--target", target_str]))
+
+    typer.echo(f"Pipeline: {' → '.join(name for name, _ in stages)}")
+    typer.echo("")
+
+    for stage_idx, (name, args) in enumerate(stages, start=1):
+        typer.echo("")
+        typer.echo(f"━━━ [{stage_idx}/{len(stages)}] {name} ━━━")
+        typer.echo("")
+        try:
+            app(args, standalone_mode=False)
+        except typer.Exit as e:
+            if e.exit_code and e.exit_code != 0:
+                typer.echo(
+                    f"\nerror: pipeline stopped — `{name}` exited with code {e.exit_code}",
+                    err=True,
+                )
+                raise
+        except SystemExit as e:
+            # standalone_mode=False should suppress these, but be defensive.
+            code = e.code if isinstance(e.code, int) else 1
+            if code != 0:
+                typer.echo(
+                    f"\nerror: pipeline stopped — `{name}` raised SystemExit({code})",
+                    err=True,
+                )
+                raise typer.Exit(code=code) from e
+
+    typer.echo("")
+    typer.echo("✓ Pipeline complete.")
+
+
 @report_app.command("diff")
 def report_diff(
     prior: Path = typer.Argument(
