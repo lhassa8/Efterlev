@@ -1,11 +1,17 @@
-"""HTML rendering for `DocumentationReport` artifacts.
+"""HTML + JSON rendering for `DocumentationReport` artifacts.
 
 Companion to `gap_report.py`. Where the Gap Report is a compact
 classification table, the Documentation Report is prose-heavy: one
 per-KSI card with the full narrative the agent drafted plus its
 evidence citations.
 
-Layout:
+`render_documentation_report_html` returns a complete HTML document;
+`render_documentation_report_json` returns the same data as a
+JSON-serializable dict. The CLI writes both side-by-side
+(`documentation-<ts>.html` + `documentation-<ts>.json`) so downstream
+tooling consumers can read narratives + citations without HTML scraping.
+
+HTML layout:
   1. Header + baseline/FRMR metadata + attestation count.
   2. "DRAFT — requires human review" banner (narratives are Claims).
   3. One `.record.claim` card per KSI attestation:
@@ -14,16 +20,47 @@ Layout:
      - Citations listing (evidence_id, detector_id, source_file:lines)
      - Claim record id for provenance walk
   4. Skipped-KSIs section for `not_applicable` / unknown-KSI entries.
+
+JSON schema (v1):
+  {
+    "schema_version": "1.0",
+    "report_type": "documentation",
+    "generated_at": "<iso-8601>",
+    "baseline_id": "<str>",
+    "frmr_version": "<str>",
+    "attestations": [
+      {
+        "ksi_id": "<str>",
+        "status": "<status> | null",
+        "mode": "<scanner_only|agent_drafted>",
+        "narrative": "<str> | null",
+        "controls_evidenced": ["<id>", ...],
+        "citations": [
+          {
+            "evidence_id": "<id>",
+            "detector_id": "<id>",
+            "source_file": "<path>",
+            "source_lines": "<lines> | null"
+          }
+        ],
+        "claim_record_id": "<id> | null"
+      }
+    ],
+    "skipped_ksi_ids": ["<id>", ...]
+  }
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from jinja2 import Environment, select_autoescape
 
 from efterlev.agents import DocumentationReport
 from efterlev.reports.html import DRAFT_BANNER_HTML, render_base_document
+
+DOCUMENTATION_REPORT_JSON_SCHEMA_VERSION = "1.0"
 
 _BODY_TEMPLATE = """
 {{ draft_banner }}
@@ -149,3 +186,48 @@ def render_documentation_report_html(
         body_html=_NARRATIVE_CSS + body,
         generated_at=when,
     )
+
+
+def render_documentation_report_json(
+    report: DocumentationReport,
+    *,
+    baseline_id: str,
+    frmr_version: str,
+    generated_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Return the documentation report as a JSON-serializable dict.
+
+    Mirrors `render_documentation_report_html`'s data view. Citations
+    are flattened into a list of dicts (evidence_id, detector_id,
+    source_file, source_lines); each attestation pairs its draft with
+    the claim_record_id assigned at persistence time.
+    """
+    when = (generated_at or datetime.now().astimezone()).isoformat(timespec="seconds")
+    return {
+        "schema_version": DOCUMENTATION_REPORT_JSON_SCHEMA_VERSION,
+        "report_type": "documentation",
+        "generated_at": when,
+        "baseline_id": baseline_id,
+        "frmr_version": frmr_version,
+        "attestations": [
+            {
+                "ksi_id": att.draft.ksi_id,
+                "status": att.draft.status,
+                "mode": att.draft.mode,
+                "narrative": att.draft.narrative,
+                "controls_evidenced": list(att.draft.controls_evidenced),
+                "citations": [
+                    {
+                        "evidence_id": cite.evidence_id,
+                        "detector_id": cite.detector_id,
+                        "source_file": cite.source_file,
+                        "source_lines": cite.source_lines,
+                    }
+                    for cite in att.draft.citations
+                ],
+                "claim_record_id": att.claim_record_id,
+            }
+            for att in report.attestations
+        ],
+        "skipped_ksi_ids": list(report.skipped_ksi_ids),
+    }

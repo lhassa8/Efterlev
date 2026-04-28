@@ -769,7 +769,10 @@ def agent_document(
         generate_frmr_attestation,
     )
     from efterlev.provenance import ProvenanceStore, active_store
-    from efterlev.reports import render_documentation_report_html
+    from efterlev.reports import (
+        render_documentation_report_html,
+        render_documentation_report_json,
+    )
 
     root = target.resolve()
     if not (root / ".efterlev").is_dir():
@@ -880,18 +883,32 @@ def agent_document(
         skipped = ", ".join(report.skipped_ksi_ids)
         typer.echo(f"Skipped {len(report.skipped_ksi_ids)} KSI(s): {skipped}")
 
+    reports_dir = root / ".efterlev" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    generated_at = datetime.now().astimezone()
+
     html_body = render_documentation_report_html(
         report,
         baseline_id="fedramp-20x-moderate",
         frmr_version=frmr_doc.version,
+        generated_at=generated_at,
     )
-    reports_dir = root / ".efterlev" / "reports"
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     html_path = reports_dir / f"documentation-{timestamp}.html"
     html_path.write_text(html_body, encoding="utf-8")
+
+    json_data = render_documentation_report_json(
+        report,
+        baseline_id="fedramp-20x-moderate",
+        frmr_version=frmr_doc.version,
+        generated_at=generated_at,
+    )
+    json_path = reports_dir / f"documentation-{timestamp}.json"
+    json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
+
     typer.echo("")
     typer.echo(f"HTML report: {html_path}")
+    typer.echo(f"JSON sidecar: {json_path}")
 
     # FRMR-compatible attestation JSON alongside the HTML — one CLI run, two
     # artifacts. The human-readable HTML is for review; the machine-readable
