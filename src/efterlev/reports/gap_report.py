@@ -1,10 +1,12 @@
-"""HTML rendering for `GapReport` artifacts.
+"""HTML + JSON rendering for `GapReport` artifacts.
 
-One function entry point, `render_gap_report_html`, takes a typed
-`GapReport` (the Gap Agent's output) plus its baseline/FRMR metadata
-and returns a complete HTML document ready to write to disk or serve.
+`render_gap_report_html` returns a complete HTML document; the parallel
+`render_gap_report_json` returns the same data as a JSON-serializable
+dict. The CLI writes both side-by-side (`gap-<ts>.html` +
+`gap-<ts>.json`) so downstream tooling consumers (3PAO ingest, custom
+dashboards) can read the data without scraping HTML.
 
-Layout:
+HTML layout:
   1. Header + baseline metadata.
   2. "DRAFT — requires human review" banner (KSI classifications are
      Claims, not Evidence).
@@ -15,20 +17,45 @@ Layout:
   5. Separate "Unmapped findings" section for evidence records whose
      ksis_evidenced=[] (the SC-28 case per DECISIONS design call #1).
 
-Jinja is used just for the body fragment — the document shell comes
-from `html.render_base_document`. This keeps the template small and
-the HTML deterministic enough for test snapshots.
+JSON schema (v1):
+  {
+    "schema_version": "1.0",
+    "report_type": "gap",
+    "generated_at": "<iso-8601>",
+    "baseline_id": "<str>",
+    "frmr_version": "<str>",
+    "workspace_boundary_state": "<state>",
+    "ksi_classifications": [
+      {
+        "ksi_id": "<str>", "status": "<status>", "rationale": "<str>",
+        "evidence_ids": ["<id>", ...],
+        "boundary_state": "<state>"
+      },
+      ...
+    ],
+    "unmapped_findings": [
+      {"evidence_id": "<id>", "controls": ["<id>", ...], "note": "<str>"}
+    ],
+    "claim_record_ids": ["<id>", ...]
+  }
+
+Jinja is used just for the HTML body fragment — the document shell
+comes from `html.render_base_document`. JSON serialization uses Pydantic
+model_dump for the typed sub-records to keep field names canonical.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from jinja2 import Environment, select_autoescape
 
 from efterlev.agents import GapReport
 from efterlev.models import Evidence
 from efterlev.reports.html import DRAFT_BANNER_HTML, render_base_document
+
+GAP_REPORT_JSON_SCHEMA_VERSION = "1.0"
 
 _BODY_TEMPLATE = """
 {{ draft_banner }}
@@ -225,6 +252,66 @@ def render_gap_report_html(
         body_html=body,
         generated_at=when,
     )
+
+
+def render_gap_report_json(
+    report: GapReport,
+    *,
+    baseline_id: str,
+    frmr_version: str,
+    evidence: list[Evidence] | None = None,
+    generated_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Return the gap report as a JSON-serializable dict.
+
+    Mirrors `render_gap_report_html`'s data view but emits a
+    schema-versioned, machine-readable structure suitable for tool
+    integration. Pass to `json.dumps` with `sort_keys=True, indent=2`
+    for the canonical sidecar shape.
+
+    The boundary-state derivation is identical to the HTML renderer's:
+    each classification is annotated with the worst-case boundary state
+    across its cited evidence (with `in_boundary` winning when present).
+    """
+    evidence_list = evidence or []
+    evidence_boundary_state: dict[str, str] = {
+        ev.evidence_id: ev.boundary_state for ev in evidence_list
+    }
+    classification_boundary_state = _resolve_classification_boundary_states(
+        report, evidence_boundary_state
+    )
+    workspace_boundary_state = _resolve_workspace_boundary_state(evidence_boundary_state)
+    when = (generated_at or datetime.now().astimezone()).isoformat(timespec="seconds")
+
+    return {
+        "schema_version": GAP_REPORT_JSON_SCHEMA_VERSION,
+        "report_type": "gap",
+        "generated_at": when,
+        "baseline_id": baseline_id,
+        "frmr_version": frmr_version,
+        "workspace_boundary_state": workspace_boundary_state,
+        "ksi_classifications": [
+            {
+                "ksi_id": clf.ksi_id,
+                "status": clf.status,
+                "rationale": clf.rationale,
+                "evidence_ids": list(clf.evidence_ids),
+                "boundary_state": classification_boundary_state.get(
+                    clf.ksi_id, "boundary_undeclared"
+                ),
+            }
+            for clf in report.ksi_classifications
+        ],
+        "unmapped_findings": [
+            {
+                "evidence_id": uf.evidence_id,
+                "controls": list(uf.controls),
+                "note": uf.note,
+            }
+            for uf in report.unmapped_findings
+        ],
+        "claim_record_ids": list(report.claim_record_ids),
+    }
 
 
 def _resolve_classification_boundary_states(

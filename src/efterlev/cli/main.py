@@ -18,6 +18,7 @@ Implementation phases (see `docs/dual_horizon_plan.md` §2.3):
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -705,21 +706,36 @@ def agent_gap(
         for cid in report.claim_record_ids:
             typer.echo(f"  {cid}")
 
-    from efterlev.reports import render_gap_report_html
+    from efterlev.reports import render_gap_report_html, render_gap_report_json
+
+    reports_dir = root / ".efterlev" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    generated_at = datetime.now().astimezone()
 
     html_body = render_gap_report_html(
         report,
         baseline_id="fedramp-20x-moderate",
         frmr_version=frmr_doc.version,
         evidence=evidence,
+        generated_at=generated_at,
     )
-    reports_dir = root / ".efterlev" / "reports"
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     html_path = reports_dir / f"gap-{timestamp}.html"
     html_path.write_text(html_body, encoding="utf-8")
+
+    json_data = render_gap_report_json(
+        report,
+        baseline_id="fedramp-20x-moderate",
+        frmr_version=frmr_doc.version,
+        evidence=evidence,
+        generated_at=generated_at,
+    )
+    json_path = reports_dir / f"gap-{timestamp}.json"
+    json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
+
     typer.echo("")
     typer.echo(f"HTML report: {html_path}")
+    typer.echo(f"JSON sidecar: {json_path}")
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
