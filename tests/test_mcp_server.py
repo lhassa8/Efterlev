@@ -231,3 +231,133 @@ def test_init_idempotent_only_with_force(tmp_path: Path) -> None:
     # With force, a re-init succeeds.
     result = dispatch_tool("efterlev_init", {"target": str(tmp_path), "force": True})
     assert result["status"] == "initialized"
+
+
+# -- efterlev_doctor tool (Priority 3.1, 2026-04-28) ------------------------
+
+
+def test_doctor_tool_registered() -> None:
+    assert "efterlev_doctor" in TOOLS
+    schema = TOOLS["efterlev_doctor"].input_schema
+    assert "target" in schema["properties"]
+
+
+def test_doctor_returns_check_results(tmp_path: Path) -> None:
+    """Dispatching efterlev_doctor against a fresh dir returns warnings
+    (no .efterlev/, no FRMR cache, etc.) but exits cleanly."""
+    result = dispatch_tool("efterlev_doctor", {"target": str(tmp_path)})
+    assert "checks" in result
+    assert "summary" in result
+    assert "has_failures" in result
+    # Five canonical checks.
+    names = [c["name"] for c in result["checks"]]
+    assert names == [
+        "python_version",
+        "efterlev_dir",
+        "frmr_cache",
+        "anthropic_api_key",
+        "bedrock_credentials",
+    ]
+
+
+def test_doctor_after_init_passes_efterlev_dir_check(tmp_path: Path) -> None:
+    """Once `efterlev_init` has run, the efterlev_dir + frmr_cache checks
+    pass. Other checks may still warn (no API key); has_failures stays
+    False as long as no `fail` status appears."""
+    dispatch_tool("efterlev_init", {"target": str(tmp_path)})
+    result = dispatch_tool("efterlev_doctor", {"target": str(tmp_path)})
+    by_name = {c["name"]: c for c in result["checks"]}
+    assert by_name["efterlev_dir"]["status"] == "pass"
+    assert by_name["frmr_cache"]["status"] == "pass"
+    assert result["has_failures"] is False
+
+
+# -- efterlev_report_diff tool (Priority 2.10, 2026-04-28) ------------------
+
+
+def test_report_diff_tool_registered() -> None:
+    assert "efterlev_report_diff" in TOOLS
+    schema = TOOLS["efterlev_report_diff"].input_schema
+    assert "prior_path" in schema["properties"]
+    assert "current_path" in schema["properties"]
+
+
+def test_report_diff_computes_diff_between_two_sidecars(tmp_path: Path) -> None:
+    """Round-trip: write two on-disk gap-report sidecars, dispatch the
+    tool, verify the diff outcome."""
+    import json as _json
+
+    prior_data = {
+        "schema_version": "1.0",
+        "report_type": "gap",
+        "ksi_classifications": [{"ksi_id": "KSI-SVC-SNT", "status": "implemented"}],
+    }
+    current_data = {
+        "schema_version": "1.0",
+        "report_type": "gap",
+        "ksi_classifications": [
+            {"ksi_id": "KSI-SVC-SNT", "status": "partial"},  # regressed
+            {"ksi_id": "KSI-IAM-MFA", "status": "implemented"},  # added
+        ],
+    }
+    prior_p = tmp_path / "prior.json"
+    current_p = tmp_path / "current.json"
+    prior_p.write_text(_json.dumps(prior_data))
+    current_p.write_text(_json.dumps(current_data))
+
+    result = dispatch_tool(
+        "efterlev_report_diff",
+        {"prior_path": str(prior_p), "current_path": str(current_p)},
+    )
+    # The diff serializes via Pydantic model_dump — we get the same shape
+    # the GapDiff JSON sidecar emits.
+    assert "entries" in result
+    by_id = {e["ksi_id"]: e for e in result["entries"]}
+    assert by_id["KSI-SVC-SNT"]["outcome"] == "status_changed"
+    assert by_id["KSI-SVC-SNT"]["severity_movement"] == "regressed"
+    assert by_id["KSI-IAM-MFA"]["outcome"] == "added"
+
+
+def test_report_diff_rejects_missing_prior(tmp_path: Path) -> None:
+    """Missing prior file → clean EfterlevError (not a raw OSError)."""
+    current_p = tmp_path / "current.json"
+    current_p.write_text("{}")
+    with pytest.raises(EfterlevError, match="prior_path file not found"):
+        dispatch_tool(
+            "efterlev_report_diff",
+            {"prior_path": str(tmp_path / "missing.json"), "current_path": str(current_p)},
+        )
+
+
+def test_report_diff_rejects_invalid_json(tmp_path: Path) -> None:
+    prior_p = tmp_path / "prior.json"
+    current_p = tmp_path / "current.json"
+    prior_p.write_text("not valid json {")
+    current_p.write_text("{}")
+    with pytest.raises(EfterlevError, match="invalid JSON"):
+        dispatch_tool(
+            "efterlev_report_diff",
+            {"prior_path": str(prior_p), "current_path": str(current_p)},
+        )
+
+
+def test_report_diff_rejects_wrong_report_type(tmp_path: Path) -> None:
+    """Sidecar with `report_type=documentation` is rejected (the diff is
+    gap-report-shaped only)."""
+    import json as _json
+
+    prior_p = tmp_path / "prior.json"
+    current_p = tmp_path / "current.json"
+    prior_p.write_text(_json.dumps({"report_type": "documentation", "ksi_classifications": []}))
+    current_p.write_text(_json.dumps({"report_type": "gap", "ksi_classifications": []}))
+    with pytest.raises(EfterlevError, match="expected 'gap'"):
+        dispatch_tool(
+            "efterlev_report_diff",
+            {"prior_path": str(prior_p), "current_path": str(current_p)},
+        )
+
+
+def test_report_diff_rejects_missing_path_argument(tmp_path: Path) -> None:
+    """Missing required argument surfaces as a clean error."""
+    with pytest.raises(EfterlevError, match="prior_path` and `current_path"):
+        dispatch_tool("efterlev_report_diff", {"prior_path": str(tmp_path / "x.json")})

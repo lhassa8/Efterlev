@@ -160,6 +160,42 @@ TOOLS: dict[str, ToolDef] = {
         ),
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
+    "efterlev_doctor": ToolDef(
+        name="efterlev_doctor",
+        description=(
+            "Run pre-flight diagnostic checks on the target workspace: Python version, "
+            "`.efterlev/` initialization, FRMR cache freshness, ANTHROPIC_API_KEY shape, "
+            "and AWS Bedrock credentials. Returns one entry per check with status "
+            "(pass/warn/fail), a one-line detail, and a remediation hint when applicable. "
+            "No network calls — strictly local introspection."
+        ),
+        input_schema=_target_schema(),
+    ),
+    "efterlev_report_diff": ToolDef(
+        name="efterlev_report_diff",
+        description=(
+            "Compute the categorized diff between two prior gap-report JSON sidecars "
+            "(`gap-{ts}.json` produced by `efterlev_agent_gap` runs). Returns a structured "
+            "`GapDiff`: `added`, `removed`, `status_changed`, `unchanged` entry lists plus "
+            "`improved` / `regressed` subsets of `status_changed`. Pure function — no LLM "
+            "calls, no provenance writes."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "prior_path": {
+                    "type": "string",
+                    "description": "Absolute path to the prior gap-report JSON sidecar.",
+                },
+                "current_path": {
+                    "type": "string",
+                    "description": "Absolute path to the current gap-report JSON sidecar.",
+                },
+            },
+            "required": ["prior_path", "current_path"],
+            "additionalProperties": False,
+        },
+    ),
 }
 
 
@@ -195,6 +231,18 @@ def dispatch_tool(
 
     if name == "efterlev_list_primitives":
         return _tool_list_primitives()
+
+    if name == "efterlev_report_diff":
+        return _tool_report_diff(
+            prior_path=arguments.get("prior_path"),
+            current_path=arguments.get("current_path"),
+        )
+
+    if name == "efterlev_doctor":
+        target_raw_d = arguments.get("target")
+        if not isinstance(target_raw_d, str):
+            raise EfterlevError("tool 'efterlev_doctor' requires a `target` argument (string path)")
+        return _tool_doctor(Path(target_raw_d).resolve())
 
     # Every other tool takes a target path and operates on a
     # ProvenanceStore. We log the call into that store before dispatch
@@ -434,6 +482,69 @@ def _tool_agent_remediate(target: Path, ksi: str) -> dict[str, Any]:
         )
     )
     return proposal.model_dump(mode="json")
+
+
+def _tool_doctor(target: Path) -> dict[str, Any]:
+    """Run the doctor checks against `target` and return a structured result.
+
+    Mirrors the CLI's `efterlev doctor` output but as a JSON-serializable
+    dict for MCP consumers. No provenance write — doctor is read-only.
+    """
+    from efterlev.cli.doctor import has_failures, run_doctor_checks
+
+    checks = run_doctor_checks(target)
+    return {
+        "checks": [
+            {
+                "name": c.name,
+                "status": c.status,
+                "detail": c.detail,
+                "hint": c.hint,
+            }
+            for c in checks
+        ],
+        "has_failures": has_failures(checks),
+        "summary": {
+            "pass": sum(1 for c in checks if c.status == "pass"),
+            "warn": sum(1 for c in checks if c.status == "warn"),
+            "fail": sum(1 for c in checks if c.status == "fail"),
+        },
+    }
+
+
+def _tool_report_diff(
+    *,
+    prior_path: Any,
+    current_path: Any,
+) -> dict[str, Any]:
+    """Compute a GapDiff from two on-disk JSON sidecars and return its
+    serialized form. Pure function — no provenance write.
+    """
+    if not isinstance(prior_path, str) or not isinstance(current_path, str):
+        raise EfterlevError(
+            "tool 'efterlev_report_diff' requires `prior_path` and `current_path` (both strings)"
+        )
+    prior_p = Path(prior_path)
+    current_p = Path(current_path)
+    if not prior_p.is_file():
+        raise EfterlevError(f"prior_path file not found: {prior_p}")
+    if not current_p.is_file():
+        raise EfterlevError(f"current_path file not found: {current_p}")
+
+    try:
+        prior_data = json.loads(prior_p.read_text(encoding="utf-8"))
+        current_data = json.loads(current_p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise EfterlevError(f"invalid JSON in sidecar: {e}") from e
+
+    from efterlev.reports import compute_gap_diff
+
+    try:
+        diff = compute_gap_diff(prior_data, current_data)
+    except ValueError as e:
+        raise EfterlevError(str(e)) from e
+
+    return diff.model_dump(mode="json")
 
 
 def _tool_provenance_show(store: ProvenanceStore, record_id: str) -> dict[str, Any]:
