@@ -8,6 +8,7 @@
 2. Initialize a workspace in a sample Terraform repo.
 3. Run `efterlev scan` and see findings.
 4. (Optional) Run the Gap Agent for an LLM-classified report.
+5. (Optional) Use `efterlev report run` to chain everything into one command, with `--watch` for re-runs on file changes.
 
 What you won't need: an account, a credit card, a SaaS dashboard, or a procurement approval. Efterlev runs locally on your machine.
 
@@ -85,7 +86,7 @@ Initialized .efterlev/
 efterlev scan
 ```
 
-This runs 30 deterministic detectors against your Terraform. No LLM calls, no network — pure local rules over your `.tf` files.
+This runs 43 deterministic detectors against your Terraform (and `.github/workflows/` for CI/supply-chain KSIs). No LLM calls, no network — pure local rules over your source files.
 
 Expected output for the govnotes demo:
 
@@ -149,6 +150,40 @@ Cost: $1.24 (claude-opus-4-7 via anthropic-direct)
 
 Every claim carries a `DRAFT — requires human review` marker. The agent never claims authorization.
 
+## 5. (Optional) One command for the full pipeline
+
+Once you're past the first-run mental overhead, `efterlev report run` chains every stage into one invocation:
+
+```bash
+efterlev report run
+```
+
+This runs `init → scan → agent gap → agent document → poam` in sequence, with stage headers so you can see progress. Add `--watch` to keep running and re-execute the pipeline on file changes (debounced 2 seconds):
+
+```bash
+efterlev report run --watch
+```
+
+Edit a `.tf` file and save — the pipeline re-runs automatically. Ctrl-C exits.
+
+For comparing two scans (CI gating, drift detection):
+
+```bash
+efterlev report diff prior-gap-{ts}.json current-gap-{ts}.json
+```
+
+Exits with code 2 if any KSI regressed since `prior` — useful for blocking PRs in CI on posture regressions.
+
+## 6. (Optional) Troubleshoot configuration
+
+If something feels off — agent hangs, weird errors, missing files — run:
+
+```bash
+efterlev doctor
+```
+
+It checks Python version, `.efterlev/` initialization state, FRMR cache freshness, ANTHROPIC_API_KEY shape, and AWS Bedrock credentials. Each check has a one-line remediation hint.
+
 ## What's next
 
 - [Drafting attestations →](https://github.com/efterlev/efterlev/blob/main/docs/icp.md) — the Documentation Agent turns gap classifications into FRMR-compatible JSON.
@@ -160,10 +195,10 @@ Every claim carries a `DRAFT — requires human review` marker. The agent never 
 
 **`efterlev: command not found`** after `pipx install` — make sure `~/.local/bin` is on your PATH. `pipx ensurepath` adds it.
 
-**`anthropic completion failed: 401`** — your `ANTHROPIC_API_KEY` is invalid or unset. Re-export and try again.
+**`error: ANTHROPIC_API_KEY is missing or invalid`** — set `ANTHROPIC_API_KEY` to a real key from https://console.anthropic.com (or switch to the Bedrock backend in `.efterlev/config.toml`). Run `efterlev doctor` to verify.
 
 **Init fails with `baseline ... is not supported`** — v0.1.0 supports `fedramp-20x-moderate` only. Other baselines land as customer demand surfaces.
 
-**Scan finds zero evidence** — your detectors may not match your stack (we ship 30 AWS-Terraform detectors at v0.1.0; non-AWS stacks see less). [Check the detector reference](reference/detectors.md) for what's covered.
+**Scan finds zero evidence** — your detectors may not match your stack (we ship 43 detectors at v0.1.0 covering AWS Terraform + GitHub Actions workflows; non-AWS stacks see less coverage today). [Check the detector reference](reference/detectors.md) for what's covered.
 
 Anything else: [open an issue](https://github.com/efterlev/efterlev/issues/new/choose) — broken first-runs are bugs we want to hear about.

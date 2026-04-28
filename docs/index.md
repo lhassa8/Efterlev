@@ -12,7 +12,7 @@ Scans your Terraform for KSI-level evidence. Drafts FRMR-compatible validation d
 pipx install efterlev
 cd path/to/your-repo
 efterlev init --baseline fedramp-20x-moderate
-efterlev scan
+efterlev report run                          # init → scan → gap → document → poam, one command
 ```
 
 Pronounced "EF-ter-lev." From Swedish *efterlevnad* (compliance).
@@ -64,7 +64,7 @@ Efterlev is that tool.
 
 Three layers, each with a clear job.
 
-- **Detectors** — small deterministic Python rules that read Terraform and emit evidence. 30 ship at v0.1.0; the long-term plan is hundreds, contributed by the community.
+- **Detectors** — small deterministic Python rules that read Terraform (or `.github/workflows/`) and emit evidence. 43 ship at v0.1.0 covering 30 of 60 KSIs across 8 themes; the long-term plan is hundreds, contributed by the community.
 - **Primitives** — typed functions that wrap the things agents need to do: load a catalog, validate output, render a report. Stable interface layer.
 - **Agents** — reasoning loops that compose primitives. Three at v0.1.0: Gap (classify each KSI), Documentation (draft FRMR attestations), Remediation (propose code-level fixes).
 
