@@ -31,17 +31,23 @@ from efterlev.reports.gap_report import (
     render_gap_report_json,
 )
 from efterlev.reports.html import DRAFT_BANNER_HTML, RECORDS_STYLESHEET, render_base_document
-from efterlev.reports.remediation_report import render_remediation_proposal_html
+from efterlev.reports.remediation_report import (
+    REMEDIATION_REPORT_JSON_SCHEMA_VERSION,
+    render_remediation_proposal_html,
+    render_remediation_proposal_json,
+)
 
 __all__ = [
     "DOCUMENTATION_REPORT_JSON_SCHEMA_VERSION",
     "DRAFT_BANNER_HTML",
     "GAP_REPORT_JSON_SCHEMA_VERSION",
     "RECORDS_STYLESHEET",
+    "REMEDIATION_REPORT_JSON_SCHEMA_VERSION",
     "render_base_document",
     "render_documentation_report_html",
     "render_documentation_report_json",
     "render_gap_report_html",
     "render_gap_report_json",
     "render_remediation_proposal_html",
+    "render_remediation_proposal_json",
 ]

@@ -1109,18 +1109,31 @@ def agent_remediate(
         typer.echo("")
         typer.echo(f"record id: {proposal.claim_record_id}")
 
-    from efterlev.reports import render_remediation_proposal_html
+    from efterlev.reports import (
+        render_remediation_proposal_html,
+        render_remediation_proposal_json,
+    )
 
-    html_body = render_remediation_proposal_html(proposal, evidence=ksi_evidence)
     reports_dir = root / ".efterlev" / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    generated_at = datetime.now().astimezone()
+
+    html_body = render_remediation_proposal_html(
+        proposal, evidence=ksi_evidence, generated_at=generated_at
+    )
     # Include the KSI in the filename so running remediate for multiple KSIs
     # doesn't produce files that can only be distinguished by timestamp.
     html_path = reports_dir / f"remediation-{ksi}-{timestamp}.html"
     html_path.write_text(html_body, encoding="utf-8")
+
+    json_data = render_remediation_proposal_json(proposal, generated_at=generated_at)
+    json_path = reports_dir / f"remediation-{ksi}-{timestamp}.json"
+    json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
+
     typer.echo("")
     typer.echo(f"HTML report: {html_path}")
+    typer.echo(f"JSON sidecar: {json_path}")
 
     _write_scan_redaction_log(ledger, root, scan_id)
 

@@ -1,11 +1,15 @@
-"""HTML rendering for `RemediationProposal` artifacts.
+"""HTML + JSON rendering for `RemediationProposal` artifacts.
 
 Companion to `gap_report.py` and `documentation_report.py`. Single-KSI
 output: one card containing the proposed Terraform diff (or an empty-diff
 "procedural gap" note), the explanation, cited evidence + source files,
 and the claim record id for provenance walks.
 
-Layout:
+`render_remediation_proposal_html` returns a complete HTML document;
+`render_remediation_proposal_json` returns the same data as a
+JSON-serializable dict. The CLI writes both side-by-side.
+
+HTML layout:
   1. Header + KSI id + status pill (proposed / no_terraform_fix).
   2. "DRAFT — requires human review" banner. Diffs are Claims — the agent
      generated them, a human applies them. Efterlev never touches the repo.
@@ -17,17 +21,34 @@ Layout:
   5. Cited evidence IDs.
   6. Cited source files the diff touches.
   7. Claim record id for `provenance show`.
+
+JSON schema (v1):
+  {
+    "schema_version": "1.0",
+    "report_type": "remediation",
+    "generated_at": "<iso-8601>",
+    "ksi_id": "<str>",
+    "status": "<proposed|no_terraform_fix>",
+    "diff": "<str>",
+    "explanation": "<str>",
+    "cited_evidence_ids": ["<id>", ...],
+    "cited_source_files": ["<path>", ...],
+    "claim_record_id": "<id> | null"
+  }
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from jinja2 import Environment, select_autoescape
 
 from efterlev.agents import RemediationProposal
 from efterlev.models import Evidence
 from efterlev.reports.html import DRAFT_BANNER_HTML, render_base_document
+
+REMEDIATION_REPORT_JSON_SCHEMA_VERSION = "1.0"
 
 _BODY_TEMPLATE = """
 {{ draft_banner }}
@@ -189,3 +210,29 @@ def render_remediation_proposal_html(
         body_html=_REMEDIATION_CSS + body,
         generated_at=when,
     )
+
+
+def render_remediation_proposal_json(
+    proposal: RemediationProposal,
+    *,
+    generated_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Return the remediation proposal as a JSON-serializable dict.
+
+    Mirrors `render_remediation_proposal_html`'s data view. The diff
+    string is preserved verbatim (no escaping); downstream consumers
+    can write it to disk for `git apply` directly.
+    """
+    when = (generated_at or datetime.now().astimezone()).isoformat(timespec="seconds")
+    return {
+        "schema_version": REMEDIATION_REPORT_JSON_SCHEMA_VERSION,
+        "report_type": "remediation",
+        "generated_at": when,
+        "ksi_id": proposal.ksi_id,
+        "status": proposal.status,
+        "diff": proposal.diff,
+        "explanation": proposal.explanation,
+        "cited_evidence_ids": list(proposal.cited_evidence_ids),
+        "cited_source_files": list(proposal.cited_source_files),
+        "claim_record_id": proposal.claim_record_id,
+    }
