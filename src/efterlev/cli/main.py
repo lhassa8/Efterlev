@@ -209,6 +209,14 @@ def init(
         region=llm_region,
     )
 
+    # Priority 3.4 (2026-04-28): show the first-run wizard before init
+    # touches disk. Auto-skips on non-TTY (CI-safe) and when credentials
+    # are already configured. The wizard only prints; it never blocks
+    # init, so CI and scripted-init flows behave identically.
+    from efterlev.cli.first_run_wizard import maybe_show_first_run_intro
+
+    maybe_show_first_run_intro(llm_backend=llm_backend)
+
     try:
         result = init_workspace(
             target.resolve(),
