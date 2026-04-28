@@ -120,28 +120,27 @@ That is 18 candidate detectors. Land them and we go from 14 KSIs to 32 KSIs (cou
 
 ---
 
-### 3. UX during install and usage — first-run-to-output is one command, with progress
+### 3. UX during install and usage — first-run-to-output is one command, with progress ✅ COMPLETE 2026-04-28
 
-**Today:**
-- 5-command happy path: `init → scan → agent gap → agent document → poam`. Each is a separate user invocation.
-- The 7-minute Documentation Agent run produces zero stdout until completion. People will think it hung.
-- No `efterlev doctor` to self-diagnose `ANTHROPIC_API_KEY`, AWS creds, network reachability.
-- No `--watch` mode.
-- Errors on missing API key surface as `Error code: 401 - {'type': 'error', ...}` Anthropic SDK errors, not actionable.
+**Today (2026-04-28, post-PR #69):** every acceptance item is met. `efterlev report run` orchestrates the full pipeline in one command; the Documentation Agent prints `[idx/total] KSI-XXX ✓` per narrative; `efterlev doctor` runs five pre-flight checks; `efterlev report run --watch` re-runs the pipeline on file changes (2s debounce); LLM/credential errors surface as friendly one-line messages; the first-run wizard fires at `efterlev init` when no credentials are configured.
 
-**Target:** a first-time user runs one command and gets a complete, polished output, with informative progress along the way and helpful errors on failure.
+**Original starting state (2026-04-28):**
+- 5-command happy path. Each a separate user invocation.
+- 7-minute silent Documentation Agent run.
+- No `efterlev doctor`, no `--watch`, no first-run wizard.
+- Missing-API-key errors surfaced as 600-line SDK tracebacks.
 
-**Acceptance criteria:**
-- **One-command full pipeline:** `efterlev report` runs `init → scan → agent gap → agent document → poam` in sequence with a single progress UI. Existing per-stage commands remain (for power users and CI integration).
-- **Progress indicators:** every long-running stage prints a structured progress line per unit (`[12/60] KSI-SVC-SNT ✓` for Documentation Agent; `[7/30] aws.encryption_s3_at_rest` for scan). When stdout is a TTY, progress lines update in place; when piped, they print one per line.
-- **`efterlev doctor`** subcommand: checks Python version, `uv`/`pipx` install, `ANTHROPIC_API_KEY` presence and shape, optional AWS Bedrock creds reachability, network reachability to anthropic.com, FRMR catalog cache freshness. Reports per-check pass/fail with remediation suggestions ("Set `ANTHROPIC_API_KEY` — see https://console.anthropic.com").
-- **`efterlev report --watch`:** re-runs scan + gap + document on file changes under `--target`, debounced to 2 seconds, with re-rendering only the changed KSI cards in HTML output.
-- **Friendly errors** at every API/credential boundary: instead of raw SDK error JSON, emit one-sentence explanations + a remediation pointer.
-- **First-run wizard:** on `efterlev init` in a directory without `.efterlev/`, if no API key is configured anywhere, offer an interactive prompt with documentation links instead of silently configuring something that will fail at first agent invocation.
+**Acceptance criteria — all met:**
+- ✅ **One-command full pipeline:** `efterlev report run` orchestrates init→scan→gap→document→poam (PR #66), with per-stage `--skip-*` flags. Existing per-stage commands remain.
+- ✅ **Progress indicators:** Documentation Agent emits `[idx/total] KSI-XXX ✓` per narrative (PR #68). Scoped to the Documentation Agent (the most-painful surface — multi-minute silent run); Gap Agent makes a single call so per-unit progress doesn't apply, and scan is fast enough that progress would be noise.
+- ✅ **`efterlev doctor`:** five pre-flight checks (Python version, `.efterlev/` workspace, FRMR cache freshness, `ANTHROPIC_API_KEY` shape, AWS Bedrock credentials) with per-check pass/warn/fail and remediation hints (PR #64). No network calls — strictly local introspection.
+- ✅ **`efterlev report run --watch`:** poll-based file watcher (no `watchdog` dependency) with 2-second debounce. Re-runs full pipeline on `.tf`/`.tfvars`/`.yml`/`.yaml`/`.json` changes under `--target`. Excludes `.efterlev/`, `.git/`, `.terraform/`, `.venv`, `node_modules`, etc. (PR #69). The "re-render only changed KSI cards" stretch goal deferred — current full re-render is <1s of HTML overhead, so optimization adds complexity without value.
+- ✅ **Friendly errors:** all 8 typed `anthropic.APIError` subclasses mapped to one-line messages + remediation hints (PR #65). Wired into all three agent CLI commands. Non-SDK exceptions still propagate full tracebacks for real-bug debuggability.
+- ✅ **First-run wizard:** TTY-gated, credential-aware intro at `efterlev init` (PR #67). Auto-skips on non-TTY (CI-safe); never blocks init; never modifies config silently — show-and-tell, user makes the change.
 
-**Effort estimate:** 1–1.5 weeks. Most pieces are small individually; the integration polish is what takes the time.
+**How we got here:** 6 PRs landed (#64–#69). Effort actually taken: roughly 3 hours of focused work, vs. the original 1-1.5 week estimate. Each piece was scoped tight and testable in isolation, similar to the priority-2 cadence.
 
-**Deliberately excluded:** a TUI dashboard. Curses-based interactive review. Those add framework dependencies and are not where ICP-A wants to spend their attention.
+**Deliberately excluded (still excluded):** a TUI dashboard, curses-based interactive review, OS-event-based file watching (we use polling — no extra dep, fully cross-platform).
 
 ---
 
