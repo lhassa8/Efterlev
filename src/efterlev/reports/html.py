@@ -221,6 +221,44 @@ th { background: #f6f8fa; font-weight: 600; font-size: 13px; color: #4a4a4a; }
 tr:last-child td { border-bottom: none; }
 
 .footer { margin-top: 32px; font-size: 12px; color: #6a737d; text-align: center; }
+
+/* Print stylesheet (Priority 2.7, 2026-04-28). Hide interactive bits;
+   ensure cards flow cleanly on paper without splitting across pages.
+   The matrix and classification cards are the substance and stay. */
+@media print {
+  body {
+    background: #ffffff;
+    padding: 12px;
+    font-size: 11pt;
+    color: #000000;
+  }
+  .container { max-width: 100%; }
+  /* Interactive bits — no clicking on paper. */
+  .filter-bar { display: none !important; }
+  /* Drop background tints + shadows; the card border-left is the
+     visual anchor and survives well on paper. */
+  .record {
+    box-shadow: none;
+    background: #ffffff;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  table { box-shadow: none; }
+  /* Hyperlinks render as plain text on paper; the URL fragment in the
+     matrix anchors is meaningless without a browser. */
+  a.matrix-cell { color: inherit; text-decoration: none; }
+  a.matrix-cell:hover { transform: none; border-color: transparent; }
+  /* Out-of-boundary <details> render expanded on paper so reviewers
+     can see what was hidden in interactive viewing. */
+  details.out-of-boundary-collapsed > summary::before { content: ""; }
+  details.out-of-boundary-collapsed { background: #ffffff; }
+  details.out-of-boundary-collapsed > summary { padding: 0; }
+  details.out-of-boundary-collapsed > *:not(summary) { display: block !important; }
+  /* Don't split a status pill or KSI cell across pages. */
+  .status-pill, .matrix-cell, .ksi-id { page-break-inside: avoid; }
+  h1, h2, h3 { page-break-after: avoid; }
+  .footer { page-break-before: avoid; }
+}
 """
 
 DRAFT_BANNER_HTML = Markup(
