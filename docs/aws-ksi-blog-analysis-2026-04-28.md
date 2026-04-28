@@ -262,13 +262,14 @@ state are correct. What changes is messaging.
 
    > Efterlev's detector library evidences the **60 thematic KSIs** in FRMR
    > 0.9.43-beta — the catalog AWS's
-   > [FedRAMP 20x deep-dive blog (2026-04-27)](...) frames as 63 KSIs by
-   > additionally counting the 3 cross-cutting CSX KSIs (CSX-SUM, CSX-MAS,
-   > CSX-ORD). Those 3 CSX KSIs are procedural meta-requirements about *how*
-   > providers organize their KSI evidence; Efterlev's Documentation Agent
-   > attestation output, boundary-scoping primitives, and POA&M severity
-   > ordering directly satisfy CSX-SUM, CSX-MAS, and CSX-ORD respectively
-   > (see [docs/csx-mapping.md](csx-mapping.md)).
+   > [FedRAMP 20x deep-dive blog (2026-04-27)](https://aws.amazon.com/blogs/publicsector/deep-dive-into-fedramp-20x-key-security-indicators-decoding-the-63-ksis/)
+   > frames as 63 KSIs by additionally counting the 3 cross-cutting CSX KSIs
+   > (CSX-SUM, CSX-MAS, CSX-ORD). Those 3 CSX KSIs are procedural
+   > meta-requirements about *how* providers organize their KSI evidence;
+   > Efterlev's Documentation Agent attestation output, boundary-scoping
+   > primitives, and POA&M severity ordering directly satisfy CSX-SUM,
+   > CSX-MAS, and CSX-ORD respectively (see
+   > [`docs/csx-mapping.md`](https://github.com/efterlev/efterlev/blob/main/docs/csx-mapping.md)).
 
 2. **Add `docs/csx-mapping.md`.** A short doc that maps Efterlev's existing
    artifacts to the CSX KSIs — no new code, just documentation linking
