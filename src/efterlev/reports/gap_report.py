@@ -57,6 +57,76 @@ from efterlev.reports.html import DRAFT_BANNER_HTML, render_base_document
 
 GAP_REPORT_JSON_SCHEMA_VERSION = "1.0"
 
+# Filter-by-status pills + small vanilla-JS handler. No framework, no
+# external CDN, no analytics — Priority 2's "self-contained" + "no
+# framework" requirement. With JS disabled, the buttons render but
+# clicking does nothing and all cards/rows remain visible
+# (progressive enhancement: degrades to "all results visible, sorted
+# by KSI").
+_FILTER_CSS_JS = """
+<style>
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 12px 0 16px 0;
+    padding: 10px 12px;
+    background: #fbfcfd;
+    border: 1px solid #e3e8ef;
+    border-radius: 6px;
+  }
+  .filter-bar-label {
+    font-size: 12px;
+    color: #4a4a4a;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+  .filter-btn {
+    cursor: pointer;
+    border: 1px solid #d3d8e0;
+    background: #ffffff;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 12px;
+    color: #1a1a1a;
+    transition: background 0.04s ease, border-color 0.04s ease;
+  }
+  .filter-btn:hover { border-color: #0a2540; }
+  .filter-btn.active {
+    background: #0a2540;
+    border-color: #0a2540;
+    color: #ffffff;
+  }
+  .filter-hidden { display: none !important; }
+</style>
+<script>
+(function () {
+  var bar = document.querySelector('.filter-bar');
+  if (!bar) return;
+  var btns = bar.querySelectorAll('.filter-btn');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var status = btn.getAttribute('data-status');
+      btns.forEach(function (b) { b.classList.toggle('active', b === btn); });
+      var targets = document.querySelectorAll('[data-status]');
+      targets.forEach(function (el) {
+        if (el.classList.contains('filter-btn')) return;
+        if (status === 'all' || el.getAttribute('data-status') === status) {
+          el.classList.remove('filter-hidden');
+        } else {
+          el.classList.add('filter-hidden');
+        }
+      });
+    });
+  });
+})();
+</script>
+"""
+
 # Coverage-matrix CSS, prepended to the body fragment. Self-contained;
 # uses the existing .status-* color palette from the base stylesheet so
 # the matrix legend pills match the per-KSI status pills below.
@@ -210,7 +280,7 @@ _BODY_TEMPLATE = """
   </thead>
   <tbody>
   {% for clf in classifications %}
-    <tr>
+    <tr data-status="{{ clf.status }}">
       <td><span class="ksi-id">{{ clf.ksi_id }}</span></td>
       <td>
         <span class="status-pill status-{{ clf.status }}">
@@ -229,11 +299,25 @@ _BODY_TEMPLATE = """
   </tbody>
 </table>
 
+{% if classifications %}
 <h2>Classifications</h2>
+<div class="filter-bar" role="toolbar" aria-label="Filter classifications by status">
+  <span class="filter-bar-label">Show:</span>
+  <button class="filter-btn active" data-status="all">All</button>
+  <button class="filter-btn" data-status="implemented">Implemented</button>
+  <button class="filter-btn" data-status="partial">Partial</button>
+  <button class="filter-btn" data-status="not_implemented">Not implemented</button>
+  <button class="filter-btn"
+          data-status="evidence_layer_inapplicable">Evidence-layer inapplicable</button>
+  <button class="filter-btn" data-status="not_applicable">Not applicable</button>
+</div>
+{% endif %}
 {% for clf in classifications %}
 {% set bs = classification_boundary_state.get(clf.ksi_id, 'boundary_undeclared') %}
 {% if bs == "out_of_boundary" %}
-<details class="record claim out-of-boundary-collapsed" id="ksi-{{ clf.ksi_id }}">
+<details class="record claim out-of-boundary-collapsed"
+         id="ksi-{{ clf.ksi_id }}"
+         data-status="{{ clf.status }}">
   <summary>
     <span class="ksi-id">{{ clf.ksi_id }}</span>
     <span class="status-pill status-{{ clf.status }}">{{ clf.status | replace('_', ' ') }}</span>
@@ -254,7 +338,7 @@ _BODY_TEMPLATE = """
   {% endif %}
 </details>
 {% else %}
-<div class="record claim" id="ksi-{{ clf.ksi_id }}">
+<div class="record claim" id="ksi-{{ clf.ksi_id }}" data-status="{{ clf.status }}">
   <h3>
     <span class="ksi-id">{{ clf.ksi_id }}</span>
     <span class="status-pill status-{{ clf.status }}">{{ clf.status | replace('_', ' ') }}</span>
@@ -383,7 +467,7 @@ def render_gap_report_html(
             f"{len(report.ksi_classifications)} KSI classification(s), "
             f"{len(report.unmapped_findings)} unmapped finding(s)"
         ),
-        body_html=_COVERAGE_MATRIX_CSS + body,
+        body_html=_COVERAGE_MATRIX_CSS + _FILTER_CSS_JS + body,
         generated_at=when,
     )
 
