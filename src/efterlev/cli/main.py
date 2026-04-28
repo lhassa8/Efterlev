@@ -1654,63 +1654,109 @@ def report_run(
         "--skip-poam",
         help="Skip the POA&M generation stage.",
     ),
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        help=(
+            "After the initial run, watch --target for changes to .tf, "
+            ".tfvars, .yml, .yaml, .json files and re-run the pipeline "
+            "(debounced 2s). Ctrl-C exits."
+        ),
+    ),
 ) -> None:
     """Run the full pipeline: init → scan → agent gap → agent document → poam.
 
     Each stage runs in sequence; if any stage exits non-zero, the
     pipeline stops and propagates the exit code. Per-stage flags
     (--skip-init, --skip-document, --skip-poam) let you tailor the
-    pipeline to your situation:
-
-      - First-time scan in a fresh repo:  efterlev report run
-      - Re-running on initialized repo:   efterlev report run --skip-init
-      - Iterating on detectors only:      efterlev report run --skip-document --skip-poam
+    pipeline to your situation. Add --watch to stay running and
+    re-execute the pipeline on file changes (debounced 2s).
     """
-    target_str = str(target.resolve())
+    target_resolved = target.resolve()
 
-    # If `.efterlev/` already exists, skip init by default to avoid the
-    # "directory exists" error that init raises without --force.
-    efterlev_dir_exists = (target.resolve() / ".efterlev").is_dir()
-    skip_init_effective = skip_init or efterlev_dir_exists
+    def run_once() -> None:
+        target_str = str(target_resolved)
 
-    stages: list[tuple[str, list[str]]] = []
-    if not skip_init_effective:
-        stages.append(("init", ["init", "--target", target_str]))
-    stages.append(("scan", ["scan", "--target", target_str]))
-    stages.append(("agent gap", ["agent", "gap", "--target", target_str]))
-    if not skip_document:
-        stages.append(("agent document", ["agent", "document", "--target", target_str]))
-    if not skip_poam:
-        stages.append(("poam", ["poam", "--target", target_str]))
+        # If `.efterlev/` already exists, skip init by default to avoid the
+        # "directory exists" error that init raises without --force.
+        efterlev_dir_exists = (target_resolved / ".efterlev").is_dir()
+        skip_init_effective = skip_init or efterlev_dir_exists
 
-    typer.echo(f"Pipeline: {' → '.join(name for name, _ in stages)}")
-    typer.echo("")
+        stages: list[tuple[str, list[str]]] = []
+        if not skip_init_effective:
+            stages.append(("init", ["init", "--target", target_str]))
+        stages.append(("scan", ["scan", "--target", target_str]))
+        stages.append(("agent gap", ["agent", "gap", "--target", target_str]))
+        if not skip_document:
+            stages.append(("agent document", ["agent", "document", "--target", target_str]))
+        if not skip_poam:
+            stages.append(("poam", ["poam", "--target", target_str]))
 
-    for stage_idx, (name, args) in enumerate(stages, start=1):
+        typer.echo(f"Pipeline: {' → '.join(name for name, _ in stages)}")
         typer.echo("")
-        typer.echo(f"━━━ [{stage_idx}/{len(stages)}] {name} ━━━")
+
+        for stage_idx, (name, args) in enumerate(stages, start=1):
+            typer.echo("")
+            typer.echo(f"━━━ [{stage_idx}/{len(stages)}] {name} ━━━")
+            typer.echo("")
+            try:
+                app(args, standalone_mode=False)
+            except typer.Exit as e:
+                if e.exit_code and e.exit_code != 0:
+                    typer.echo(
+                        f"\nerror: pipeline stopped — `{name}` exited with code {e.exit_code}",
+                        err=True,
+                    )
+                    raise
+            except SystemExit as e:
+                # standalone_mode=False should suppress these, but be defensive.
+                code = e.code if isinstance(e.code, int) else 1
+                if code != 0:
+                    typer.echo(
+                        f"\nerror: pipeline stopped — `{name}` raised SystemExit({code})",
+                        err=True,
+                    )
+                    raise typer.Exit(code=code) from e
+
+        typer.echo("")
+        typer.echo("✓ Pipeline complete.")
+
+    # First run: always.
+    try:
+        run_once()
+    except typer.Exit:
+        if not watch:
+            raise
+        # In watch mode, the initial pipeline failure shouldn't kill the
+        # watcher — the user can fix the issue and re-trigger by saving.
+        typer.echo("(initial run failed; continuing to watch — fix and save to retry)", err=True)
+
+    if not watch:
+        return
+
+    # --watch: stay running, re-execute on file change.
+    from efterlev.cli.watch import watch_loop
+
+    typer.echo("")
+    typer.echo(f"Watching {target_resolved} for changes (Ctrl-C to exit)...", err=True)
+
+    def on_change() -> None:
+        typer.echo("", err=True)
+        typer.echo("━━━ change detected — re-running pipeline ━━━", err=True)
         typer.echo("")
         try:
-            app(args, standalone_mode=False)
+            run_once()
         except typer.Exit as e:
-            if e.exit_code and e.exit_code != 0:
-                typer.echo(
-                    f"\nerror: pipeline stopped — `{name}` exited with code {e.exit_code}",
-                    err=True,
-                )
-                raise
-        except SystemExit as e:
-            # standalone_mode=False should suppress these, but be defensive.
-            code = e.code if isinstance(e.code, int) else 1
-            if code != 0:
-                typer.echo(
-                    f"\nerror: pipeline stopped — `{name}` raised SystemExit({code})",
-                    err=True,
-                )
-                raise typer.Exit(code=code) from e
+            typer.echo(
+                f"(re-run failed with exit {e.exit_code}; fix and save to retry)",
+                err=True,
+            )
 
-    typer.echo("")
-    typer.echo("✓ Pipeline complete.")
+    try:
+        watch_loop(target_resolved, on_change=on_change)
+    except KeyboardInterrupt:
+        typer.echo("", err=True)
+        typer.echo("Watch mode exited.", err=True)
 
 
 @report_app.command("diff")
