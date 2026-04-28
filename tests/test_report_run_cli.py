@@ -187,7 +187,9 @@ def test_report_run_in_help() -> None:
 
 
 def test_report_run_help_documents_skip_flags() -> None:
-    result = runner.invoke(app, ["report", "run", "--help"])
+    # Force a wide terminal so click/typer doesn't wrap the long flag names
+    # mid-token (CI runners default to narrow widths).
+    result = runner.invoke(app, ["report", "run", "--help"], env={"COLUMNS": "200"})
     assert result.exit_code == 0
     assert "--skip-init" in result.output
     assert "--skip-document" in result.output
