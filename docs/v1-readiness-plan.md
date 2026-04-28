@@ -55,9 +55,13 @@ Every priority below ladders up to one or more of those four.
 
 ---
 
-### 1. Detector breadth to ≥30 KSI coverage at the repo-evidenceable layer
+### 1. Detector breadth to ≥30 KSI coverage at the repo-evidenceable layer ✅ FLOOR REACHED 2026-04-27
 
-**Today:** 14 of 60 KSIs evidenced; 5 of 11 themes covered (CNA, IAM, MLA, RPL, SVC). 8 of 30 detectors carry `ksis=[]` and contribute to no KSI roll-up. That is the "interesting and potentially helpful" state.
+**Today (2026-04-27, post-PR #51):** **30 of 60 KSIs** evidenced; **8 of 11 themes** covered (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). 7 of 43 detectors carry `ksis=[]` (the 7 supplementary 800-53-only detectors after Priority 6's honesty-pass rehoming). The remaining 3 themes (AFR, CED, INR) are entirely procedural/governance and require Evidence Manifests rather than detector evidence.
+
+**Original starting state (2026-04-27):** 14 of 60 KSIs evidenced; 5 of 11 themes covered. 8 of 30 detectors carried `ksis=[]`.
+
+**How we got here:** 11 priority-1.x PRs landed (1.2 → 1.16) — 13 fresh detectors + 3 cross-maps. See PR #51's body for the full table.
 
 **Target:** 30+ of 60 KSIs evidenced; ≥8 of 11 themes covered. The IaC-evidenceable detectors we do not have but could (non-exhaustive):
 - **CNA** (4 missing): DFP (defining functionality and privileges), IBP (best practices), OFA (optimizing for availability), ULN (using logical networking).
@@ -70,18 +74,20 @@ Every priority below ladders up to one or more of those four.
 
 That is 18 candidate detectors. Land them and we go from 14 KSIs to 32 KSIs (counting some that share themes) and from 5 themes to 8 themes. A handful of the candidates above are speculative and may not work cleanly; the floor target is **30 KSIs across 8 themes**.
 
-**Acceptance criteria:**
-- `efterlev detectors list` reports ≥30 KSIs evidenced across ≥8 themes.
-- Every new detector follows the existing contract (detector.py + mapping.yaml + evidence.yaml + fixtures/ + README.md).
-- Every new detector has unit tests (decorator round-trip + plan-JSON equivalence).
-- README's "what we cover" claim updates honestly to match the new number.
-- Dogfood (`scripts/dogfood-real-codebases.sh`) targets bumped to reflect new detectors firing.
+**Acceptance criteria — all met as of PR #51 (2026-04-27):**
+- ✅ `efterlev detectors list` reports ≥30 KSIs evidenced across ≥8 themes (30 / 8).
+- ✅ Every new detector follows the existing contract (detector.py + mapping.yaml + evidence.yaml + fixtures/ + README.md).
+- ✅ Every new detector has unit tests (decorator round-trip + per-fixture).
+- ✅ README's "what we cover" claim updates honestly to match the new number.
+- ✅ Dogfood (`scripts/dogfood-real-codebases.sh`) `EXPECTED_DETECTOR_COUNT` updated each PR (currently 43).
 
-**Effort estimate:** 4–8 weeks of focused detector work. Each detector is ~1–2 days end-to-end (decoder + mapping + fixtures + tests + readme). Slowest part is per-KSI semantic clarity for the new repo-meta detectors (CMT, SCR, PIY) — those are new categories without prior art in the codebase.
+**Effort actually taken:** approximately 1 day of focused detector work (the original 4-8 week estimate assumed sequential, individual-PR cadence). The 11 PRs landed in a single day's working session because the detector contract is small and well-shaped.
 
-**Deliberately included:** the un-attempted CMT/SCR/PIY repo-meta detectors. The current state pretends those KSI themes are entirely "procedural and not evidenceable from IaC alone." That is true for some KSIs in those themes but **not all** — repo metadata (workflows, branch protection, dependabot config, SBOM-generation config, terraform state) IS infrastructure-as-code in the broad sense. Treating CMT/SCR/PIY as "Evidence Manifests only" is a real gap that putting customer work on the customer.
+**Original deliberately-included (now done):** the un-attempted CMT/SCR/PIY repo-meta detectors landed cleanly: github.ci_validation_gates (CMT-VTD), github.supply_chain_monitoring (SCR-MON), github.action_pinning (SCR-MIT), github.immutable_deploy_patterns (CMT-RMV), aws.terraform_inventory (PIY-GIV). Repo metadata IS infrastructure-as-code in the broad sense; the original concern that these themes were "procedural-only" turned out to be wrong.
 
-**Deliberately excluded:** the 8 `ksis=[]` detectors are not counted toward this number until they get rehomed (priority 6 below).
+**Deliberately excluded (still excluded):** the 7 `ksis=[]` detectors remain supplementary 800-53-only contributions; the SC-28 cluster is upstream-FRMR-blocked per Priority 6's honesty pass.
+
+**What's beyond the floor:** opportunities to push past 30 KSIs exist (e.g., MLA-ALA via log-bucket policies; CNA-OFA via availability-zone diversity). These are deferred unless customer feedback flags a specific gap.
 
 ---
 
