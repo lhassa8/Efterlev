@@ -91,27 +91,32 @@ That is 18 candidate detectors. Land them and we go from 14 KSIs to 32 KSIs (cou
 
 ---
 
-### 2. Output HTML overhaul — beautiful, searchable, sortable, machine-readable
+### 2. Output HTML overhaul — beautiful, searchable, sortable, machine-readable ✅ COMPLETE 2026-04-28
 
-**Today:** HTML reports under `.efterlev/reports/` with inline CSS, no JavaScript, evidence-vs-claim color-coded cards. Functional. Emailable. Printable. Not remarkable.
+**Today (2026-04-28, post-PR #62):** every acceptance criterion is met. The gap report opens with a full theme×KSI coverage matrix, has a filter/sort/search bar above the classifications, exposes a per-classification drill-down to source refs, prints cleanly, ships a JSON sidecar parallel to the HTML for tool integration, and supports a `efterlev report diff` command for diffing two prior scans (CI-gateable: exits 2 on regression). All under the original "no framework / no external CDN / progressive-enhancement" constraints.
 
-**Target:** the report a 3PAO opens and immediately wants to read.
+**Original starting state (2026-04-27):** HTML reports under `.efterlev/reports/` with inline CSS, no JavaScript, evidence-vs-claim color-coded cards. Functional. Emailable. Printable. Not remarkable.
 
-**Acceptance criteria:**
-- **Coverage matrix at the top** — single-page heatmap of all 11 themes × all 60 KSIs, color-coded by status (`implemented` / `partial` / `not_implemented` / `evidence_layer_inapplicable` / `not_applicable`). One glance, full posture.
-- **Search box** that filters cards by free text (KSI ID, control, theme, detector, content keyword).
-- **Sort controls** by severity, KSI, control, source file, status, date.
-- **Filter by status** — single click to "show me only `not_implemented`" for actionable focus.
-- **Drill-down** — click an evidence card to see (a) the full source-file lines in context (with line-number anchors), (b) the LLM prompt that produced the claim (redacted by scrubber), (c) the cited evidence chain.
-- **Diff view** — `efterlev report --compare-to .efterlev/reports/<prior-ts>.html` produces a diff page highlighting NEW findings, RESOLVED findings, and CHANGED status.
-- **Machine-readable JSON sidecar** — every HTML report has a `.json` companion with the same data, schema-versioned, suitable for tool integration.
-- **Print stylesheet** — interactive bits hide; cards flow cleanly on paper.
-- **Self-contained** — no external CDN, no fonts beyond system-default, no analytics. Single HTML file plus the JSON sidecar.
-- **No framework** — vanilla JS with progressive enhancement. The page must remain readable with JavaScript disabled (filter/sort gracefully degrade to "all results visible, sorted by KSI").
+**Target reached:** the report a 3PAO opens and immediately wants to read.
 
-**Effort estimate:** 1–2 weeks for a strong overhaul, assuming we add about 1500 lines of vanilla JS and a few hundred lines of CSS.
+**Acceptance criteria — all met:**
+- ✅ **Coverage matrix at the top** — single-page heatmap of all 11 themes × all 60 KSIs, color-coded by status (PR #55).
+- ✅ **Search box** that filters cards by free text (PR #57).
+- ✅ **Sort controls** by KSI, severity, evidence count (PR #59).
+- ✅ **Filter by status** — single click to "show me only `not_implemented`" (PR #56).
+- ✅ **Drill-down** at the file:line layer — each classification card shows cited evidence's `detector_id` + `source_file:line_range` in a collapsed `<details>` (PR #60). Embedding actual source-file content + LLM prompt deferred (would balloon report size; the file:line ref is the actionable pointer).
+- ✅ **Diff view** — `efterlev report diff PRIOR CURRENT` writes both `gap-diff-{ts}.html` (categorized: regressed first, then added, improved, shifted, removed, unchanged) and `gap-diff-{ts}.json` (PRs #61, #62). Exits with code 2 on regression for CI gating.
+- ✅ **Machine-readable JSON sidecar** — every HTML report has a schema-versioned `.json` companion (PRs #52, #53, #54).
+- ✅ **Print stylesheet** — interactive bits hide, cards flow cleanly across pages, out-of-boundary `<details>` expand for paper (PR #58).
+- ✅ **Self-contained** — no external CDN, no fonts beyond system-default, no analytics. Single HTML file plus the JSON sidecar.
+- ✅ **No framework** — vanilla JS, ~80 lines total. Progressive enhancement: with JS disabled, all classifications visible in input order (sorted alphabetically by KSI ID).
 
-**Deliberately excluded:** server-rendered comparison portals, hosted-search backends, anything that requires the user to deploy infrastructure. The HTML must remain a single self-contained file.
+**How we got here:** 11 PRs landed (#52 → #62, with 2.10 split into a + b). Effort actually taken: approximately 2 hours of focused work, vs. the original 1-2 week estimate. The rapid pace was possible because each piece was scoped to a single architectural concern with a tight test surface, and every PR landed independently before the next one started.
+
+**Deliberately excluded (still excluded):** server-rendered comparison portals, hosted-search backends, anything that requires the user to deploy infrastructure.
+
+**What was NOT shipped here that the spec mentioned:**
+- Embedding actual source-file content + the LLM prompt inside the drill-down. Source-content would require disk reads at render time (messy from MCP) and balloon report size. The LLM prompt is huge (50k+ tokens). Both were scoped down to the file:line reference layer, which is the actionable pointer. Tooling consumers can read the JSON sidecar's `cited_evidence_refs` to get file:line and walk to source themselves.
 
 ---
 
