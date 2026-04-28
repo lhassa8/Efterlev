@@ -52,13 +52,13 @@ def test_detectors_list_lists_all_thirty_detectors(tmp_path: pytest.TempPathFact
     """
     result = runner.invoke(app, ["detectors", "list"])
     assert result.exit_code == 0
-    # 42 detectors per the A4 + Priority 1.x catalog (see tests/test_smoke.py:
+    # 43 detectors per the A4 + Priority 1.x catalog (see tests/test_smoke.py:
     # test_every_detector_folder_registers).
-    assert "total: 42 detectors" in result.output
+    assert "total: 43 detectors" in result.output
     # Priority 6 honesty pass (2026-04-27): summary breaks down KSI-mapped
     # vs supplementary 800-53-only detectors so a reader knows the marketed
     # count isn't all KSI contributions.
-    assert "35 KSI-mapped" in result.output
+    assert "36 KSI-mapped" in result.output
     assert "7 800-53 only" in result.output
     # Spot-check a couple of detector ids appear.
     assert "aws.encryption_s3_at_rest" in result.output

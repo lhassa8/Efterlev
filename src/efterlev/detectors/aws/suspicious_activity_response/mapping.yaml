@@ -1,0 +1,31 @@
+detector_id: aws.suspicious_activity_response
+
+ksis:
+  - id: KSI-IAM-SUS
+    coverage: partial
+    notes: >
+      Responding to Suspicious Activity. KSI-IAM-SUS asks for automated
+      response to suspicious activity at privileged accounts. The
+      EventBridge-rule-firing-on-findings + target pattern is the
+      canonical AWS-recommended IaC expression of this; detector
+      evidences architectural presence, not runtime correctness of the
+      target's response logic.
+
+controls:
+  - id: AC-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Account Management — framing layer. The EventBridge rule asserts
+      the customer is wiring account-management response to security
+      findings.
+  - id: AC-2(13)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Disable Accounts for High-Risk Individuals. The canonical AWS
+      mechanism for this is an EventBridge rule on GuardDuty / Security
+      Hub findings invoking a Lambda or SSM Automation that disables
+      the offending IAM principal. Detector evidences the architectural
+      pattern is wired; whether the target Lambda actually disables
+      vs. merely logs is a runtime concern outside IaC.

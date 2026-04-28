@@ -1,0 +1,53 @@
+detector_id: aws.suspicious_activity_response
+
+# Evidence content shape this detector emits. One Evidence per
+# finding-sourced `aws_cloudwatch_event_rule` resource. Rules whose
+# event_pattern doesn't match a known security-finding source produce
+# no evidence (the detector is anchored on the architectural pattern,
+# not on every EventBridge rule in the boundary).
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_cloudwatch_event_rule"]
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name (the second label after the type).
+
+  response_state:
+    type: enum
+    values: ["wired", "no_target"]
+    notes: |
+      `wired` — rule has at least one `aws_cloudwatch_event_target`
+      attached. Evidences AC-2 + AC-2(13) at the architectural layer.
+
+      `no_target` — rule fires on findings but has no target. The
+      finding goes nowhere; gap field populated.
+
+  matched_sources:
+    type: list[string]
+    notes: >
+      Sorted list of finding sources the rule's `event_pattern` matched
+      (subset of `aws.guardduty`, `aws.securityhub`, `aws.access-analyzer`,
+      `aws.inspector2`, `aws.macie2`).
+
+  target_count:
+    type: int
+    notes: >
+      Count of `aws_cloudwatch_event_target` resources whose `rule`
+      argument references this rule by name.
+
+  target_summary:
+    type: list[string]
+    notes: >
+      Per-target classification by ARN prefix
+      (`lambda`, `sns`, `sqs`, `states`, `ssm-automation`, `other`).
+      Carried for the Gap Agent's reasoning about whether the target
+      type is appropriate for an account-disable response.
+
+  gap:
+    type: string | absent
+    notes: |
+      Present when `response_state = "no_target"`. Names the matched
+      sources and the missing-target shortcoming so the Remediation
+      Agent can propose a Lambda or SSM-Automation target.

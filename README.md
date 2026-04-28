@@ -396,13 +396,13 @@ All self-contained under `src/efterlev/detectors/aws/<capability>/` with detecto
 fixtures/ (including .plan.json equivalence fixtures), and README.md. Each detector's README names what it proves
 and what it does not.
 
-**Detector breakdown — 42 total = 35 KSI-mapped + 7 supplementary 800-53-only.**
-- **35 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **28 of 60 KSIs** at
+**Detector breakdown — 43 total = 36 KSI-mapped + 7 supplementary 800-53-only.**
+- **36 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **29 of 60 KSIs** at
   the infrastructure layer, spanning **8 of 11 themes** (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). The remaining
   three themes (AFR, CED, INR) are entirely procedural/governance and require Evidence Manifests rather than
   detector evidence. See Priority 1 of `docs/v1-readiness-plan.md` for the planned breadth expansion to
   ≥30 KSIs.
-- Detector sources: **38 from `terraform`** (read `.tf` files or `terraform show -json` output) +
+- Detector sources: **39 from `terraform`** (read `.tf` files or `terraform show -json` output) +
   **4 from `github-workflows`** (read `.github/workflows/*.yml` for CI/CD, supply-chain-monitoring,
   and supply-chain-mitigation KSIs that have no IaC analog).
 - **7 supplementary 800-53-only detectors** carry `ksis=[]` because their underlying control (SC-28 for
@@ -475,7 +475,7 @@ Designed to not break once the repo flips public (per the 2026-04-23 open-source
 
 ### Tests
 
-762 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 159 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
+770 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 161 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
 
 ### What's NOT in scope right now (per v1 lock)
 
