@@ -407,6 +407,19 @@ evidence.yaml, fixtures/, and README.md.
   specifically is the largest gap (5 of the 7 detectors) and is being raised upstream to the FRMR project.
   See "Note on SC-28" below for the full rationale.
 
+> **A note on KSI accounting (60 vs 63).** Efterlev's detector library evidences the **60 thematic KSIs** in
+> FRMR 0.9.43-beta — the catalog AWS's 2026-04-27 [FedRAMP 20x deep-dive blog](https://aws.amazon.com/blogs/publicsector/deep-dive-into-fedramp-20x-key-security-indicators-decoding-the-63-ksis/)
+> frames in its title as 63 (a 12-theme accounting) by additionally counting the 3 cross-cutting **CSX** KSIs
+> (`KSI-CSX-SUM`, `KSI-CSX-MAS`, `KSI-CSX-ORD`). Both accountings are defensible against the same catalog data —
+> the CSX KSIs live in the FRMR catalog's `FRR.KSI.data.20x.CSX` section as procedural meta-requirements about
+> *how* providers organize their KSI evidence, distinct from the 60 thematic KSIs Efterlev classifies against.
+> Efterlev's existing artifacts directly satisfy the three CSX KSIs without new code:
+> the Documentation Agent's `documentation-{ts}.json` IS a CSX-SUM-shaped attestation summary;
+> `efterlev boundary set` declares the FedRAMP Minimum Assessment Scope per CSX-MAS;
+> POA&M severity-ordering + the gap report's status-filter pills implement CSX-ORD.
+> See [docs/csx-mapping.md](./docs/csx-mapping.md) for the full mapping and
+> [docs/aws-ksi-blog-analysis-2026-04-28.md](./docs/aws-ksi-blog-analysis-2026-04-28.md) for the analysis.
+
 **Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit per-run-nonced-fence rules and cite-by-fenced-id discipline (see Phase 2 post-review fixup F below).
 
 **Provenance.** SQLite index + content-addressed blob store + append-only JSONL receipt log under `.efterlev/`. Every record (Evidence, Claim, ProvenanceRecord) is content-addressed by SHA-256. `efterlev provenance show <record_id>` walks the chain.

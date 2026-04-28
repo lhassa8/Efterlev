@@ -37,7 +37,7 @@ They have:
 
 They need to produce:
 
-- A gap analysis against FedRAMP 20x Moderate, organized around the 60 Key Security Indicators (KSIs) — which is the surface a 20x pilot participant is actually evaluated against, backed by the underlying 800-53 Rev 5 controls that each KSI references
+- A gap analysis against FedRAMP 20x Moderate, organized around the 60 Key Security Indicators (KSIs) — which is the surface a 20x pilot participant is actually evaluated against, backed by the underlying 800-53 Rev 5 controls that each KSI references. (AWS's [2026-04-27 FedRAMP 20x deep-dive blog](https://aws.amazon.com/blogs/publicsector/deep-dive-into-fedramp-20x-key-security-indicators-decoding-the-63-ksis/) frames the same catalog as 63 KSIs by additionally counting the 3 cross-cutting CSX KSIs; both accountings are defensible. Efterlev's [CSX mapping doc](./csx-mapping.md) shows how the existing pipeline satisfies the CSX KSIs without new detector code.)
 - FRMR-compatible validation data for each KSI (attestations grounded in measurable evidence)
 - A POA&M for known gaps
 - Evidence packages for each KSI

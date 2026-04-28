@@ -78,6 +78,21 @@ Three layers, each with a clear job.
 - **Open source:** Apache 2.0. Pure OSS — no commercial tier, no paid layer, no managed SaaS, ever. [Why](https://github.com/efterlev/efterlev/blob/main/DECISIONS.md).
 - **Governance:** BDFL today, technical steering committee at 10 sustained contributors. [Details](https://github.com/efterlev/efterlev/blob/main/GOVERNANCE.md).
 
+## External context — what AWS recommends
+
+For AWS-native CSPs, AWS published two FedRAMP 20x guidance pieces:
+
+- [Prepare for FedRAMP 20x with AWS automation and validation (2026-02-18)](https://aws.amazon.com/blogs/publicsector/prepare-for-fedramp-20x-with-aws-automation-and-validation/) — the primer.
+- [Deep dive into FedRAMP 20x KSIs: Decoding the 63 KSIs (2026-04-27)](https://aws.amazon.com/blogs/publicsector/deep-dive-into-fedramp-20x-key-security-indicators-decoding-the-63-ksis/) — the per-KSI mapping to AWS-native services (Config, Security Hub, CloudTrail, Inspector, KMS, etc.).
+
+Efterlev's positioning relative to the AWS-native pattern is **complementary**:
+AWS Config / Security Hub evaluate *runtime* state on a 3-day cadence; Efterlev evaluates
+*pre-deploy* IaC during the dev loop. Customers pursuing FedRAMP need both. The AWS posts
+also frame the FRMR catalog as 63 KSIs (counting 3 cross-cutting CSX KSIs); Efterlev counts
+the same catalog as 60 thematic KSIs. See
+[csx-mapping.md](https://github.com/efterlev/efterlev/blob/main/docs/csx-mapping.md) for
+how Efterlev's existing artifacts already satisfy the CSX KSIs.
+
 ---
 
 *Efterlev is built for the VP Eng or DevSecOps lead whose CEO just said "we need FedRAMP" and who needs to know, by Monday, where they actually stand.*

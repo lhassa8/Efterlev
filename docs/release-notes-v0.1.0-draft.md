@@ -17,9 +17,13 @@ for SaaS companies pursuing FedRAMP 20x Moderate. It reads your Terraform
 Indicators it can see, and lets you drive a Claude-backed Gap, Documentation,
 and Remediation Agent over that evidence — all without sending your code to a
 SaaS, an account, or a procurement cycle. The detector library covers **30 of
-60 KSIs across 8 of 11 themes**, with **43 deterministic detectors** producing
-content-addressed Evidence that the agents reason over and that 3PAOs can
-verify. Pure OSS under Apache-2.0; no commercial tier, no managed SaaS, ever.
+60 thematic KSIs across 8 of 11 themes**, with **43 deterministic detectors**
+producing content-addressed Evidence that the agents reason over and that 3PAOs
+can verify. The 3 cross-cutting CSX KSIs (which AWS counts to arrive at the
+"63 KSIs" framing in their [2026-04-27 deep-dive blog](https://aws.amazon.com/blogs/publicsector/deep-dive-into-fedramp-20x-key-security-indicators-decoding-the-63-ksis/))
+are satisfied by Efterlev's existing pipeline outputs — see
+[docs/csx-mapping.md](https://github.com/efterlev/efterlev/blob/main/docs/csx-mapping.md).
+Pure OSS under Apache-2.0; no commercial tier, no managed SaaS, ever.
 
 ## Highlights
 
