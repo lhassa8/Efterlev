@@ -101,13 +101,41 @@ _FILTER_CSS_JS = """
     border-color: #0a2540;
     color: #ffffff;
   }
-  .filter-hidden { display: none !important; }
+  .search-input {
+    flex: 1 1 240px;
+    min-width: 200px;
+    margin-left: auto;
+    padding: 5px 10px;
+    font-size: 13px;
+    border: 1px solid #d3d8e0;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #1a1a1a;
+  }
+  .search-input:focus {
+    outline: none;
+    border-color: #0a2540;
+    box-shadow: 0 0 0 2px rgba(10, 37, 64, 0.12);
+  }
+  .search-count {
+    font-size: 12px;
+    color: #4a4a4a;
+    font-variant-numeric: tabular-nums;
+    min-width: 60px;
+    text-align: right;
+  }
+  /* Filter and search hide independently — both apply display:none.
+     Either condition hides the element. */
+  .filter-hidden, .search-hidden { display: none !important; }
 </style>
 <script>
 (function () {
   var bar = document.querySelector('.filter-bar');
   if (!bar) return;
   var btns = bar.querySelectorAll('.filter-btn');
+  var searchInput = bar.querySelector('#card-search');
+  var searchCount = bar.querySelector('#search-count');
+
   btns.forEach(function (btn) {
     btn.addEventListener('click', function () {
       var status = btn.getAttribute('data-status');
@@ -123,6 +151,36 @@ _FILTER_CSS_JS = """
       });
     });
   });
+
+  if (searchInput) {
+    var debounce = null;
+    searchInput.addEventListener('input', function () {
+      clearTimeout(debounce);
+      debounce = setTimeout(applySearch, 80);
+    });
+  }
+
+  function applySearch() {
+    var q = (searchInput ? searchInput.value || '' : '').trim().toLowerCase();
+    var targets = document.querySelectorAll('.record.claim, tr[data-status]');
+    var visible = 0;
+    var total = 0;
+    targets.forEach(function (el) {
+      total += 1;
+      var text = (el.textContent || '').toLowerCase();
+      if (q === '' || text.indexOf(q) !== -1) {
+        el.classList.remove('search-hidden');
+        if (!el.classList.contains('filter-hidden')) visible += 1;
+      } else {
+        el.classList.add('search-hidden');
+      }
+    });
+    if (searchCount) {
+      searchCount.textContent = q === ''
+        ? ''
+        : visible + ' / ' + total + ' match';
+    }
+  }
 })();
 </script>
 """
@@ -301,7 +359,7 @@ _BODY_TEMPLATE = """
 
 {% if classifications %}
 <h2>Classifications</h2>
-<div class="filter-bar" role="toolbar" aria-label="Filter classifications by status">
+<div class="filter-bar" role="toolbar" aria-label="Filter classifications">
   <span class="filter-bar-label">Show:</span>
   <button class="filter-btn active" data-status="all">All</button>
   <button class="filter-btn" data-status="implemented">Implemented</button>
@@ -310,6 +368,12 @@ _BODY_TEMPLATE = """
   <button class="filter-btn"
           data-status="evidence_layer_inapplicable">Evidence-layer inapplicable</button>
   <button class="filter-btn" data-status="not_applicable">Not applicable</button>
+  <input type="search"
+         id="card-search"
+         class="search-input"
+         placeholder="Search KSI, control, detector, rationale, evidence id..."
+         aria-label="Search classifications" />
+  <span class="search-count" id="search-count" aria-live="polite"></span>
 </div>
 {% endif %}
 {% for clf in classifications %}
