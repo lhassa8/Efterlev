@@ -23,19 +23,20 @@ commercial tier, no managed SaaS at this time.
 ## Try it in 5 minutes
 
 ```bash
-pip install efterlev
+pipx install efterlev
 cd path/to/your/terraform
 efterlev init                     # ~10 seconds
 export ANTHROPIC_API_KEY=sk-ant-…  # or configure AWS Bedrock at init
-efterlev report run               # full pipeline; opens HTML report when done
+efterlev report run               # full pipeline; writes HTML report + JSON sidecar to .efterlev/reports/
 ```
 
-The deterministic scan completes in seconds for a small Terraform tree;
-the LLM-backed Gap + Documentation stages add a few minutes per KSI
-(roughly 30–60s/KSI on Sonnet 4.6 for documentation, faster on Opus
-for the Gap classification). On a typical SaaS Terraform repo of
-~30–50 resources you'll see the per-KSI gap report and POA&M in
-under 10 minutes total.
+On a typical SaaS Terraform repo of ~30–50 resources, the deterministic
+stages complete in seconds; the Gap Agent runs in roughly a minute on
+Opus 4.7; the Documentation Agent's per-KSI narrative pass runs ~30-60s/KSI
+on Sonnet 4.6, so a full baseline of ~60 KSIs typically completes in
+**30 minutes to an hour on first run**. Use `--skip-document` (just Gap +
+POA&M) for a faster ~5-minute iteration loop while you patch findings;
+re-run with the Documentation stage included before the 3PAO hand-off.
 
 If you don't have ANTHROPIC_API_KEY or Bedrock configured, run
 `efterlev scan` (the deterministic stage) by itself first — it
@@ -63,11 +64,32 @@ produces evidence + an HTML coverage view with no LLM call.
   tracebacks. `efterlev doctor` runs five pre-flight checks (Python, .efterlev
   workspace, FRMR cache, ANTHROPIC_API_KEY shape, Bedrock credentials)
   with per-check pass/warn/fail.
+- **CSX-SUM cadence inline** — the Documentation Agent's
+  `documentation-{ts}.json` artifact carries per-KSI
+  `machine_validation_cadence` and `non_machine_validation_cadence`
+  fields stamped from the workspace's `[cadence]` config. Customers
+  running the drop-in `pr-compliance-scan.yml` GitHub Action get the
+  canonical values for free; non-standard pipelines edit
+  `.efterlev/config.toml` once. The cadence flows inline with the
+  rest of each KSI's evidence — a 3PAO ingesting the JSON sidecar
+  reads the persistent cycle alongside the citations rather than
+  chasing it through CI configuration.
+- **CSX-ORD prescribed-sequence sort** — `efterlev poam --sort csx-ord`
+  orders POA&M items by the FRMR catalog's prescribed initial-
+  authorization KSI sequence (MAS, ADS, UCM, …); the default
+  `--sort severity` keeps developer-prioritized triage output. Both
+  modes are honest; neither pretends to be the other.
+- **Catalog freshness warnings at init time** — `efterlev init` emits
+  non-blocking warnings if the vendored FRMR catalog is more than
+  180 days past its `last_updated` date, or if today is past the
+  announced CR26 release window (2026-06-30) with a beta-version
+  catalog. Init still proceeds; the warnings flag "you may be running
+  a stale Efterlev" before the customer commits to a posture report.
 - **Local-first, GovCloud-compatible** — runs against either the Anthropic API or
   AWS Bedrock. The Bedrock backend has been tested against
   `us.anthropic.claude-opus-4-7-v1:0` and the Sonnet equivalent in commercial
-  regions; GovCloud (us-gov-west-1, us-gov-east-1) is a supported configuration
-  but a full GovCloud walkthrough has not yet been performed end-to-end —
+  regions; GovCloud (`us-gov-west-1`, `us-gov-east-1`) is a supported configuration
+  but a full first-party walkthrough has not yet been performed end-to-end —
   that's tracked alongside Priority 5. Choose your backend at `efterlev init`;
   switch later with `efterlev init --force`.
 
@@ -77,13 +99,13 @@ This is the first public release, so "what's new" is everything. The
 detail below is grouped by the v1-readiness-plan priorities the work
 closed. See `CHANGELOG.md` for the per-PR breakdown.
 
-### Detectors (43)
+### Detectors (45)
 
 Every detector is self-contained under `src/efterlev/detectors/<source>/<capability>/`
 with `detector.py`, `mapping.yaml`, `evidence.yaml`, `fixtures/`, and a
 README that names what the detector proves and what it does NOT prove.
 
-- **39 Terraform detectors** read `.tf` files (and `terraform show -json`
+- **41 Terraform detectors** read `.tf` files (and `terraform show -json`
   output via `--plan` mode for module-composed codebases).
 - **4 GitHub-workflows detectors** read `.github/workflows/*.yml` for
   CI-gating, supply-chain, and deployment-pattern KSIs that have no
@@ -155,7 +177,9 @@ file is portable, emailable, and archivable.
 - Anthropic API (default) — direct.
 - AWS Bedrock — opt-in via `[bedrock]` install extra; container image
   bakes it in. Tested against `us.anthropic.claude-opus-4-7-v1:0` and
-  the Sonnet equivalent. Works in GovCloud.
+  the Sonnet equivalent in commercial regions. GovCloud
+  (`us-gov-west-1`, `us-gov-east-1`) is a supported configuration; a
+  full first-party walkthrough is tracked alongside Priority 5.
 
 ### Governance
 
@@ -169,8 +193,8 @@ file is portable, emailable, and archivable.
 - 45 detectors (38 KSI-mapped + 7 supplementary 800-53-only)
 - 31 of 60 KSIs covered across 8 of 11 themes
 - 24 CLI commands
-- ~960 unit tests passing; mypy strict / ruff check / ruff format
-  clean across ~165 source files
+- ~1,015 unit tests passing; mypy strict / ruff check / ruff format
+  clean across ~170 source files
 - Plan-JSON-mode equivalence tests (one per detector) lock that HCL-mode
   and plan-mode produce identical evidence for the same configuration
 
@@ -192,7 +216,7 @@ None. This is the first public release.
   `.github/workflows/`. An Azure-only or GCP-only customer running
   `efterlev scan` against their Terraform gets near-zero KSI evidence.
   CloudFormation, CDK, Pulumi, k8s, Azure ARM, and GCP DM detector
-  sources are on the v0.3+ roadmap; the detector framework already
+  sources are on the v1.5+ roadmap; the detector framework already
   supports multiple `source` types, so each is detector-implementation
   work, not framework work.
 - **Live-cloud scanning** — scope-deferred to v1.5+. Today, Efterlev
@@ -202,16 +226,6 @@ None. This is the first public release.
 - **3 KSI themes (AFR, CED, INR) are procedural-only** and need
   Evidence Manifests rather than detector evidence. The framework is
   in place; specific manifest examples are minimal at v0.1.0.
-- **CSX-SUM cadence field is not in the artifact today.** Persistent-
-  validation cadence is supplied by the customer's CI integration
-  (`pr-compliance-scan.yml` runs on every PR; `report run --watch`
-  runs on every save). Adding the field inline is a v0.1.x backlog
-  item; see `docs/csx-mapping.md`.
-- **CSX-ORD prescribed-sequence sort is not implemented today.** The
-  POA&M is severity-ordered (criticality triage), which aligns with
-  CSX-ORD's intent but not the catalog-prescribed initial-authorization
-  KSI sequence (MAS, ADS, UCM, …). A `--csx-ord-sort` mode is on the
-  v0.1.x backlog.
 - **Empirical 3PAO acceptance** of the CSX-SUM-shaped attestation
   artifact is gated on Priority 5 of `docs/v1-readiness-plan.md`
   (real-customer dogfood + 3PAO touchpoint). Until that closes,
@@ -226,10 +240,10 @@ hash was experimental; v0.1.0 is the first stable starting point.
 
 ## Acknowledgments
 
-v0.1.0 is a milestone release of an OSS project that's been built in the open
-against a moving FedRAMP 20x catalog. The shape was driven by two years of
-watching SaaS founders bounce off Authorization-to-Operate work because the
-existing tooling — auditor-facing GRC platforms, runtime drift detectors —
+v0.1.0 is a milestone release of an OSS project built in the open against
+a moving FedRAMP 20x catalog. The shape was driven by watching SaaS
+founders bounce off Authorization-to-Operate work because the existing
+tooling — auditor-facing GRC platforms, runtime drift detectors —
 assumed an established compliance team. Efterlev is for the team that
 *doesn't have one yet* and needs to know where they stand before they
 provision anything. The CHANGELOG carries the per-PR detail for contributors
