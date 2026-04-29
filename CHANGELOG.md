@@ -5,11 +5,12 @@ All notable changes to Efterlev will be tracked here. Format follows
 group by `docs/v1-readiness-plan.md` priorities for the v1-shaped
 release.
 
-## [Unreleased] — v0.1.0 close-out
+## [0.1.0] — 2026-04-29
 
-The work in this section closes Priorities 1, 2, and 3 of
-`docs/v1-readiness-plan.md`. 47 PRs landed 2026-04-27 → 2026-04-29
-(#36 → #93).
+First public release. The work in this section closes Priorities 1, 2,
+and 3 of `docs/v1-readiness-plan.md` plus the post-launch-prep
+walkback / audit / new-detector arc. 51 PRs landed 2026-04-27 →
+2026-04-29 (#36 → #96).
 
 ### Priority 1 — Detector breadth (✅ complete; lifted post-floor)
 
