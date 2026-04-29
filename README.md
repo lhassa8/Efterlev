@@ -60,13 +60,13 @@ If you arrived from AWS's [FedRAMP 20x KSI deep-dive blog](https://aws.amazon.co
 |---|---|---|
 | **When** it fires | Pre-deploy, on every `git commit` or file-save | Post-deploy, on a 3-day cadence in production |
 | **What** it reads | Terraform `.tf` files + `.github/workflows/*.yml` | Live AWS API state, runtime events |
-| **What** it produces | A 3PAO-ready CSX-SUM attestation summary (`documentation-{ts}.json`) + categorized POA&M | Runtime telemetry: Config evaluation results, Security Hub findings, CloudTrail logs |
+| **What** it produces | A per-KSI attestation summary (`documentation-{ts}.json`) shaped to satisfy the FRMR catalog's CSX-SUM information requirements + categorized POA&M | Runtime telemetry: Config evaluation results, Security Hub findings, CloudTrail logs |
 | **Who** it's for | The dev team writing Terraform + the compliance team preparing the package | The runtime evidence layer that backs the package |
 | **Cost** | Free (Apache-2.0, runs locally) | AWS spend + setup time |
 
-**They're complementary, not competing.** A FedRAMP 20x customer pursuing the 70%-of-63 automation threshold needs both:
+**They're complementary, not competing.** A FedRAMP 20x customer pursuing the 70%-of-63 automation threshold across their authorization package typically wires both, plus procedural Evidence Manifests for the procedural-only KSI themes:
 
-- **Day 1**, run `efterlev report run` to see your current posture in 10 minutes — no spend, no procurement.
+- **Day 1**, run `efterlev report run` to see your current posture: the deterministic scan completes in seconds for a small Terraform tree; the LLM-backed Gap + Documentation stages add a few minutes per KSI. No spend, no procurement.
 - **Steady-state**, AWS Config + Security Hub provide the runtime evidence that backs each KSI attestation Efterlev drafted.
 - **Continuously**, `efterlev report run --watch` re-runs the pipeline on every file save (debounced 2s) — the dev-loop layer AWS-native services structurally cannot provide, since runtime services need a deployed resource to evaluate.
 
@@ -439,25 +439,37 @@ evidence.yaml, fixtures/, and README.md.
 > (`KSI-CSX-SUM`, `KSI-CSX-MAS`, `KSI-CSX-ORD`). Both accountings are defensible against the same catalog data —
 > the CSX KSIs live in the FRMR catalog's `FRR.KSI.data.20x.CSX` section as procedural meta-requirements about
 > *how* providers organize their KSI evidence, distinct from the 60 thematic KSIs Efterlev classifies against.
-> Efterlev's existing artifacts directly satisfy the three CSX KSIs without new code:
-> the Documentation Agent's `documentation-{ts}.json` IS a CSX-SUM-shaped attestation summary;
-> `efterlev boundary set` declares the FedRAMP Minimum Assessment Scope per CSX-MAS;
-> POA&M severity-ordering + the gap report's status-filter pills implement CSX-ORD.
-> See [docs/csx-mapping.md](./docs/csx-mapping.md) for the full mapping and
+> Efterlev's existing artifacts are designed to satisfy the three CSX KSIs without new code:
+> the Documentation Agent's `documentation-{ts}.json` is **shaped to satisfy** the CSX-SUM information
+> requirements (goals, consolidated information resources, machine vs non-machine processes, status,
+> clarifications); `efterlev boundary set` declares the FedRAMP Minimum Assessment Scope per CSX-MAS;
+> the POA&M severity-ordering and the gap report's status-filter pills give reviewers criticality-based
+> triage. Empirical 3PAO acceptance of the CSX-SUM-shaped artifact is gated on Priority 5 of the
+> v1-readiness plan (real-customer dogfood + 3PAO touchpoint). The CSX-ORD mapping is partial: Efterlev's
+> output supports criticality-based triage but does not yet emit the catalog's prescribed initial-authorization
+> KSI sequence (MAS, ADS, UCM…) directly. See [docs/csx-mapping.md](./docs/csx-mapping.md) for the full mapping and
 > [docs/aws-ksi-blog-analysis-2026-04-28.md](./docs/aws-ksi-blog-analysis-2026-04-28.md) for the analysis.
 
 > **Coverage relative to AWS-native services (FedRAMP 20x Phase 2 70% threshold).** FedRAMP 20x Phase 2
 > requires automated validation for at least **70% of the KSIs** (44 of 63 = 70% of the AWS framing,
-> or 42 of 60 = 70% of the thematic-only count). **Efterlev covers 30 thematic KSIs at the IaC layer.**
+> or 42 of 60 = 70% of the thematic-only count). The threshold applies to the **customer's whole
+> authorization package**, not to any single tool. **Efterlev covers 30 thematic KSIs at the IaC layer.**
 > AWS's deep-dive blog explicitly maps AWS-native services (Config, Security Hub, CloudTrail,
 > Inspector, KMS, IAM Identity Center, Access Analyzer, EventBridge) to roughly **14 named KSIs**
 > (mostly in CNA, IAM, MLA, SVC themes) plus partial coverage across many more. The overlap with
 > Efterlev is ~10–12 KSIs in the same themes, but at a different layer: Efterlev catches the IaC
-> misconfig pre-deploy; AWS-native confirms the runtime behavior. **Together they comfortably exceed
-> the 70% threshold; neither alone hits it.** The non-overlapping pieces — KSI-CMT-VTD/RMV/LMC,
-> KSI-SCR-MIT, KSI-IAM-AAM, KSI-PIY-GIV, KSI-RPL-TRC, KSI-SVC-RUD/VCM (Efterlev-only at IaC) and
-> real-time GuardDuty / Inspector runtime CVEs / Config drift over time (AWS-native-only at runtime)
-> — are why a serious 20x customer wires both. See [docs/aws-coexistence.md](./docs/aws-coexistence.md).
+> misconfig pre-deploy; AWS-native confirms the runtime behavior. **Honest union: ~33 of 63 KSIs (~52%)** —
+> distinct layers, not double-counted. Important nuance about the threshold itself: FedRAMP 20x Phase 2's 70%
+> language asks specifically for **automated** validation. Procedural Evidence Manifests cover the AFR /
+> CED / INR themes (which the scanner can't see) but don't count toward the *automated*-validation bar —
+> they close the KSI coverage gap, not the automation gap. Reaching 70% automated coverage takes a runtime
+> telemetry pipeline (GuardDuty findings on a 3-day cadence, Inspector continuous scans, Config
+> conformance pack evaluations, Security Hub findings) on top of Efterlev's pre-deploy IaC layer +
+> AWS-native services' runtime evaluation layer.
+> The non-overlapping pieces — KSI-CMT-VTD/RMV/LMC, KSI-SCR-MIT, KSI-IAM-AAM, KSI-PIY-GIV, KSI-RPL-TRC,
+> KSI-SVC-RUD/VCM (Efterlev-only at IaC) and real-time GuardDuty / Inspector runtime CVEs / Config drift
+> over time (AWS-native-only at runtime) — are why a serious 20x customer wires both. See
+> [docs/aws-coexistence.md](./docs/aws-coexistence.md).
 
 **Agents (3).** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7). Each has its system prompt in a sibling `.md` file — see `src/efterlev/agents/*_prompt.md`. Prompts include explicit per-run-nonced-fence rules and cite-by-fenced-id discipline (see Phase 2 post-review fixup F below).
 
@@ -522,7 +534,7 @@ Designed to not break once the repo flips public (per the 2026-04-23 open-source
 
 ### Tests
 
-973 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 167 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
+1018 passing. `ruff check` + `ruff format --check` + `mypy --strict` clean across 172 source files. Unit tests use `StubLLMClient`; full pipeline is verified end-to-end against real Opus 4.7 + Sonnet 4.6 by `scripts/e2e_smoke.py` (requires `ANTHROPIC_API_KEY` for the anthropic backend or `EFTERLEV_BEDROCK_SMOKE=1` + AWS creds for the bedrock backend), with pytest wrappers at `tests/test_e2e_smoke.py` and `tests/test_e2e_smoke_bedrock.py` that skip when the keys are unset. Plan-JSON mode equivalence tests (one per detector) lock in that HCL-mode and plan-mode produce identical evidence for the same configuration.
 
 ### What's NOT in scope right now (per v1 lock)
 

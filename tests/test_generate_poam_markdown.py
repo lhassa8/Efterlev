@@ -320,3 +320,117 @@ def test_controls_empty_renders_dash() -> None:
         )
     )
     assert "**800-53 Controls:** —" in result.markdown
+
+
+# --- sort modes --------------------------------------------------------------
+
+
+def _ksi_id_order_in_output(markdown: str, ksi_ids: list[str]) -> list[str]:
+    """Return the subset of `ksi_ids` in the order they appear in `markdown`."""
+    positions = [(markdown.find(ksi_id), ksi_id) for ksi_id in ksi_ids]
+    found = [(pos, ksi_id) for pos, ksi_id in positions if pos >= 0]
+    return [ksi_id for _, ksi_id in sorted(found)]
+
+
+def test_severity_sort_puts_not_implemented_before_partial() -> None:
+    # Default sort: not_implemented (HIGH) first, then partial (MEDIUM);
+    # alphabetical within tier. Locks the deterministic-order guarantee.
+    result = generate_poam_markdown(
+        _input(
+            [
+                _clf("KSI-A", status="partial"),
+                _clf("KSI-B", status="not_implemented"),
+                _clf("KSI-C", status="partial"),
+                _clf("KSI-D", status="not_implemented"),
+            ]
+        )
+    )
+    order = _ksi_id_order_in_output(result.markdown, ["KSI-A", "KSI-B", "KSI-C", "KSI-D"])
+    # not_implemented first (B, D alphabetical), then partial (A, C alphabetical).
+    assert order == ["KSI-B", "KSI-D", "KSI-A", "KSI-C"]
+
+
+def test_csx_ord_sort_emits_prescribed_sequence_first() -> None:
+    # csx-ord mode: items appear in the prescribed-sequence order;
+    # non-prescribed KSIs follow alphabetically.
+    classifications = [
+        _clf("KSI-AFR-VDR", status="not_implemented"),
+        _clf("KSI-AFR-MAS", status="partial"),
+        _clf("KSI-SVC-VRI", status="not_implemented"),  # not in prescribed seq
+        _clf("KSI-AFR-ADS", status="partial"),
+    ]
+    indicators = {
+        "KSI-AFR-VDR": _ind("KSI-AFR-VDR", theme="AFR"),
+        "KSI-AFR-MAS": _ind("KSI-AFR-MAS", theme="AFR"),
+        "KSI-SVC-VRI": _ind("KSI-SVC-VRI", theme="SVC"),
+        "KSI-AFR-ADS": _ind("KSI-AFR-ADS", theme="AFR"),
+    }
+    inp = GeneratePoamMarkdownInput(
+        classifications=classifications,
+        indicators=indicators,
+        baseline_id="fedramp-20x-moderate",
+        frmr_version="0.9.43-beta",
+        generated_at=_FROZEN_TS,
+        sort_mode="csx-ord",
+        csx_ord_sequence=[
+            "KSI-AFR-MAS",
+            "KSI-AFR-ADS",
+            "KSI-AFR-UCM",
+            "KSI-AFR-VDR",
+            "KSI-AFR-SCN",
+        ],
+    )
+    result = generate_poam_markdown(inp)
+    order = _ksi_id_order_in_output(
+        result.markdown,
+        ["KSI-AFR-MAS", "KSI-AFR-ADS", "KSI-AFR-VDR", "KSI-SVC-VRI"],
+    )
+    # MAS first (prescribed rank 0), ADS (rank 1), VDR (rank 3), then
+    # SVC-VRI (not in sequence, sorts to tail).
+    assert order == ["KSI-AFR-MAS", "KSI-AFR-ADS", "KSI-AFR-VDR", "KSI-SVC-VRI"]
+
+
+def test_csx_ord_sort_with_empty_sequence_falls_back_to_alphabetical() -> None:
+    # When csx-ord is requested but the sequence is empty (e.g., a stale
+    # FRMR cache predating the loader's csx_ord_sequence field), every
+    # item gets the same rank and the secondary alphabetical key wins.
+    inp = GeneratePoamMarkdownInput(
+        classifications=[
+            _clf("KSI-Z", status="not_implemented"),
+            _clf("KSI-A", status="partial"),
+            _clf("KSI-M", status="partial"),
+        ],
+        indicators={
+            "KSI-Z": _ind("KSI-Z"),
+            "KSI-A": _ind("KSI-A"),
+            "KSI-M": _ind("KSI-M"),
+        },
+        baseline_id="fedramp-20x-moderate",
+        frmr_version="0.9.43-beta",
+        generated_at=_FROZEN_TS,
+        sort_mode="csx-ord",
+        csx_ord_sequence=[],  # stale cache
+    )
+    result = generate_poam_markdown(inp)
+    order = _ksi_id_order_in_output(result.markdown, ["KSI-A", "KSI-M", "KSI-Z"])
+    assert order == ["KSI-A", "KSI-M", "KSI-Z"]
+
+
+def test_severity_sort_is_deterministic_across_input_orderings() -> None:
+    # This lock was previously implicit; PR #85 made it explicit after
+    # finding input-order dependence in the pre-#85 sort code (the
+    # primitive preserved input order, so two runs with the same
+    # classifications in different orders produced different markdown).
+    # The lock is required for diff-against-prior-run workflows and for
+    # reproducible CI artifacts.
+    # Same set of classifications in two different input orders must
+    # produce byte-identical markdown.
+    cls_a = [
+        _clf("KSI-B", status="partial"),
+        _clf("KSI-A", status="not_implemented"),
+        _clf("KSI-C", status="partial"),
+    ]
+    cls_b = list(reversed(cls_a))
+    md_a = generate_poam_markdown(_input(cls_a)).markdown
+    md_b = generate_poam_markdown(_input(cls_b)).markdown
+    assert md_a == md_b

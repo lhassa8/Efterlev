@@ -13,17 +13,33 @@
 
 Efterlev v0.1.0 is the first public release: a local-first compliance scanner
 for SaaS companies pursuing FedRAMP 20x Moderate. It reads your Terraform
-(and `.github/workflows/`), produces evidence for the FedRAMP Key Security
-Indicators it can see, and lets you drive a Claude-backed Gap, Documentation,
-and Remediation Agent over that evidence — all without sending your code to a
-SaaS, an account, or a procurement cycle. The detector library covers **30 of
-60 thematic KSIs across 8 of 11 themes**, with **43 deterministic detectors**
-producing content-addressed Evidence that the agents reason over and that 3PAOs
-can verify. The 3 cross-cutting CSX KSIs (which AWS counts to arrive at the
-"63 KSIs" framing in their [2026-04-27 deep-dive blog](https://aws.amazon.com/blogs/publicsector/deep-dive-into-fedramp-20x-key-security-indicators-decoding-the-63-ksis/))
-are satisfied by Efterlev's existing pipeline outputs — see
-[docs/csx-mapping.md](https://github.com/efterlev/efterlev/blob/main/docs/csx-mapping.md).
-Pure OSS under Apache-2.0; no commercial tier, no managed SaaS, ever.
+(and `.github/workflows/`) and produces KSI-classified evidence + a
+3PAO-shaped attestation summary — locally, without sending your code to a
+SaaS or going through a procurement cycle. Coverage at v0.1.0: **30 of 60
+thematic KSIs across 8 of 11 themes**, **43 deterministic detectors**, three
+Anthropic-backed agents (Gap, Documentation, Remediation). Apache-2.0; no
+commercial tier, no managed SaaS at this time.
+
+## Try it in 5 minutes
+
+```bash
+pip install efterlev
+cd path/to/your/terraform
+efterlev init                     # ~10 seconds
+export ANTHROPIC_API_KEY=sk-ant-…  # or configure AWS Bedrock at init
+efterlev report run               # full pipeline; opens HTML report when done
+```
+
+The deterministic scan completes in seconds for a small Terraform tree;
+the LLM-backed Gap + Documentation stages add a few minutes per KSI
+(roughly 30–60s/KSI on Sonnet 4.6 for documentation, faster on Opus
+for the Gap classification). On a typical SaaS Terraform repo of
+~30–50 resources you'll see the per-KSI gap report and POA&M in
+under 10 minutes total.
+
+If you don't have ANTHROPIC_API_KEY or Bedrock configured, run
+`efterlev scan` (the deterministic stage) by itself first — it
+produces evidence + an HTML coverage view with no LLM call.
 
 ## Highlights
 
@@ -31,11 +47,12 @@ Pure OSS under Apache-2.0; no commercial tier, no managed SaaS, ever.
   init → scan → Gap Agent → Documentation Agent → POA&M generation in one
   invocation. Add `--watch` to keep running and re-execute on file changes
   (debounced 2s).
-- **Reports a 3PAO actually wants to read** — every HTML report opens with a
+- **Reports designed for 3PAO review** — every HTML report opens with a
   coverage matrix (11 themes × 60 KSIs heatmap), filter pills + free-text
   search + sort controls, drill-down per classification, a print stylesheet
   that doesn't break across pages, and a JSON sidecar parallel to every HTML
-  for downstream tooling.
+  for downstream tooling. (Empirical 3PAO acceptance is being validated in
+  v0.1.x — see Priority 5 of `docs/v1-readiness-plan.md`.)
 - **Diff between scans for CI gating** — `efterlev report diff PRIOR CURRENT`
   produces a categorized HTML page (regressed first, then added, improved,
   shifted, removed, unchanged) and a JSON sidecar. Exits with code 2 if any
@@ -46,9 +63,13 @@ Pure OSS under Apache-2.0; no commercial tier, no managed SaaS, ever.
   tracebacks. `efterlev doctor` runs five pre-flight checks (Python, .efterlev
   workspace, FRMR cache, ANTHROPIC_API_KEY shape, Bedrock credentials)
   with per-check pass/warn/fail.
-- **Local-first, GovCloud-aware** — runs against either the Anthropic API or
-  AWS Bedrock (FedRAMP-authorized, including GovCloud). Choose your backend
-  at `efterlev init`; switch later with `efterlev init --force`.
+- **Local-first, GovCloud-compatible** — runs against either the Anthropic API or
+  AWS Bedrock. The Bedrock backend has been tested against
+  `us.anthropic.claude-opus-4-7-v1:0` and the Sonnet equivalent in commercial
+  regions; GovCloud (us-gov-west-1, us-gov-east-1) is a supported configuration
+  but a full GovCloud walkthrough has not yet been performed end-to-end —
+  that's tracked alongside Priority 5. Choose your backend at `efterlev init`;
+  switch later with `efterlev init --force`.
 
 ## What's new in v0.1.0
 
@@ -139,7 +160,7 @@ file is portable, emailable, and archivable.
 ### Governance
 
 - Apache-2.0. Pure OSS — no commercial tier, no paid layer, no
-  managed SaaS, ever. See `DECISIONS.md`.
+  managed SaaS at this time. See `DECISIONS.md`.
 - BDFL today; technical steering committee at 10 sustained
   contributors. See `GOVERNANCE.md`.
 
@@ -166,9 +187,14 @@ None. This is the first public release.
   plan.json && efterlev scan --plan plan.json` to surface evidence
   inside upstream modules. See `LIMITATIONS.md` and the Documentation
   Agent's runtime-warning prompts.
-- **CloudFormation, CDK, Pulumi, Kubernetes** — not yet covered. The
-  detector framework supports multiple `source` types; CloudFormation
-  and CDK are next on the roadmap.
+- **AWS-only at the IaC layer today.** Of the 36 KSI-mapped detectors,
+  32 read AWS-resource-shaped Terraform (`aws_*` resources); 4 read
+  `.github/workflows/`. An Azure-only or GCP-only customer running
+  `efterlev scan` against their Terraform gets near-zero KSI evidence.
+  CloudFormation, CDK, Pulumi, k8s, Azure ARM, and GCP DM detector
+  sources are on the v0.3+ roadmap; the detector framework already
+  supports multiple `source` types, so each is detector-implementation
+  work, not framework work.
 - **Live-cloud scanning** — scope-deferred to v1.5+. Today, Efterlev
   reads source files only.
 - **OSCAL output** — deferred to v1.5+, gated on first
@@ -176,6 +202,21 @@ None. This is the first public release.
 - **3 KSI themes (AFR, CED, INR) are procedural-only** and need
   Evidence Manifests rather than detector evidence. The framework is
   in place; specific manifest examples are minimal at v0.1.0.
+- **CSX-SUM cadence field is not in the artifact today.** Persistent-
+  validation cadence is supplied by the customer's CI integration
+  (`pr-compliance-scan.yml` runs on every PR; `report run --watch`
+  runs on every save). Adding the field inline is a v0.1.x backlog
+  item; see `docs/csx-mapping.md`.
+- **CSX-ORD prescribed-sequence sort is not implemented today.** The
+  POA&M is severity-ordered (criticality triage), which aligns with
+  CSX-ORD's intent but not the catalog-prescribed initial-authorization
+  KSI sequence (MAS, ADS, UCM, …). A `--csx-ord-sort` mode is on the
+  v0.1.x backlog.
+- **Empirical 3PAO acceptance** of the CSX-SUM-shaped attestation
+  artifact is gated on Priority 5 of `docs/v1-readiness-plan.md`
+  (real-customer dogfood + 3PAO touchpoint). Until that closes,
+  the artifact is "shaped to satisfy CSX-SUM," not validated as
+  "the artifact 3PAOs accept."
 
 ## Upgrade notes
 
@@ -185,20 +226,27 @@ hash was experimental; v0.1.0 is the first stable starting point.
 
 ## Acknowledgments
 
-This release closes Priorities 1, 2, and 3 of `docs/v1-readiness-plan.md`
-across 38 PRs landed 2026-04-27 → 2026-04-28. The detector breadth
-target (30 KSIs / 8 themes) was reached at PR #51; the HTML overhaul
-shipped across PRs #52–#62; the UX work shipped across PRs #64–#69.
-Plan-doc updates and supporting docs (CHANGELOG, README refresh, docs
-site refresh, multi-target dogfood validation) followed in PRs #63,
-#70–#73.
+v0.1.0 is a milestone release of an OSS project that's been built in the open
+against a moving FedRAMP 20x catalog. The shape was driven by two years of
+watching SaaS founders bounce off Authorization-to-Operate work because the
+existing tooling — auditor-facing GRC platforms, runtime drift detectors —
+assumed an established compliance team. Efterlev is for the team that
+*doesn't have one yet* and needs to know where they stand before they
+provision anything. The CHANGELOG carries the per-PR detail for contributors
+who want it.
 
-Priority 4 (boundary scoping) shipped earlier. Priority 5 (real-customer
-dogfood + 3PAO touchpoint) is calendar-time work that informs v0.1.x
-patches and v0.2 planning. Priority 6 (honesty pass on `ksis=[]`
-detectors) shipped earlier as well; the remaining 7 supplementary 800-53-only
-detectors are upstream-FRMR-blocked at the KSI mapping layer (SC-28
-specifically).
+Open issues we know about: Priority 5 (real-customer dogfood + 3PAO
+touchpoint) is the largest open thread and the most important next signal —
+empirical 3PAO acceptance of the CSX-SUM-shaped artifact will tell us
+whether the design choices in v0.1.0 hold up under assessment workflow.
+Priority 4 (boundary scoping) shipped earlier in the v0 arc. The 7
+supplementary 800-53-only detectors marked `ksis=[]` (SC-28 family
+mostly) reflect a real upstream FRMR mapping gap rather than missing
+work; that gap is being raised upstream.
+
+If you're a SaaS founder or compliance lead testing v0.1.0 against a real
+Terraform tree, the maintainer wants to hear what you found — open an issue
+or send a PR with a redacted Terraform fixture.
 
 ---
 

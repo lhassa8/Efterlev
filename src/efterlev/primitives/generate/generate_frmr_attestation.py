@@ -70,6 +70,13 @@ class GenerateFrmrAttestationInput(BaseModel):
     # to the artifact so a later provenance walker can jump from an indicator
     # entry to the underlying Claim without re-reading the store.
     claim_record_ids: dict[str, str] = Field(default_factory=dict)
+    # CSX-SUM persistent-cycle declarations from the workspace's CadenceConfig.
+    # Stamped uniformly on every indicator (FRMR has no per-KSI cadence
+    # vocabulary today). When None, the artifact omits the cadence fields and
+    # consumers must look at the customer's CI configuration to determine
+    # cadence — the pre-2026-04-29 behavior.
+    machine_validation_cadence: str | None = None
+    non_machine_validation_cadence: str | None = None
     # Override for tests that need deterministic `generated_at`. Production
     # callers leave this as None and the primitive stamps UTC now.
     generated_at: datetime | None = None
@@ -142,6 +149,8 @@ def generate_frmr_attestation(
             controls_mapped=controls_mapped,
             controls_evidenced=controls_evidenced,
             claim_record_id=input.claim_record_ids.get(draft.ksi_id),
+            machine_validation_cadence=input.machine_validation_cadence,
+            non_machine_validation_cadence=input.non_machine_validation_cadence,
         )
         themes.setdefault(theme_key, {})[draft.ksi_id] = artifact_indicator
 

@@ -119,8 +119,11 @@ Two numbers worth pinning:
 
 ### Efterlev today (post-Priority-1/2/3, as of 2026-04-28)
 
-- **30 of 60 thematic KSIs covered** at the IaC layer (50% of 60, 47.6% of 63
-  if counting CSX).
+- **30 of 60 thematic KSIs covered** at the IaC layer (50% of the
+  thematic KSI surface). The 3 CSX KSIs are procedural cross-cutting
+  requirements satisfied by pipeline-shape outputs (see `csx-mapping.md`),
+  not by detector coverage, so they don't enter the per-detector
+  coverage percentage.
 - **8 of 11 themes covered** (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). The
   remaining 3 (AFR, CED, INR) are entirely procedural and need Evidence
   Manifests rather than detector code.
@@ -181,11 +184,12 @@ Two numbers worth pinning:
 - **Catalog count optics.** Anyone reading the AWS blog and Efterlev's README
   side-by-side sees "63 vs 60" and may assume Efterlev is behind. The reality
   is just an accounting choice. Easy to fix in docs (§6 below).
-- **70% automation threshold.** 30 of 63 = 47.6%. Efterlev's coverage at the
-  thematic-KSI layer is below the FedRAMP threshold. But the threshold applies
-  to **the customer's whole authorization package**, not to any single tool.
-  Efterlev contributes its 30 to a customer's automation total alongside AWS
-  Config rules, Security Hub findings, etc.
+- **70% automation threshold.** Efterlev covers 30 of the 60 thematic
+  KSIs at the IaC layer; the threshold applies to **the customer's whole
+  authorization package**, not to any single tool. Efterlev contributes
+  its 30 to a customer's automation total alongside AWS Config rules,
+  Security Hub findings, and procedural Evidence Manifests. "Push Efterlev
+  alone to 44 KSIs" is the wrong success criterion — see §5.
 - **AWS-native deployment assumption.** AWS's blog implicitly positions the
   AWS-native service stack as sufficient. A reader could conclude "I don't
   need a third-party tool." The right counter-positioning is "Efterlev runs
@@ -205,8 +209,8 @@ KSIs map cleanly to **Efterlev artifacts that already exist**:
 > machine-based processes for validation + persistent cycle, non-machine-based
 > processes + cycle, current implementation status, clarifications.
 
-**Efterlev produces this** via the Documentation Agent. Each generated
-attestation in the `documentation-{ts}.json` sidecar carries:
+**Efterlev's output is shaped to satisfy this** via the Documentation Agent.
+Each generated attestation in the `documentation-{ts}.json` sidecar carries:
 - KSI ID + status (Gap classification = "current implementation status")
 - Cited evidence with detector_id + source_file:line_range (= "consolidated
   information resources")
@@ -215,9 +219,16 @@ attestation in the `documentation-{ts}.json` sidecar carries:
 - The detector + manifest separation (= "non-machine vs machine-based")
 - Schema-versioned JSON output ready for 3PAO ingest
 
-**Action item:** Make the README explicit that Efterlev's
-`documentation-{ts}.json` IS a CSX-SUM-compliant artifact. The
-Documentation Agent already produces CSX-SUM-shaped output today.
+**Two honesty notes:**
+- The artifact does not today carry the persistent-validation cadence
+  inline; cadence is supplied by the customer's CI integration. Adding
+  the field is a small change tracked on the v0.1.x backlog.
+- Empirical 3PAO acceptance is gated on Priority 5
+  (real-customer dogfood + 3PAO touchpoint).
+
+**Action item:** Documentation walks back from "IS a CSX-SUM-compliant
+artifact" to "shaped to satisfy CSX-SUM information requirements" until
+Priority 5 closes. (Done in this branch alongside `csx-mapping.md`.)
 
 ### KSI-CSX-MAS — Application within MAS
 
@@ -239,14 +250,21 @@ KSI-CSX-MAS as the FedRAMP requirement it satisfies.
 > authorization package: MAS, ADS (Authorization Data Sharing), UCM (Using
 > Cryptographic Modules)...
 
-**Efterlev produces this** via:
-- The POA&M generator (`efterlev poam`) emits items severity-ordered:
-  not_implemented → HIGH, partial → MEDIUM, etc.
-- The HTML report's filter pills let reviewers focus on `not_implemented`
-  first — exactly the order CSX-ORD prescribes.
+CSX-ORD prescribes a **specific KSI sequence** — MAS, ADS, UCM, and so on —
+not a severity sort. Efterlev's POA&M generator (`efterlev poam`) emits
+items in *severity* order (`not_implemented` → HIGH first, then `partial` →
+MEDIUM), which is criticality-based triage but not the catalog-prescribed
+sequence.
 
-**Action item:** A docs section explicitly mapping the POA&M output to
-CSX-ORD makes this connection visible to 3PAOs.
+**Honest mapping:** Efterlev's output **aligns with the spirit of CSX-ORD**
+(triage by criticality) but does not yet emit the catalog's prescribed
+initial-authorization KSI sequence directly. The HTML report's filter pills
+similarly support criticality triage but not the prescribed sequence.
+
+**Action item:** Implement a `--csx-ord-sort` mode in `efterlev poam` that
+emits the catalog-prescribed initial-authorization KSI sequence as a
+separate sort. On the v0.1.x backlog. Documentation in `csx-mapping.md`
+walks back from "satisfies" to "aligns with intent."
 
 ---
 
@@ -258,64 +276,70 @@ The AWS blog doesn't change the v0.1.0 cut. Efterlev's design and catalog
 state are correct. What changes is messaging.
 
 1. **Acknowledge the 60+3=63 framing in the README.** A single paragraph in
-   the "What v0 contains" section under the detector-count stanza:
-
-   > Efterlev's detector library evidences the **60 thematic KSIs** in FRMR
-   > 0.9.43-beta — the catalog AWS's
-   > [FedRAMP 20x deep-dive blog (2026-04-27)](https://aws.amazon.com/blogs/publicsector/deep-dive-into-fedramp-20x-key-security-indicators-decoding-the-63-ksis/)
-   > frames as 63 KSIs by additionally counting the 3 cross-cutting CSX KSIs
-   > (CSX-SUM, CSX-MAS, CSX-ORD). Those 3 CSX KSIs are procedural
-   > meta-requirements about *how* providers organize their KSI evidence;
-   > Efterlev's Documentation Agent attestation output, boundary-scoping
-   > primitives, and POA&M severity ordering directly satisfy CSX-SUM,
-   > CSX-MAS, and CSX-ORD respectively (see
-   > [`docs/csx-mapping.md`](https://github.com/efterlev/efterlev/blob/main/docs/csx-mapping.md)).
+   the "What v0 contains" section under the detector-count stanza, walking
+   back from "satisfies CSX-SUM" to "shaped to satisfy CSX-SUM" until
+   Priority 5 closes. (Shipped in this branch.)
 
 2. **Add `docs/csx-mapping.md`.** A short doc that maps Efterlev's existing
-   artifacts to the CSX KSIs — no new code, just documentation linking
-   what's already there.
+   artifacts to the CSX KSIs, with explicit gap acknowledgment for the
+   CSX-SUM cadence field and the CSX-ORD prescribed-sequence sort.
+   (Shipped — see `docs/csx-mapping.md`.)
 
 3. **Cross-link the AWS blog post in `docs/index.md` and `docs/icp.md`** as
    "external context — what AWS recommends for AWS-native CSPs."
 
+4. **Catalog version-mismatch warning at init time.** ~2 hours of code:
+   `efterlev init --baseline` already loads the FRMR catalog; teach it to
+   compare the catalog version against the latest `FRMR.documentation.json`
+   on disk and warn if drift exceeds a stable-version threshold. Pulled
+   forward from the previous "Long-term" position because the CR26 release
+   window (June 2026) is closer than the original draft assumed and the
+   warning surface is small.
+
 ### Medium-term (v0.1.x patch / v0.2)
 
-1. **Push KSI coverage from 30 → 44** to clear the 70%-of-63 automation
-   threshold the FedRAMP 20x Phase 2 page requires. Of the 30 currently-
-   uncovered thematic KSIs, the most-tractable in the IaC layer are documented
-   in `docs/v1-readiness-plan.md` Priority 1's "What's beyond the floor"
-   section. The shortlist:
-   - KSI-MLA-ALA (log-bucket access policies)
-   - KSI-CNA-OFA (availability-zone diversity)
-   - KSI-AFR-VDR (vulnerability detection — partial via existing detectors)
-   - KSI-SVC-PRR (instance memory / ephemeral storage)
-   - KSI-CED-* / INR-* (procedural — would need richer Manifest tooling)
-
-2. **Add a `efterlev report --csx-summary` flag** that produces a CSX-SUM-
-   shaped JSON specifically formatted for 3PAO ingest. Builds on existing
-   `documentation-{ts}.json` machinery.
-
-3. **Add a `/scan` GitHub Action wrapper** that takes the JSON sidecar and
+1. **Add a `/scan` GitHub Action wrapper** that takes the JSON sidecar and
    pushes it into a `gh-pages` branch as the persistent-validation evidence
    feed. Closes the "3-day cadence" loop without requiring a separate
-   scheduler.
+   scheduler. **Elevated** in this revision because it's the surface that
+   addresses the CSX-SUM cadence-field gap acknowledged in `csx-mapping.md`.
+
+2. **Add the persistent-validation cadence field to `documentation-{ts}.json`.**
+   ~30 LoC + schema version bump. Removes the "cadence is adjacent, not
+   inline" caveat in `csx-mapping.md`.
+
+3. **Implement `efterlev poam --csx-ord-sort`** to emit the FRMR
+   catalog's prescribed initial-authorization KSI sequence (MAS, ADS, UCM, …).
+   Lets Efterlev claim "satisfies CSX-ORD" rather than "aligns with intent."
+
+> **Removed from this section per maintainer review:**
+>
+> - ~~Push KSI coverage from 30 → 44~~ — the 70% threshold applies to the
+>   customer's whole authorization package, not to Efterlev alone. "Push
+>   one tool past the threshold" is the wrong success criterion.
+> - ~~Add `efterlev report --csx-summary` flag~~ — if the existing
+>   `documentation-{ts}.json` is shaped for CSX-SUM, a separate flag is
+>   redundant naming. The right move is to make the existing artifact more
+>   CSX-SUM-conformant (cadence field, item 2 above), not add a new mode.
 
 ### Long-term (v0.2+)
 
-1. **CR26 (Consolidated Rules 2026)** releases end of June 2026 and takes
-   effect Dec 31, 2026. Watch for catalog updates in `FedRAMP/docs` —
-   FRMR.documentation.json is the canonical source. Efterlev's
-   `efterlev init --baseline` flow should detect catalog version mismatches
-   and warn.
+1. **Multi-cloud detector coverage** (CDK, CloudFormation, Pulumi, Azure ARM,
+   GCP DM, k8s) per `docs/dual_horizon_plan.md` mid-term. AWS-native scanners
+   help only AWS customers; the Azure-only and GCP-only FedRAMP pipeline is
+   real and growing. **Commitment:** at least one non-AWS detector source
+   (CDK or CloudFormation, or one of the non-AWS clouds) lands by v0.3.
 
 2. **Phase 3** (formalizing 20x Low and Moderate, FY26 Q3-Q4) is the
    wide-scale CSP adoption window. Efterlev's positioning at that point
-   should explicitly reference its v0.1.x track record.
+   should explicitly reference its v0.1.x track record + Priority 5
+   3PAO-acceptance evidence.
 
-3. **Multi-cloud detector coverage** (CDK, CloudFormation, Pulumi) per
-   `docs/dual_horizon_plan.md` mid-term. AWS-native scanners help only AWS
-   customers; Azure/GCP customers are increasingly entering the FedRAMP
-   pipeline.
+3. **CR26 (Consolidated Rules 2026)** releases end of June 2026 and takes
+   effect Dec 31, 2026. Watch for catalog updates in `FedRAMP/docs` —
+   FRMR.documentation.json is the canonical source. The version-mismatch
+   warning lands short-term (item 4 above); the catalog refresh + any
+   detector remappings land here as catalog drift requires.
 
 ---
 
@@ -323,21 +347,24 @@ state are correct. What changes is messaging.
 
 In priority order:
 
-1. **[doc-only, ~30 min]** Add the "60+3=63 framing" paragraph to README.md.
-2. **[doc-only, ~1 hr]** Create `docs/csx-mapping.md` mapping existing
-   Efterlev artifacts to CSX-SUM, CSX-MAS, CSX-ORD.
-3. **[doc-only, ~30 min]** Cross-link the two AWS blog posts in `docs/index.md`
+1. **[doc-only, shipped]** Add the "60+3=63 framing" paragraph to README.md
+   with hedged CSX-SUM language.
+2. **[doc-only, shipped]** Create `docs/csx-mapping.md` mapping existing
+   Efterlev artifacts to CSX-SUM, CSX-MAS, CSX-ORD with explicit cadence-field
+   and prescribed-sequence gap acknowledgments.
+3. **[doc-only, shipped]** Cross-link the two AWS blog posts in `docs/index.md`
    and `docs/icp.md` as external context.
-4. **[doc-only, ~30 min]** Update the release-notes-v0.1.0 draft to mention
+4. **[doc-only, shipped]** Update the release-notes-v0.1.0 draft to mention
    the AWS blog and the CSX framing.
-5. **[code, optional, ~2 hr]** Add `KSI-CSX-SUM`, `KSI-CSX-MAS`, `KSI-CSX-ORD`
-   to Efterlev's KSI count in `efterlev detectors list` summary, with a clear
-   "cross-cutting (procedural)" badge so they're visibly different from
-   thematic KSIs.
+5. **[code, ~2 hr]** Catalog version-mismatch warning at init time
+   (was previously listed as long-term; pulled forward in §5).
 
-The first 4 are pure documentation. Item 5 is a small code change to surface
-the CSX KSIs in the catalog inventory — debatable whether to do it pre-v0.1.0
-since the actual detector coverage doesn't change.
+> **Explicitly NOT on this list (per maintainer review):**
+>
+> Adding `KSI-CSX-SUM`, `KSI-CSX-MAS`, `KSI-CSX-ORD` to `efterlev detectors list`
+> is the wrong response. Detectors evidence thematic KSIs; CSX KSIs are pipeline-shape
+> requirements satisfied by artifact structure, not by detector matches. Surfacing
+> them in a detectors list confuses the model.
 
 ---
 

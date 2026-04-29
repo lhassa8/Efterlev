@@ -55,7 +55,10 @@ dependencies = [
     # crossing-`/`, etc.) — the same semantics customers expect from `.gitignore`.
     # Transitively available via mkdocs et al.; pinning directly because the
     # boundary feature is load-bearing for the customer-facing posture statement.
-    "pathspec>=0.12,<1",
+    # Upper bound widened from <1 to <2 (2026-04-29) to unblock mypy>=1.20
+    # which depends on pathspec>=1.0.0; the gitwildmatch interface we use
+    # is stable across the 0.x → 1.x boundary.
+    "pathspec>=0.12,<2",
 ]
 
 [project.optional-dependencies]
@@ -63,7 +66,7 @@ dev = [
     # CVE constraint: CVE-2025-71176 fix landed in pytest 9.0.3; tests/test_smoke.py
     # was written to handle pytest 9's "exit 5 on no tests" behavior, so bumping is safe.
     "pytest>=9.0.3,<10",
-    "ruff>=0.6,<1",
+    "ruff>=0.15.12,<1",
     "mypy>=1.11,<2",
     # PEP 561 stubs for pyyaml — required by mypy strict on
     # `efterlev.manifests.*`. Runtime pyyaml lives in project deps.
@@ -82,7 +85,7 @@ bedrock = [
 # breaking-change doesn't silently break the site build.
 docs = [
     "mkdocs>=1.6.1,<2",
-    "mkdocs-material>=9.5,<10",
+    "mkdocs-material>=9.7.6,<10",
     "pymdown-extensions>=10.7,<11",
 ]
 

@@ -112,6 +112,39 @@ class BaselineConfig(BaseModel):
     id: str = DEFAULT_BASELINE
 
 
+class CadenceConfig(BaseModel):
+    """Validation cadence declarations for the workspace.
+
+    KSI-CSX-SUM (FedRAMP 20x cross-cutting requirement) asks providers to
+    declare, per KSI, the cadence on which machine-based and non-machine-based
+    validation processes run. Efterlev's per-KSI artifact embeds these values
+    directly in `documentation-{ts}.json` so a 3PAO can read the cadence
+    inline rather than chasing it through the customer's CI configuration.
+
+    Both fields are free-text strings — different customers describe cadence
+    differently (event-triggered, ISO 8601 duration, prose). The defaults
+    describe Efterlev's typical CI integration; customers running the
+    drop-in `pr-compliance-scan.yml` GitHub Action can leave them as-is, and
+    customers with non-standard pipelines (Jenkins, GitLab, Drone) write
+    their own values.
+
+    Future shape (post-CR26 if FedRAMP publishes a strict format): a
+    structured CadenceSpec with `mode ∈ {interval, trigger, manual}`.
+    Today the artifact carries the customer's declared description verbatim.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    machine_validation_cadence: str = (
+        "every PR via .github/workflows/pr-compliance-scan.yml; on save during "
+        "dev via `efterlev report run --watch` (debounced 2s)"
+    )
+    non_machine_validation_cadence: str = (
+        "Evidence Manifests reviewed at the `next_review` interval declared "
+        "per manifest; Efterlev does not impose a global procedural cadence"
+    )
+
+
 class BoundaryConfig(BaseModel):
     """Authorization-boundary scoping declaration (Priority 4 of v1-readiness-plan).
 
@@ -147,6 +180,7 @@ class Config(BaseModel):
     scan: ScanConfig = Field(default_factory=ScanConfig)
     baseline: BaselineConfig = Field(default_factory=BaselineConfig)
     boundary: BoundaryConfig = Field(default_factory=BoundaryConfig)
+    cadence: CadenceConfig = Field(default_factory=CadenceConfig)
 
 
 def load_config(path: Path) -> Config:
@@ -211,7 +245,27 @@ def save_config(config: Config, path: Path) -> None:
             boundary_lines.append(_format_string_list("exclude", config.boundary.exclude))
         boundary_lines.append("")
         lines.extend(boundary_lines)
+    # Always emit `[cadence]` so customers see the values their attestation
+    # artifact will carry and can edit them. Defaults describe Efterlev's
+    # canonical CI integration; non-default values customize the artifact.
+    machine_val = _toml_escape(config.cadence.machine_validation_cadence)
+    non_machine_val = _toml_escape(config.cadence.non_machine_validation_cadence)
+    cadence_lines = [
+        "[cadence]",
+        f"machine_validation_cadence = {machine_val}",
+        f"non_machine_validation_cadence = {non_machine_val}",
+        "",
+    ]
+    lines.extend(cadence_lines)
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _toml_escape(s: str) -> str:
+    # TOML basic strings need backslash + quote escaping. The cadence
+    # defaults contain backticks and parens but no quotes/backslashes; an
+    # explicit escape pass keeps user-supplied values safe regardless.
+    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def _format_string_list(field_name: str, values: list[str]) -> str:

@@ -113,6 +113,15 @@ class AttestationArtifactIndicator(BaseModel):
     controls_mapped: list[str] = Field(default_factory=list)
     controls_evidenced: list[str] = Field(default_factory=list)
     claim_record_id: str | None = None
+    # CSX-SUM cadence fields. Each indicator carries the workspace's
+    # declared cadence verbatim; per-KSI override is not yet supported
+    # (FRMR has no per-KSI cadence vocabulary today). Optional for backward
+    # compatibility — pre-2026-04-29 artifacts have these absent and
+    # consumers must default to "<unspecified>" or pull from the customer's
+    # CI configuration directly. New optional fields don't bump
+    # `attestation_format_version` per the policy in AttestationArtifactInfo.
+    machine_validation_cadence: str | None = None
+    non_machine_validation_cadence: str | None = None
 
 
 class AttestationArtifactTheme(BaseModel):

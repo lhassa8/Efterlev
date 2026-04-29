@@ -22,11 +22,11 @@ and how a customer should think about using them together.
 
 | Question | Answer |
 |---|---|
-| Do I need both? | Yes, if you're pursuing FedRAMP 20x on AWS. |
-| Which one first? | **Efterlev first** — it's free, runs in 10 minutes, and tells you where you stand before you provision anything. |
-| Which produces the artifact 3PAOs consume? | **Efterlev** — its `documentation-{ts}.json` is a CSX-SUM-shaped attestation summary, which AWS-native services don't produce. |
+| Do I need both? | Eventually, yes — for FedRAMP 20x on AWS. On Day 1, no: start with Efterlev. |
+| Which one first? | **Efterlev first** — it's free, the deterministic scan runs in seconds against a small Terraform tree, and the LLM-backed Gap + Documentation stages typically take a few minutes more. You see where you stand before you provision anything. |
+| Which produces the per-KSI attestation summary a 3PAO ingests? | **Efterlev** — its `documentation-{ts}.json` is designed to satisfy the FRMR catalog's CSX-SUM information requirements (goals, consolidated information resources, machine vs non-machine processes, status, clarifications). AWS-native services don't produce a CSX-SUM-shaped artifact today. Empirical 3PAO acceptance is gated on Priority 5 of `docs/v1-readiness-plan.md`. |
 | Which produces the runtime evidence backing those attestations? | **AWS-native** — Config rules, Security Hub findings, CloudTrail logs are the runtime telemetry. |
-| What if I'm not on AWS? | Efterlev still works (Terraform / CI workflows are cloud-agnostic surfaces); AWS-native obviously doesn't. Multi-cloud detector coverage (CDK, Pulumi, k8s) is on the v1.5+ roadmap. |
+| What if I'm not on AWS? | Of Efterlev's 36 KSI-mapped detectors, 32 read AWS-resource-shaped Terraform (`aws_*` resources); 4 read `.github/workflows/`. An Azure-only or GCP-only customer running `efterlev scan` against their Terraform gets near-zero KSI evidence today; the GitHub-workflows detectors still fire. Multi-cloud detector coverage (CDK, Pulumi, k8s, Azure ARM, GCP DM) is on the v1.5+ roadmap. |
 
 ---
 
@@ -34,34 +34,52 @@ and how a customer should think about using them together.
 
 ### 1. Efterlev is the package generator; AWS-native is the telemetry backing
 
-The artifact a 3PAO actually consumes for FedRAMP 20x is a structured
-per-KSI attestation summary (the FRMR catalog calls this `KSI-CSX-SUM`
-— see [`csx-mapping.md`](csx-mapping.md)). It must include, per KSI:
-goals + pass/fail criteria, consolidated information resources,
-machine-based vs non-machine validation processes, current
-implementation status, clarifications.
+The artifact a 3PAO ingests for FedRAMP 20x is a structured per-KSI
+attestation summary. The FRMR catalog calls this shape `KSI-CSX-SUM`
+(see [`csx-mapping.md`](csx-mapping.md)) and lists the required
+information per KSI: goals + pass/fail criteria, consolidated
+information resources, machine-based vs non-machine validation
+processes + persistent cycle, current implementation status,
+clarifications.
 
-**No AWS-native service produces a CSX-SUM-shaped artifact.** Audit
-Manager is the closest, and it's notably absent from both AWS posts.
-Config rules produce evaluation results; Security Hub aggregates
-findings; CloudTrail produces audit logs. Each is *evidence* that
-backs an attestation — none is the attestation itself.
+**No AWS-native service produces a CSX-SUM-shaped artifact today.**
+Audit Manager is the closest in spirit and is notably absent from
+both AWS posts; if AWS extends Audit Manager toward CSX-SUM-shaped
+output, the package-generator overlap with Efterlev grows. Config
+rules produce evaluation results; Security Hub aggregates findings;
+CloudTrail produces audit logs. Each is *evidence* that backs an
+attestation, not the attestation itself.
 
-Efterlev's Documentation Agent produces `documentation-{ts}.json` —
-that *is* the attestation summary. The Gap Agent classifies each KSI
-as implemented/partial/not_implemented; the Documentation Agent drafts
-the narrative + cites the evidence. Both pre-deploy IaC findings (from
-detectors) and human-signed Evidence Manifests flow through the same
-attestation pipeline.
+Efterlev's Documentation Agent produces `documentation-{ts}.json`
+**designed to satisfy the CSX-SUM information requirements** — KSI
+ID + goals (from the FRMR statement), `cited_evidence_refs[]` mapping
+to `source_file:line_range`, narrative explaining what the scanner
+saw and didn't see, and an implementation-status field. The Gap
+Agent classifies each KSI as implemented/partial/not_implemented;
+the Documentation Agent drafts the narrative + cites the evidence.
+Both pre-deploy IaC findings (from detectors) and human-signed
+Evidence Manifests flow through the same attestation pipeline.
 
-A typical 3PAO conversation in this frame:
+The artifact does **not** today carry the persistent-validation
+cadence inline; cadence is supplied by the customer's CI integration
+(`pr-compliance-scan.yml` runs on every PR; `report run --watch` runs
+on every save). The artifact carries the snapshot.
 
-> *"Here is my CSX-SUM attestation summary (Efterlev's
-> `documentation-*.json`). For each KSI, the machine-based validation
-> is backed by both Efterlev's pre-deploy detector evidence (cited by
-> source-file:line) and AWS Config rule evaluation results (cited by
-> Config-rule-id and timestamp). The two sources agree, which is
-> itself an integrity signal."*
+Empirical 3PAO acceptance is gated on Priority 5 of
+`docs/v1-readiness-plan.md` (real-customer dogfood + 3PAO touchpoint).
+Until that closes, the precise wording is "shaped to satisfy CSX-SUM,"
+not "is the artifact 3PAOs consume."
+
+A 3PAO conversation in this frame, after Priority 5 closes, would
+read like:
+
+> *"Here is my Efterlev-generated per-KSI summary (`documentation-*.json`).
+> For each KSI, the machine-based validation is backed by both Efterlev's
+> pre-deploy detector evidence (cited by source-file:line) and AWS
+> Config rule evaluation results (cited by Config-rule-id and timestamp).
+> The two sources agree, which is itself an integrity signal. The
+> 3-day cadence is enforced by my CI workflow `pr-compliance-scan.yml`,
+> visible in the receipt log."*
 
 ### 2. Day 1 vs steady-state — a journey overlay
 
@@ -70,10 +88,10 @@ adoption sequence looks like this:
 
 | Phase | What you do | What's involved |
 |---|---|---|
-| **Day 1** (the moment your CEO says "we need FedRAMP") | `efterlev report run` against your existing Terraform | 10 minutes, no spend, no procurement, posture report in hand |
+| **Day 1** (the moment your CEO says "we need FedRAMP") | `efterlev report run` against your existing Terraform | The deterministic scan completes in seconds for a small Terraform tree. The LLM-backed Gap stage runs in roughly a minute on Opus 4.7. The Documentation Agent's per-KSI narrative pass runs ~30-60s/KSI on Sonnet 4.6, so a full 60-KSI baseline takes **roughly 30 minutes to an hour** end-to-end on first run. No spend, no procurement, posture report in hand. |
 | **Week 1-4** | Iterate on `efterlev report run --watch` while the team patches gaps | dev-loop feedback at file-save cadence; AWS-native services not yet stood up |
 | **Month 1-3** | Stand up AWS Config + Security Hub + LZA at GovCloud-scale | typically with a consultant; this is the runtime evidence layer |
-| **Authorization year** | Both sources feed the 3PAO package | Efterlev produces the attestation; AWS-native produces the runtime evidence backing |
+| **Authorization year** | Both sources feed the 3PAO package | Efterlev produces the per-KSI attestation summary; AWS-native produces the runtime evidence backing it |
 | **Steady state** | Config + Security Hub on 3-day cadence; Efterlev on every PR + every save | dev-loop + runtime-loop both alive |
 
 The AWS-native stack is heavy enough that "do it before authorization"
@@ -134,9 +152,35 @@ The non-overlapping pieces:
   CloudTrail event-based alerting, Inspector-discovered runtime CVEs,
   Config drift over time.
 
-A FedRAMP 20x Phase 2 customer needs the 70%-of-63 automation
-threshold. Neither tool hits that alone. Together they comfortably
-exceed it.
+A FedRAMP 20x Phase 2 customer needs automated validation for at
+least **70% of the KSIs** in their authorization package. The
+threshold applies to the customer's *whole* package — not to any
+single tool. Honest accounting on these two tools alone:
+
+- Efterlev covers **30 of 60** thematic KSIs at the IaC layer.
+- AWS-native services cover **~14** thematic KSIs explicitly, with
+  partial coverage across more.
+- The intersection is ~10–12 KSIs (CNA, IAM, MLA, SVC).
+- Union ≈ 30 + 14 − 11 = **~33 of 63 KSIs** (~52%) — distinct layers,
+  not double-counted.
+
+That's *below* the 70% threshold. Important nuance about the
+threshold itself: FedRAMP 20x Phase 2's 70% language asks specifically
+for *automated* validation. Procedural Evidence Manifests are
+human-signed attestations, not automated validation — they cover the
+AFR / CED / INR themes and the 3 procedural CSX KSIs (which the
+scanner can't see at all), but they don't count toward the 70%
+*automated*-validation bar. Reaching 70% automated coverage on a
+procedural-heavy posture means standing up runtime telemetry
+(GuardDuty findings on a 3-day cadence, Inspector continuous scans,
+Config conformance pack evaluations, Security Hub findings) on top of
+Efterlev's pre-deploy IaC layer + AWS-native services' runtime
+evaluation layer. Manifests close the *KSI* coverage gap; runtime
+telemetry closes the *automated-validation* gap.
+
+The phrase "Efterlev + AWS-native is all you need" is not accurate;
+"Efterlev pre-deploy + AWS-native runtime + a procedural manifest
+layer + a runtime-telemetry pipeline" is the honest picture.
 
 ---
 
@@ -150,8 +194,12 @@ exceed it.
   shape, but it's not a forced choice.
 - **You're going to use AWS Audit Manager as your primary attestation
   surface.** Audit Manager doesn't produce CSX-SUM-shaped output today,
-  but if AWS extends it that way, the package-generator overlap with
-  Efterlev grows. Today this isn't a real conflict.
+  but it's the AWS-native service most likely to evolve into one. If
+  AWS extends Audit Manager toward CSX-SUM (or publishes its own
+  shape that becomes the FedRAMP-acceptable artifact), Efterlev's
+  package-generator advantage narrows materially. Today the conflict
+  is theoretical, not active — but worth tracking as a live risk to
+  this positioning rather than dismissing.
 - **You're not pursuing FedRAMP 20x.** Efterlev's value is KSI-native
   classification. If you're on FedRAMP Rev5 or another standard,
   Efterlev's KSI shape may not map cleanly.
@@ -165,12 +213,18 @@ A buyer arriving from the AWS blog post should see, in this order:
 1. "Efterlev runs **before** your AWS-native services have anything
    to evaluate. It reads your Terraform and tells you where you stand
    today, with no spend."
-2. "Efterlev produces the **artifact your 3PAO actually consumes** —
-   AWS-native services produce the runtime telemetry that backs it."
+2. "Efterlev produces a per-KSI summary **shaped to satisfy the FRMR
+   catalog's CSX-SUM information requirements** — goals, consolidated
+   information resources, machine vs non-machine processes, status,
+   clarifications. AWS-native services produce the runtime telemetry
+   that backs that summary. (Empirical 3PAO acceptance is being
+   validated in v0.1.x.)"
 3. "If you're already running AWS Config and Security Hub, Efterlev
    gives you the dev-loop layer they structurally cannot — feedback
    on every file-save."
-4. "Together, Efterlev and AWS-native exceed the 70% Phase 2
-   automation threshold; neither alone does."
+4. "Together, Efterlev (pre-deploy IaC) and AWS-native (runtime
+   telemetry) cover distinct layers of the 63-KSI surface; a serious
+   FedRAMP 20x customer typically wires both, plus a runtime-telemetry
+   pipeline on a 3-day cadence."
 
 These are four sentences. Use them.

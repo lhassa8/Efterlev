@@ -280,3 +280,75 @@ def test_unconfigured_model_falls_through_to_agent_default(tmp_path: Path) -> No
     assert GapAgent(client=stub, model=cfg.llm.model).model == "claude-opus-4-7"
     assert DocumentationAgent(client=stub, model=cfg.llm.model).model == "claude-sonnet-4-6"
     assert RemediationAgent(client=stub, model=cfg.llm.model).model == "claude-opus-4-7"
+
+
+def test_cadence_defaults_describe_efterlev_ci_integration() -> None:
+    # KSI-CSX-SUM asks providers to declare per-KSI validation cadence.
+    # Efterlev's defaults describe its canonical CI integration so the
+    # documentation artifact can carry the cadence inline rather than
+    # forcing 3PAOs to chase it through the customer's CI configuration.
+    from efterlev.config import CadenceConfig
+
+    c = CadenceConfig()
+    assert "pr-compliance-scan.yml" in c.machine_validation_cadence
+    assert "report run --watch" in c.machine_validation_cadence
+    assert "Evidence Manifest" in c.non_machine_validation_cadence
+
+
+def test_cadence_round_trips_through_toml(tmp_path: Path) -> None:
+    from efterlev.config import CadenceConfig
+
+    cfg = Config(
+        cadence=CadenceConfig(
+            machine_validation_cadence="every 3 days via cron @ 02:00 UTC",
+            non_machine_validation_cadence="every 90 days via the GRC review board",
+        )
+    )
+    path = tmp_path / "config.toml"
+    save_config(cfg, path)
+    restored = load_config(path)
+    assert restored.cadence.machine_validation_cadence == "every 3 days via cron @ 02:00 UTC"
+    assert (
+        restored.cadence.non_machine_validation_cadence == "every 90 days via the GRC review board"
+    )
+
+
+def test_cadence_round_trip_with_defaults(tmp_path: Path) -> None:
+    # The default cadence values contain backticks, parens, and other
+    # punctuation. Round-trip through TOML must be lossless.
+    cfg = Config()
+    path = tmp_path / "config.toml"
+    save_config(cfg, path)
+    restored = load_config(path)
+    assert restored.cadence == cfg.cadence
+
+
+def test_cadence_load_handles_missing_section(tmp_path: Path) -> None:
+    # A pre-2026-04-29 config.toml has no [cadence] section. Loading must
+    # default to the CadenceConfig defaults rather than failing.
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[llm]\nbackend = "anthropic"\nfallback_model = "claude-sonnet-4-6"\n'
+        '[scan]\ntarget_dir = "."\noutput_dir = "./out"\n'
+        '[baseline]\nid = "fedramp-20x-moderate"\n',
+        encoding="utf-8",
+    )
+    cfg = load_config(path)
+    assert "pr-compliance-scan.yml" in cfg.cadence.machine_validation_cadence
+
+
+def test_cadence_strings_with_quotes_and_backslashes_round_trip(tmp_path: Path) -> None:
+    # Defensive: customers might write a cadence string containing a
+    # backslash or quote. The toml escape helper has to handle both.
+    from efterlev.config import CadenceConfig
+
+    cfg = Config(
+        cadence=CadenceConfig(
+            machine_validation_cadence='runs at "2 AM" daily',
+            non_machine_validation_cadence="quarterly\\monthly",
+        )
+    )
+    path = tmp_path / "config.toml"
+    save_config(cfg, path)
+    restored = load_config(path)
+    assert restored.cadence == cfg.cadence

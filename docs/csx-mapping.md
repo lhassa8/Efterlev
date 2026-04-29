@@ -7,9 +7,19 @@ section. AWS's 2026-04-27 deep-dive blog post counts the CSX KSIs alongside the 
 ones and arrives at **63 KSIs / 12 themes**; Efterlev's catalog count of 60 / 11 reflects
 only the thematic KSIs. Both are defensible accountings of the same catalog data.
 
-This document maps each CSX KSI to the Efterlev artifacts that already satisfy it. **No new
-code is required.** The CSX KSIs are about how providers organize their KSI evidence,
-and Efterlev's existing pipeline produces the artifacts that organization needs.
+This document maps each CSX KSI to the Efterlev artifacts **shaped to satisfy** it.
+The CSX KSIs are about how providers organize their KSI evidence, and Efterlev's
+existing pipeline produces artifacts that line up with those organization requirements.
+Two important honesty notes up front:
+
+1. **Empirical 3PAO acceptance** of the CSX-SUM-shaped artifact is gated on Priority 5
+   of `docs/v1-readiness-plan.md` (real-customer dogfood + 3PAO touchpoint). Until
+   that closes, "shaped to satisfy" is the correct phrasing — not "satisfies."
+2. **CSX-ORD alignment is partial.** Efterlev's POA&M severity ordering implements
+   *criticality-based triage*, which is what the CSX-ORD spirit is about; it does
+   not yet emit the catalog's prescribed initial-authorization KSI sequence
+   (MAS, ADS, UCM…) directly. A `--csx-ord-sort` mode that emits the prescribed
+   sequence is on the v0.1.x backlog.
 
 For the full strategic analysis of the AWS blog and the catalog accounting question, see
 [`docs/aws-ksi-blog-analysis-2026-04-28.md`](https://github.com/efterlev/efterlev/blob/main/docs/aws-ksi-blog-analysis-2026-04-28.md)
@@ -34,32 +44,41 @@ in the repository.
 > - Current implementation status
 > - Any clarifications or responses to the assessment summary
 
-### How Efterlev satisfies CSX-SUM
+### How Efterlev's output is shaped for CSX-SUM
 
 The Documentation Agent's `documentation-{ts}.json` JSON sidecar
 (see [PR #53](https://github.com/efterlev/efterlev/pull/53)) emits a per-KSI structured
-record that maps directly to the CSX-SUM information requirements:
+record that maps to most CSX-SUM information requirements:
 
-| CSX-SUM field | Efterlev artifact field |
-|---|---|
-| Goals + pass/fail criteria | `attestations[].draft.indicator.statement` (KSI statement from FRMR catalog) |
-| Consolidated information resources | `attestations[].draft.citations[].source_file:line_range` + `evidence_id` |
-| Machine-based validation processes | `attestations[].draft.citations[]` where `detector_id != "manifest"` (deterministic detector evidence) + `detector_id` names the specific machine process |
-| Non-machine-based processes | `attestations[].draft.citations[]` where `detector_id == "manifest"` (Evidence Manifests carry the procedural attestations) |
-| Persistent cycle | The CI integration cadence (`.github/workflows/pr-compliance-scan.yml` runs on every PR; `efterlev report run --watch` runs on every save during dev) |
-| Current implementation status | `attestations[].draft.status` ∈ {implemented, partial, not_implemented, evidence_layer_inapplicable, not_applicable} |
-| Clarifications | `attestations[].draft.narrative` (the Documentation Agent's prose explaining what the scanner saw + did not see) |
+| CSX-SUM field | Efterlev artifact field | Status |
+|---|---|---|
+| Goals + pass/fail criteria | `attestations[].draft.indicator.statement` (KSI statement from FRMR catalog) | ✅ in artifact |
+| Consolidated information resources | `attestations[].draft.citations[].source_file:line_range` + `evidence_id` | ✅ in artifact |
+| Machine-based validation processes | `attestations[].draft.citations[]` where `detector_id != "manifest"` (deterministic detector evidence) + `detector_id` names the specific machine process | ✅ in artifact |
+| Non-machine-based processes | `attestations[].draft.citations[]` where `detector_id == "manifest"` (Evidence Manifests carry the procedural attestations) | ✅ in artifact |
+| Persistent cycle | **Not in the artifact today.** Cadence is supplied by the customer's CI integration (`.github/workflows/pr-compliance-scan.yml` runs on every PR; `efterlev report run --watch` runs on every save during dev). | ⚠️ adjacent, not inline |
+| Current implementation status | `attestations[].draft.status` ∈ {implemented, partial, not_implemented, evidence_layer_inapplicable, not_applicable} | ✅ in artifact |
+| Clarifications | `attestations[].draft.narrative` (the Documentation Agent's prose explaining what the scanner saw + did not see) | ✅ in artifact |
 
-**To produce a CSX-SUM-compliant summary today:**
+**Cadence-field gap.** CSX-SUM lists the persistent-validation cycle as a required
+field per KSI summary. The artifact today does not carry a `validation_cadence` /
+`persistent_cycle` field inline; cadence is supplied by the customer's CI integration
+and visible in the receipt log + workflow history. A 3PAO consuming the JSON today
+would need to look at the workflow YAML alongside the artifact. Adding the field
+inline is small (~30 LoC + schema version bump); on the v0.1.x backlog.
+
+**To produce a CSX-SUM-shaped summary today:**
 
 ```bash
 efterlev report run                                      # runs scan + Gap + Documentation
 cat .efterlev/reports/documentation-*.json | jq .         # the CSX-SUM-shaped JSON sidecar
 ```
 
-The output is already schema-versioned (`schema_version: "1.0"`) and machine-readable per
+The output is schema-versioned (`schema_version: "1.0"`) and machine-readable per
 the FedRAMP 20x Phase 2 dual-format requirement. The accompanying
-`documentation-{ts}.html` is the human-readable companion.
+`documentation-{ts}.html` is the human-readable companion. **Empirical 3PAO
+acceptance of the artifact is gated on Priority 5** of `docs/v1-readiness-plan.md`
+(real-customer dogfood + 3PAO touchpoint).
 
 ---
 
@@ -119,11 +138,16 @@ applied the KSIs across their declared MAS.
 > FedRAMP Key Security Indicators for an initial authorization package: Minimum Assessment
 > Scope (MAS), Authorization Data Sharing (ADS), Using Cryptographic Modules (UCM)...
 
-### How Efterlev satisfies CSX-ORD
+### Where Efterlev's output aligns — and where it doesn't
 
-Two pieces of the existing pipeline implement criticality ordering:
+CSX-ORD prescribes a **specific KSI sequence** for initial authorization: MAS first,
+then ADS, then UCM, and so on. It is a *prescribed catalog ordering*, not a
+severity sort.
 
-#### POA&M severity ordering
+Efterlev today implements **criticality-based triage**, which is the spirit of
+CSX-ORD but not the prescribed sequence:
+
+#### POA&M severity ordering (criticality-based triage)
 
 `efterlev poam` emits a Plan of Action & Milestones markdown that orders entries by
 severity:
@@ -134,8 +158,9 @@ severity:
   (no remediation needed)
 
 Within each severity tier, KSIs are ordered alphabetically by KSI ID for stability.
-This matches the CSX-ORD prescription that providers tackle the highest-criticality
-gaps first.
+A reviewer using the POA&M is naturally led to tackle the highest-criticality gaps
+first — which lines up with the CSX-ORD intent of "tackle the most important first,"
+but is **not** the catalog-prescribed MAS → ADS → UCM sequence.
 
 #### Gap report status-filter pills
 
@@ -145,43 +170,39 @@ classification list:
 
 `[ All ] [ Implemented ] [ Partial ] [ Not implemented ] [ Evidence-layer inapplicable ] [ Not applicable ]`
 
-A reviewer following CSX-ORD's criticality discipline clicks **"Not implemented"** to focus
-on the highest-priority gaps, then **"Partial"** for the work-in-progress items, etc.
-The sort dropdown's "By severity" option produces the same ordering directly in the
-classification list:
+A reviewer can click **"Not implemented"** to focus on highest-priority gaps. Same
+caveat: this is criticality triage, not the prescribed catalog sequence.
 
-```
-not_implemented (rank 0) → partial (1) → implemented (2)
-                        → evidence_layer_inapplicable (3) → not_applicable (4)
-```
+#### What's not yet implemented
 
-#### Combined: pre-export to a 3PAO
+A `--csx-ord-sort` mode that emits the catalog's prescribed initial-authorization
+KSI sequence (MAS, ADS, UCM, …) directly is on the v0.1.x backlog. This is the
+work that would let Efterlev claim "satisfies CSX-ORD" rather than "aligns with
+CSX-ORD's intent." Today the prescribed sequence is data the customer or 3PAO
+extracts from the FRMR catalog directly.
 
-A typical CSX-ORD-aligned export workflow:
+#### Honest summary
 
-```bash
-efterlev report run             # full pipeline produces gap + documentation + POA&M
-efterlev poam                   # POA&M markdown ordered by severity
-# Output: .efterlev/reports/poam-{ts}.md
-```
-
-The POA&M markdown is the artifact that demonstrates CSX-ORD compliance — the
-ordered list directly answers the "which KSI is most critical to fix first" question
-the FRMR statement asks providers to address.
+> **Efterlev's POA&M is a criticality-triaged remediation list.** A 3PAO using
+> CSX-ORD's catalog-prescribed sequence to drive their assessment workflow gets
+> partial value from Efterlev's POA&M today. The prescribed-sequence sort is on
+> the backlog; until then, customers should pair Efterlev's output with the
+> FRMR catalog's own ordering for the strict CSX-ORD case.
 
 ---
 
 ## Summary
 
 The 3 CSX KSIs are procedural meta-requirements about how to organize KSI evidence.
-Every CSX KSI maps to existing Efterlev pipeline output:
+Each CSX KSI has a corresponding Efterlev pipeline output:
 
-| CSX KSI | Efterlev artifact | When it's produced |
+| CSX KSI | Efterlev artifact | Status |
 |---|---|---|
-| KSI-CSX-SUM | `documentation-{ts}.json` JSON sidecar | `efterlev agent document` |
-| KSI-CSX-MAS | `boundary_state` field on every Evidence/Claim | `efterlev boundary set` declares; every Evidence gets the state |
-| KSI-CSX-ORD | POA&M severity-ordered markdown + gap report filter pills | `efterlev poam` + the HTML gap report |
+| KSI-CSX-SUM | `documentation-{ts}.json` JSON sidecar | Shaped to satisfy; cadence-field gap noted; empirical 3PAO acceptance gated on Priority 5 |
+| KSI-CSX-MAS | `boundary_state` field on every Evidence/Claim | Implemented (Priority 4 work) |
+| KSI-CSX-ORD | POA&M severity-ordered markdown + gap report filter pills | Aligns with intent (criticality triage); catalog-prescribed sequence (MAS, ADS, UCM…) on backlog |
 
-No new detector code is required. A CSP using Efterlev's full pipeline is already producing
-CSX-compliant output; the artifacts just need to be presented to a 3PAO with the CSX
-mapping made explicit. This document is that explicit mapping.
+A CSP using Efterlev's full pipeline produces output **shaped to** organize KSI
+evidence per the CSX requirements. Closing the remaining gaps (cadence field on
+CSX-SUM, prescribed-sequence sort on CSX-ORD, 3PAO empirical acceptance) is
+v0.1.x work tracked alongside Priority 5.

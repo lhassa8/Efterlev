@@ -338,3 +338,51 @@ def test_attestation_format_version_present_and_distinct_from_frmr_version() -> 
     assert result.artifact.info.frmr_version == "0.9.43-beta"
     # The two are independent — bumping FRMR doesn't bump the format.
     assert result.artifact.info.attestation_format_version != result.artifact.info.frmr_version
+
+
+# --- CSX-SUM cadence fields ------------------------------------------------
+
+
+def test_cadence_fields_propagate_to_every_indicator() -> None:
+    # KSI-CSX-SUM (FedRAMP 20x cross-cutting) requires per-KSI machine and
+    # non-machine validation cadence. The primitive accepts cadence at the
+    # input level (the workspace's CadenceConfig) and stamps every indicator
+    # uniformly. Both fields appear in the artifact's per-indicator JSON.
+    drafts = [_draft("KSI-AFR-FSI"), _draft("KSI-AFR-CCM")]
+    indicators = {
+        "KSI-AFR-FSI": _indicator("KSI-AFR-FSI", "AFR", ["ir-6"]),
+        "KSI-AFR-CCM": _indicator("KSI-AFR-CCM", "AFR", ["ca-7"]),
+    }
+    result = generate_frmr_attestation(
+        GenerateFrmrAttestationInput(
+            drafts=drafts,
+            indicators=indicators,
+            baseline_id="fedramp-20x-moderate",
+            frmr_version="0.9.43-beta",
+            frmr_last_updated="2026-04-01",
+            generated_at=_FIXED_NOW,
+            machine_validation_cadence="every PR + on save",
+            non_machine_validation_cadence="quarterly review",
+        )
+    )
+    for ksi_id in ("KSI-AFR-FSI", "KSI-AFR-CCM"):
+        rec = result.artifact.KSI["AFR"].indicators[ksi_id]
+        assert rec.machine_validation_cadence == "every PR + on save"
+        assert rec.non_machine_validation_cadence == "quarterly review"
+    # Same values reach the canonical JSON the artifact serializes to.
+    payload = json.loads(result.artifact_json)
+    afr_indicator = payload["KSI"]["AFR"]["indicators"]["KSI-AFR-FSI"]
+    assert afr_indicator["machine_validation_cadence"] == "every PR + on save"
+    assert afr_indicator["non_machine_validation_cadence"] == "quarterly review"
+
+
+def test_cadence_fields_default_to_none_when_input_omits_them() -> None:
+    # Backward compatibility: callers that don't pass cadence (pre-2026-04-29
+    # behavior) get None on every indicator. Consumers must default to
+    # "<unspecified>" or pull from the customer's CI configuration directly.
+    drafts = [_draft("KSI-AFR-FSI")]
+    indicators = {"KSI-AFR-FSI": _indicator("KSI-AFR-FSI", "AFR", ["ir-6"])}
+    result = generate_frmr_attestation(_input(drafts=drafts, indicators=indicators))
+    rec = result.artifact.KSI["AFR"].indicators["KSI-AFR-FSI"]
+    assert rec.machine_validation_cadence is None
+    assert rec.non_machine_validation_cadence is None

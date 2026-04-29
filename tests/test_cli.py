@@ -52,13 +52,14 @@ def test_detectors_list_lists_all_thirty_detectors(tmp_path: pytest.TempPathFact
     """
     result = runner.invoke(app, ["detectors", "list"])
     assert result.exit_code == 0
-    # 43 detectors per the A4 + Priority 1.x catalog (see tests/test_smoke.py:
-    # test_every_detector_folder_registers).
-    assert "total: 43 detectors" in result.output
+    # 45 detectors per the A4 + Priority 1.x catalog + the 2026-04-29
+    # nacl_restrictiveness + centralized_log_aggregation landings (see
+    # tests/test_smoke.py: test_every_detector_folder_registers).
+    assert "total: 45 detectors" in result.output
     # Priority 6 honesty pass (2026-04-27): summary breaks down KSI-mapped
     # vs supplementary 800-53-only detectors so a reader knows the marketed
     # count isn't all KSI contributions.
-    assert "36 KSI-mapped" in result.output
+    assert "38 KSI-mapped" in result.output
     assert "7 800-53 only" in result.output
     # Spot-check a couple of detector ids appear.
     assert "aws.encryption_s3_at_rest" in result.output
@@ -534,3 +535,30 @@ def test_boundary_set_missing_workspace_errors(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "config not found" in result.output
+
+
+def test_display_path_keeps_user_target_form_for_symlinked_dirs(tmp_path: Path) -> None:
+    # On macOS /tmp is a symlink to /private/tmp; the same paper-cut shows
+    # up anywhere a user passes a path under a symlinked directory. Verify
+    # the helper reconstructs the path under the un-resolved target form.
+    from efterlev.cli.main import _display_path
+
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    (real_dir / ".efterlev" / "reports").mkdir(parents=True)
+    report = real_dir / ".efterlev" / "reports" / "gap-1.html"
+    report.write_text("<html/>", encoding="utf-8")
+
+    symlink_target = tmp_path / "link"
+    symlink_target.symlink_to(real_dir)
+
+    # User passed `tmp/link/...`; canonical form lives under `tmp/real/...`.
+    # Display should re-stitch the path under the user-supplied form.
+    displayed = _display_path(report, symlink_target)
+    assert str(symlink_target) in displayed
+    assert str(real_dir) not in displayed
+
+    # Sanity: a path not under target.resolve() falls back to its own str().
+    outside = tmp_path / "elsewhere.txt"
+    outside.write_text("", encoding="utf-8")
+    assert _display_path(outside, symlink_target) == str(outside)

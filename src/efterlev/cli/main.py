@@ -97,6 +97,19 @@ def _stub(phase: str, command: str) -> None:
     )
 
 
+def _display_path(p: Path, target: Path) -> str:
+    # On macOS, `/tmp` is a symlink to `/private/tmp`. We resolve target
+    # paths internally so provenance records carry canonical paths, but
+    # users typing `--target /tmp/X` then hunting for `/private/tmp/...`
+    # in their finder is a real paper-cut. Re-stitch the path under the
+    # un-resolved target form for display only. Falls back to the
+    # canonical path if `p` isn't actually under `target.resolve()`.
+    try:
+        return str(target / p.relative_to(target.resolve()))
+    except ValueError:
+        return str(p)
+
+
 @app.callback(invoke_without_command=True)
 def _root(
     ctx: typer.Context,
@@ -241,6 +254,13 @@ def init(
         f"(+{result.num_enhancements} enhancements)"
     )
     typer.echo(f"  load receipt:          {result.receipt_record_id}")
+
+    # Catalog-freshness nudges go to stderr after the success block so they
+    # don't get lost in the init banner. Non-blocking: init has already
+    # succeeded by this point.
+    for warning in result.freshness_warnings:
+        typer.echo("")
+        typer.echo(warning, err=True)
 
 
 @app.command()
@@ -481,6 +501,17 @@ def poam(
             "Defaults to `.efterlev/reports/poam-<timestamp>.md`."
         ),
     ),
+    sort: str = typer.Option(
+        "severity",
+        "--sort",
+        help=(
+            "How to order POA&M items. `severity` (default): not_implemented "
+            "(HIGH) first, then partial (MEDIUM); alphabetical within tier. "
+            "`csx-ord`: order by KSI-CSX-ORD's prescribed initial-authorization "
+            "sequence (MAS, ADS, UCM, …); items outside the prescribed sequence "
+            "appear after, alphabetically."
+        ),
+    ),
 ) -> None:
     """Emit a POA&M markdown for every open (partial / not_implemented) KSI.
 
@@ -577,12 +608,27 @@ def poam(
             )
             for c in kept_classifications
         ]
+        if sort not in ("severity", "csx-ord"):
+            typer.echo(
+                f"error: --sort must be 'severity' or 'csx-ord' (got '{sort}').",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if sort == "csx-ord" and not frmr_doc.csx_ord_sequence:
+            typer.echo(
+                "warning: workspace's FRMR cache predates CSX-ORD support; "
+                "the prescribed-sequence sort will fall back to alphabetical. "
+                "Run `efterlev init --force` to refresh the cache.",
+                err=True,
+            )
         result = generate_poam_markdown(
             GeneratePoamMarkdownInput(
                 classifications=poam_inputs,
                 indicators=frmr_doc.indicators,
                 baseline_id="fedramp-20x-moderate",
                 frmr_version=frmr_doc.version,
+                sort_mode=sort,  # type: ignore[arg-type]
+                csx_ord_sequence=list(frmr_doc.csx_ord_sequence),
             )
         )
 
@@ -591,7 +637,7 @@ def poam(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(result.markdown, encoding="utf-8")
 
-    typer.echo(f"POA&M: {output_path}")
+    typer.echo(f"POA&M: {_display_path(output_path, target)}")
     typer.echo(f"  open items:       {result.item_count}")
     if skipped_out_of_boundary > 0:
         typer.echo(
@@ -683,7 +729,7 @@ def agent_gap(
                 typer.echo(
                     "error: 0 evidence records in the store. The scan either hasn't run "
                     "yet or ran and matched no resources — your target may have no "
-                    "Terraform/.github-workflows files in scope, or the 43 detectors "
+                    "Terraform/.github-workflows files in scope, or the 45 detectors "
                     "may not apply to its resources. Run `efterlev scan --target <path>` "
                     "to verify.",
                     err=True,
@@ -761,8 +807,8 @@ def agent_gap(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
@@ -891,6 +937,8 @@ def agent_document(
                     frmr_version=frmr_doc.version,
                     frmr_last_updated=frmr_doc.last_updated,
                     claim_record_ids=claim_record_ids,
+                    machine_validation_cadence=config.cadence.machine_validation_cadence,
+                    non_machine_validation_cadence=config.cadence.non_machine_validation_cadence,
                 )
             )
     except AgentError as e:
@@ -939,8 +987,8 @@ def agent_document(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     # FRMR-compatible attestation JSON alongside the HTML — one CLI run, two
     # artifacts. The human-readable HTML is for review; the machine-readable
@@ -1165,8 +1213,8 @@ def agent_remediate(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
@@ -1849,8 +1897,8 @@ def report_diff(
     json_path.write_text(json.dumps(diff.model_dump(), indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     if diff.regressed:
         typer.echo("")

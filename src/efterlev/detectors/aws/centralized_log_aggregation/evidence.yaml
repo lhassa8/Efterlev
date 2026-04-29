@@ -1,0 +1,55 @@
+detector_id: aws.centralized_log_aggregation
+
+content_fields:
+  resource_type:
+    type: string
+    values: ["centralized_log_aggregation"]
+
+  resource_name:
+    type: string
+    values: ["(workspace)"]
+    notes: Detector emits one workspace-scoped Evidence, not per-resource.
+
+  aggregation_state:
+    type: enum
+    values: ["aggregated", "producers_only", "aggregators_only"]
+    notes: |
+      `aggregated` — both log producers and aggregators present.
+        Evidences AU-2 + AU-3 + AU-4 + SI-4(2) + SI-4(4).
+
+      `producers_only` — log-producing resources declared but no
+        centralization primitive in this workspace. Evidences AU-2
+        + AU-3 + AU-4 only; gap field names the missing centralization.
+
+      `aggregators_only` — aggregation declared but no producers
+        in this workspace. May indicate a logs-only repo / shared
+        services account. Evidences AU-2 + AU-3 + AU-4; gap names
+        the producer-side absence.
+
+  log_producer_count:
+    type: int
+    notes: Total CloudWatch log groups + CloudTrails + flow logs.
+
+  log_producers_by_type:
+    type: dict[string, int]
+    notes: Per-type breakdown for reviewer drill-down.
+
+  aggregator_count:
+    type: int
+    notes: Total Security Hub + log destinations + subscription filters
+      + Firehose streams + OpenSearch/Elasticsearch domains.
+
+  aggregators_by_type:
+    type: dict[string, int]
+    notes: Per-type breakdown.
+
+  gap:
+    type: string | absent
+    notes: Present on non-`aggregated` states with text describing
+      the absence.
+
+emit_when:
+  - At least one log producer OR aggregator resource is declared in
+    the workspace. When neither is present, the detector emits zero
+    Evidence — KSI-MLA-OSM may be `evidence_layer_inapplicable` for
+    workspaces with no logging surface at all.

@@ -9,18 +9,28 @@ task roles, GitHub Actions OIDC, Lambda execution roles). Any
 declared `aws_iam_access_key` is a deliberate opt-out of that pattern
 and should be named in the attestation.
 
-KSI mapping: this detector claims KSI-IAM-MFA despite not directly
-evidencing MFA. The discipline from DECISIONS 2026-04-22 "Phase 6-lite"
-says control membership is necessary but not sufficient — the detector
-must also evidence what the KSI's *statement* commits to. KSI-IAM-MFA's
-statement is about enforcing phishing-resistant MFA for user
-authentication. A long-lived programmatic access key is a credential
-that bypasses MFA by design: whoever holds the secret authenticates
-without an IdP challenge. The detector therefore materially evidences
-a posture question the KSI commits to (is MFA actually enforced for
-every access path?), and the claim is honest. Contrast with
-`iam_password_policy`, which only evidences password strength — not
-MFA at all — and declares `ksis=[]`.
+KSI mapping: primary is KSI-IAM-SNU (Securing Non-User Authentication),
+cross-mapped to KSI-IAM-MFA. Long-lived programmatic access keys are
+fundamentally non-user authentication credentials — typically used by
+service accounts, CI deploy roles, and automation. KSI-IAM-SNU's
+moderate statement ("Enforce appropriately secure authentication
+methods for non-user accounts and services") is the closest semantic
+fit; an access key is the canonical insecure non-user auth pattern.
+
+The KSI-IAM-MFA cross-mapping captures a related concern: an access
+key bypasses MFA by design (whoever holds the secret authenticates
+without an IdP challenge), so it's material to whether the boundary
+actually enforces MFA across every access path. That cross-mapping
+remains valid via control overlap (both KSIs cite IA-2-family
+controls) but is now secondary to the SNU primary mapping per the
+2026-04-29 audit (PR #90).
+
+Pre-2026-04-29 the primary was KSI-IAM-MFA on the "access keys bypass
+MFA" reasoning. The audit found that argument defensible but the
+SNU semantic fit stronger; this commit makes SNU primary while keeping
+MFA as the documented cross-mapping. Contrast with `iam_password_policy`,
+which only evidences password strength (not MFA, not non-user auth)
+and declares `ksis=[]`.
 
 Motivated by the 2026-04-22 dogfood pass: ground-truth gap #8
 (govnotes `ci_deploy` IAM user with long-lived keys) was invisible
@@ -38,7 +48,13 @@ from efterlev.models import Evidence, TerraformResource
 
 @detector(
     id="aws.iam_user_access_keys",
-    ksis=["KSI-IAM-MFA"],
+    # Ordering convention: ksis=[primary, ...cross-mappings]. Index 0 is
+    # the primary mapping; subsequent entries are cross-mappings. Downstream
+    # consumers that key on the primary KSI should read ksis_evidenced[0].
+    # SNU is primary because long-lived access keys are the canonical
+    # insecure non-user auth pattern; MFA is cross-mapped via the bypass
+    # argument. See detector docstring for full rationale.
+    ksis=["KSI-IAM-SNU", "KSI-IAM-MFA"],
     controls=["IA-2", "AC-2"],
     source="terraform",
     version="0.1.0",
@@ -50,10 +66,12 @@ def detect(resources: list[TerraformResource]) -> list[Evidence]:
                          AC-2 (Account Management) — a long-lived
                          programmatic credential is declared for an IAM
                          user.
-    Evidences (KSI):     KSI-IAM-MFA — access keys bypass MFA by
-                         design; their presence is material to whether
-                         the boundary actually enforces MFA for every
-                         authentication path.
+    Evidences (KSI):     KSI-IAM-SNU primary (long-lived access keys are
+                         the canonical insecure non-user auth pattern;
+                         the KSI moderate outcome is direct here),
+                         KSI-IAM-MFA cross-mapping (access keys bypass
+                         MFA by design — material to MFA-enforcement-
+                         everywhere posture).
     Does NOT prove:      whether the key is actually used in
                          production, key rotation cadence (AWS IAM
                          does not natively rotate access keys —
@@ -103,7 +121,7 @@ def _emit_access_key_evidence(r: TerraformResource, now: datetime) -> Evidence:
 
     return Evidence.create(
         detector_id="aws.iam_user_access_keys",
-        ksis_evidenced=["KSI-IAM-MFA"],
+        ksis_evidenced=["KSI-IAM-SNU", "KSI-IAM-MFA"],
         controls_evidenced=["IA-2", "AC-2"],
         source_ref=r.source_ref,
         content=content,
