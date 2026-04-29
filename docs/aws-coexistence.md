@@ -24,7 +24,7 @@ and how a customer should think about using them together.
 |---|---|
 | Do I need both? | Eventually, yes — for FedRAMP 20x on AWS. On Day 1, no: start with Efterlev. |
 | Which one first? | **Efterlev first** — it's free, the deterministic scan runs in seconds against a small Terraform tree, and the LLM-backed Gap + Documentation stages typically take a few minutes more. You see where you stand before you provision anything. |
-| Which produces the per-KSI attestation summary a 3PAO ingests? | **Efterlev** — its `documentation-{ts}.json` is designed to satisfy the FRMR catalog's CSX-SUM information requirements (goals, consolidated information resources, machine vs non-machine processes, status, clarifications). AWS-native services don't produce a CSX-SUM-shaped artifact today. Empirical 3PAO acceptance is gated on Priority 5 of `docs/v1-readiness-plan.md`. |
+| Which produces the per-KSI attestation summary a 3PAO ingests? | **Efterlev** — its `documentation-{ts}.json` is designed to satisfy the FRMR catalog's CSX-SUM information requirements (goals, consolidated information resources, machine vs non-machine processes, status, clarifications). AWS-native services don't produce a CSX-SUM-shaped artifact today. Empirical 3PAO acceptance is a post-launch validation milestone (real-customer dogfood + 3PAO touchpoint). |
 | Which produces the runtime evidence backing those attestations? | **AWS-native** — Config rules, Security Hub findings, CloudTrail logs are the runtime telemetry. |
 | What if I'm not on AWS? | Of Efterlev's 38 KSI-mapped detectors, 34 read AWS-resource-shaped Terraform (`aws_*` resources); 4 read `.github/workflows/`. An Azure-only or GCP-only customer running `efterlev scan` against their Terraform gets near-zero KSI evidence today; the GitHub-workflows detectors still fire. Multi-cloud detector coverage (CDK, Pulumi, k8s, Azure ARM, GCP DM) is on the v1.5+ roadmap. |
 
@@ -65,12 +65,11 @@ cadence inline; cadence is supplied by the customer's CI integration
 (`pr-compliance-scan.yml` runs on every PR; `report run --watch` runs
 on every save). The artifact carries the snapshot.
 
-Empirical 3PAO acceptance is gated on Priority 5 of
-`docs/v1-readiness-plan.md` (real-customer dogfood + 3PAO touchpoint).
-Until that closes, the precise wording is "shaped to satisfy CSX-SUM,"
-not "is the artifact 3PAOs consume."
+Empirical 3PAO acceptance is the next validation milestone — a real-customer
+dogfood + 3PAO touchpoint, post-launch. Until that closes, the precise
+wording is "shaped to satisfy CSX-SUM," not "is the artifact 3PAOs consume."
 
-A 3PAO conversation in this frame, after Priority 5 closes, would
+A 3PAO conversation in this frame, once that validation closes, would
 read like:
 
 > *"Here is my Efterlev-generated per-KSI summary (`documentation-*.json`).

@@ -99,7 +99,7 @@ No known vulnerabilities found
 | Container image | `syft ghcr.io/efterlev/efterlev:v0.0.1-rc.5 -o cyclonedx-json` | 3,600 |
 | Python dependency tree (project) | `syft dir:. -o cyclonedx-json --select-catalogers python` | 451 |
 
-CycloneDX format. To be attached to the GitHub Release at v0.1.0 launch (tracked in §7 + `docs/launch/post-launch-followups.md`).
+CycloneDX format. To be attached to the GitHub Release at v0.1.0 launch (tracked in §7 + `docs/followups.md`).
 
 ### License compatibility (Apache-2.0)
 
@@ -163,7 +163,7 @@ Each release pipeline uses keyless OIDC auth and Sigstore signing — no long-li
 
 - [x] **`.github/workflows/release-pypi.yml`** — uses `pypa/gh-action-pypi-publish@release/v1` (TestPyPI smoke first then real PyPI) with trusted publishing (no API token). The `pypi` GitHub environment carries a deployment-tag-pattern restriction (`v[0-9]*.[0-9]*.[0-9]*`) that blocks any non-final-semver tag from triggering real-PyPI publish. Required-reviewer is plan-gated on Free/Pro plans for private repos; the destination repo is on GitHub Team which unlocks it — required-reviewer can be added at flip-hour or kept as the tag-pattern-only gate. Validated end-to-end via 5 rc-tag dry-runs (DECISIONS 2026-04-26).
 - [x] **`.github/workflows/release-container.yml`** — `id-token: write` permission; `sigstore/cosign-installer@v3`; `cosign sign --yes "${IMAGE}@${DIGEST}"` (signs by digest not tag — cosign-recommended); `cosign verify` post-push to confirm the signature on what's actually in the registry. SLSA provenance via `docker/build-push-action@v6 provenance: mode=max`. SBOM emission via buildx `sbom: true`. Validated end-to-end 5 dry-run rounds.
-- [x] **`.github/workflows/release-smoke.yml`** — runs install-verification matrix in parallel with the release jobs. Configured non-blocking (`continue-on-error: true` on the matrix job) at v0.1.0 — see DECISIONS 2026-04-26 "Pipeline dry-run" for the rationale and `docs/launch/post-launch-followups.md` for the v0.1.x re-blocking plan. ghcr.io cells cover Linux x86 + arm64; pipx cells cover Linux + macOS + Windows.
+- [x] **`.github/workflows/release-smoke.yml`** — runs install-verification matrix in parallel with the release jobs. Configured non-blocking (`continue-on-error: true` on the matrix job) at v0.1.0 — see DECISIONS 2026-04-26 "Pipeline dry-run" for the rationale and `docs/followups.md` for the v0.1.x re-blocking plan. ghcr.io cells cover Linux x86 + arm64; pipx cells cover Linux + macOS + Windows.
 - [x] **No long-lived secrets in any release workflow.** GitHub Container Registry (ghcr.io) uses the per-job `GITHUB_TOKEN` (ephemeral). PyPI and TestPyPI use Trusted Publishing (no token required). Docker Hub publish was originally a parallel target requiring a `DOCKERHUB_TOKEN`, but was dropped at v0.1.0 after Docker Hub eliminated the free organization tier. Net effect: the v0.1.0 release pipeline has zero long-lived credentials — every signing and publish operation runs under the GitHub Actions workflow's OIDC identity.
 
 **SLSA provenance.** Build-and-push action emits SLSA Level 3 provenance attestations bound to the workflow identity. Verified at the registry layer by `cosign verify-attestation` in `scripts/verify-release.sh`. Users running this script post-release confirm not just signature but also the build was produced by the expected workflow on the expected commit.
@@ -186,7 +186,7 @@ Each release pipeline uses keyless OIDC auth and Sigstore signing — no long-li
 
 ## 7. Open items
 
-Items found during review that didn't make the launch cut. Each item is tracked in `docs/launch/post-launch-followups.md` for v0.1.x or v0.2.0+. None are launch blockers.
+Items found during review that didn't make the launch cut. Each item is tracked in `docs/followups.md` for v0.1.x or v0.2.0+. None are launch blockers.
 
 | Issue | Severity | Why not a blocker | Tracking |
 |---|---|---|---|

@@ -91,8 +91,7 @@ This makes two things true. First, our own agents consume primitives through an 
 
 ## Where to go next
 
-- [`docs/dual_horizon_plan.md`](./dual_horizon_plan.md) — what ships when; the 4-day hackathon plan and the post-hackathon roadmap
-- [`docs/scope.md`](./scope.md) — the crisp v0 MVP contract, in and out of scope
+- [`docs/dual_horizon_plan.md`](./dual_horizon_plan.md) — roadmap beyond v0.1.0
 - [`docs/icp.md`](./icp.md) — who this is for and how that shapes the product
 - [`COMPETITIVE_LANDSCAPE.md`](https://github.com/efterlev/efterlev/blob/main/COMPETITIVE_LANDSCAPE.md) — honest positioning against Comp AI, RegScale OSCAL Hub, and others
 - [`THREAT_MODEL.md`](https://github.com/efterlev/efterlev/blob/main/THREAT_MODEL.md) — the tool's own security posture

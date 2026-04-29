@@ -1,6 +1,6 @@
-# Post-launch follow-ups
+# Follow-ups
 
-The launch-readiness work for v0.1.0 deliberately deferred several items to keep launch surface area tight. This document is the canonical tracker so nothing gets lost. Items here are NOT launch blockers — they are real work scheduled for v0.1.x (patch follow-ups) or v0.2.0 (next minor) once the launch is stable.
+Tracked work deferred from v0.1.0 to keep the launch surface tight. Items here are not launch blockers — they're real work scheduled for v0.1.x (patch follow-ups) or v0.2.0 (next minor).
 
 Each entry names the deferral, the reason, the owner, and a target window. As items land, move them to the **Done** section at the bottom with their resolution.
 
@@ -94,7 +94,7 @@ Each entry names the deferral, the reason, the owner, and a target window. As it
 
 **Target:** within 30 days post-launch; soft target for inclusion in v0.1.1 or v0.1.2.
 
-**Cross-references:** `docs/launch/runbook.md` 30-day success-gates section, `release-smoke.yml` job-level comment.
+**Cross-references:** `release-smoke.yml` job-level comment.
 
 ---
 
@@ -114,13 +114,13 @@ Each entry names the deferral, the reason, the owner, and a target window. As it
 
 **Item:** `ci-security.yml`'s CodeQL job has `continue-on-error: true` because the upload-to-Security-tab step 403s on private repos without GitHub Advanced Security.
 
-**Resolution at launch hour:** part of the public-flip sequence already in `docs/launch/runbook.md`:
-1. Enable Code Scanning (Settings → Code security and analysis) on the now-public repo.
+**Resolution path** (post-launch — the repo is now public, so Advanced Security features unlock):
+1. Enable Code Scanning (Settings → Code security and analysis).
 2. Remove `continue-on-error: true` from the CodeQL job.
 
-**Owner:** Maintainer (does this at launch hour 0).
+**Owner:** Maintainer.
 
-**Target:** launch day.
+**Target:** v0.1.x.
 
 ---
 
@@ -171,7 +171,7 @@ We considered KSI-SVC-VRI ("Validating Resource Integrity"), KSI-SVC-PRR ("Preve
 
 **Target:** v0.2.0 catalog bump if FRMR resolves; otherwise this stays open and the 5 detectors stay supplementary-only with documented rationale.
 
-**Cross-references:** `docs/v1-readiness-plan.md` Priority 6, README "Note on SC-28" stanza, individual detector READMEs under `src/efterlev/detectors/aws/encryption_*/`, DECISIONS 2026-04-21 and 2026-04-27 honesty pass.
+**Cross-references:** individual detector READMEs under `src/efterlev/detectors/aws/encryption_*/`, DECISIONS 2026-04-21 and 2026-04-27 honesty pass.
 
 ---
 
@@ -332,8 +332,6 @@ We considered KSI-SVC-VRI ("Validating Resource Integrity"), KSI-SVC-PRR ("Preve
 **Owner:** Maintainer.
 
 **Target:** v0.2.0 or when the blog has a few posts to seed it with.
-
-**Cross-references:** `docs/launch/runbook.md` Day-1 step.
 
 ---
 

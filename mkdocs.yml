@@ -47,18 +47,16 @@ plugins:
 # history reasons but aren't part of the public docs site. The site has
 # its own pages for these topics; the originals stay accessible on GitHub.
 exclude_docs: |
-  /day1_brief.md
-  /dogfood-2026-04-22.md
-  /scope.md
   /RELEASE.md
   /deploy-govcloud-ec2.md
   /security-review-2026-04.md
   /icp.md
   /dual_horizon_plan.md
   /ci-integration.md
+  /detector-mapping-audit.md
+  /followups.md
   /examples/
   /specs/
-  /launch/
 
 markdown_extensions:
   - admonition

@@ -7,8 +7,8 @@ both the SQLite DB and the blob store would pass hash verification but leave
 the receipt log visibly out of sync).
 
 Atomicity: each append opens the file in `O_APPEND` mode, takes an exclusive
-`fcntl.flock`, writes a single JSON line + newline, and fsyncs. POSIX-only;
-Mac and Linux supported at v0 per `docs/scope.md`. Windows is v1+.
+`fcntl.flock`, writes a single JSON line + newline, and fsyncs. POSIX-only
+(macOS + Linux); Windows support is on the v1.5+ roadmap.
 
 Per-line schema (stable):
 

@@ -12,18 +12,14 @@ The CSX KSIs are about how providers organize their KSI evidence, and Efterlev's
 existing pipeline produces artifacts that line up with those organization requirements.
 Two important honesty notes up front:
 
-1. **Empirical 3PAO acceptance** of the CSX-SUM-shaped artifact is gated on Priority 5
-   of `docs/v1-readiness-plan.md` (real-customer dogfood + 3PAO touchpoint). Until
-   that closes, "shaped to satisfy" is the correct phrasing — not "satisfies."
+1. **Empirical 3PAO acceptance** of the CSX-SUM-shaped artifact is a post-launch
+   validation milestone (real-customer dogfood + 3PAO touchpoint). Until that
+   closes, "shaped to satisfy" is the correct phrasing — not "satisfies."
 2. **CSX-ORD alignment is partial.** Efterlev's POA&M severity ordering implements
    *criticality-based triage*, which is what the CSX-ORD spirit is about; it does
    not yet emit the catalog's prescribed initial-authorization KSI sequence
    (MAS, ADS, UCM…) directly. A `--csx-ord-sort` mode that emits the prescribed
    sequence is on the v0.1.x backlog.
-
-For the full strategic analysis of the AWS blog and the catalog accounting question, see
-[`docs/aws-ksi-blog-analysis-2026-04-28.md`](https://github.com/efterlev/efterlev/blob/main/docs/aws-ksi-blog-analysis-2026-04-28.md)
-in the repository.
 
 ---
 
@@ -77,8 +73,8 @@ cat .efterlev/reports/documentation-*.json | jq .         # the CSX-SUM-shaped J
 The output is schema-versioned (`schema_version: "1.0"`) and machine-readable per
 the FedRAMP 20x Phase 2 dual-format requirement. The accompanying
 `documentation-{ts}.html` is the human-readable companion. **Empirical 3PAO
-acceptance of the artifact is gated on Priority 5** of `docs/v1-readiness-plan.md`
-(real-customer dogfood + 3PAO touchpoint).
+acceptance of the artifact** is the next validation milestone (real-customer
+dogfood + 3PAO touchpoint).
 
 ---
 
