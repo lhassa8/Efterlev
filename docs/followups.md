@@ -8,6 +8,24 @@ Each entry names the deferral, the reason, the owner, and a target window. As it
 
 ## v0.1.x — patch-follow-ups (within first 30 days)
 
+### `efterlev --version` prints stale version (drift between `__init__.py` and `pyproject.toml`)
+
+**Item:** the published v0.1.0 wheel prints `efterlev 0.0.1` from `efterlev --version`. The CLI reads `efterlev.__version__` from `src/efterlev/__init__.py`, which is hardcoded to `"0.0.1"`. `pyproject.toml`'s `version = "0.1.0"` controls the PyPI package metadata (correct) but doesn't propagate to the in-source constant. `pipx list | grep efterlev` reports `0.1.0` correctly because pipx reads package metadata, not the constant.
+
+**Resolution path:** make hatch derive the version from one source of truth. Two clean options:
+1. `[tool.hatch.version] path = "src/efterlev/__init__.py"` — pyproject.toml reads `__version__` from the source file. Bumping the version means editing `__init__.py` only.
+2. Move the version literal to `pyproject.toml` and have `__init__.py` read it via `importlib.metadata.version("efterlev")` at import time.
+
+(1) is simpler and matches the hatch-canonical pattern. Add a regression test that asserts `efterlev.__version__ == importlib.metadata.version("efterlev")` so future drift is caught at CI time.
+
+**Owner:** Maintainer.
+
+**Target:** v0.1.1.
+
+**Cross-references:** found while writing the README's AI-assistant quickstart prompt — the prompt initially relied on `efterlev --version` for install verification.
+
+---
+
 ### Container base image — evaluate alternatives to `python:3.12-slim-bookworm`
 
 **Item:** trivy scan of the v0.0.1-rc.5 image surfaced 11 CRITICAL/HIGH CVEs, all inherited from the `python:3.12-slim-bookworm` base layer (`ncurses-base`, `ncurses-bin`, `zlib1g`, etc.; one marked `will_not_fix` upstream by Debian). Efterlev's CLI usage doesn't directly expose these libraries to attacker input, but a leaner base image would shrink the inherited surface to near-zero.

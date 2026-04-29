@@ -14,6 +14,62 @@ efterlev report run
 
 Pronounced "EF-ter-lev." From Swedish *efterlevnad* (compliance).
 
+### Or have an AI assistant do it for you
+
+Paste this into [Claude Code](https://claude.com/claude-code), Cursor, Codex, Kiro, or any other AI assistant with shell access. It'll ask the questions it needs (where your Terraform is, whether your key is exported), pick the right scan mode for your codebase, install Efterlev, run the pipeline, and brief you on the output.
+
+```text
+You are helping me run Efterlev (https://efterlev.com) against my Terraform
+for the first time. Efterlev is a FedRAMP 20x compliance scanner that reads
+Terraform, classifies it against 60 Key Security Indicators, and drafts
+FRMR-compatible attestations with cited source lines. It runs locally; the
+only outbound call is to the LLM endpoint I configure.
+
+Before running anything, ask me:
+1. The absolute path to my Terraform code.
+2. Whether I want the direct Anthropic API (default — needs ANTHROPIC_API_KEY)
+   or AWS Bedrock (for GovCloud — needs AWS credentials and the [bedrock] extra).
+
+Then:
+1. Verify the API key (or AWS creds) is set. For Anthropic, check that
+   ANTHROPIC_API_KEY is exported and starts with "sk-ant-". If not, stop
+   and tell me how to export it. Don't proceed without it.
+2. Install Efterlev:
+   - For direct Anthropic API: `pipx install efterlev`
+   - For AWS Bedrock: `pipx install 'efterlev[bedrock]'` (keep the quotes)
+   - If pipx is missing, install it first (`brew install pipx` on macOS).
+3. `cd` into my Terraform path and run `efterlev init`.
+4. Run `efterlev doctor` and surface any warnings or fails.
+5. Pick a scan mode:
+   - If `terraform` CLI is available AND my code has `module "..." {}`
+     blocks, use plan-JSON mode: `terraform init && terraform plan -out
+     plan.bin && terraform show -json plan.bin > plan.json`, then
+     `efterlev scan --plan plan.json`. If `terraform plan` fails on
+     "(known after apply)" errors, fall back to HCL mode and tell me which
+     module-resolved resources won't surface.
+   - Otherwise: `efterlev scan`.
+6. Run `efterlev agent gap` (~60–90 seconds, ~$0.50–1 on Opus 4.7). Tell
+   me the path to the HTML report and offer to open it.
+7. Ask me if I want to also draft narratives (`efterlev agent document`,
+   ~$1–2 on Sonnet) and a POA&M markdown (`efterlev poam`, free,
+   deterministic).
+
+Constraints:
+- Don't run `efterlev agent remediate` without me asking — that one
+  generates code-level diffs and I want to be in the loop.
+- Don't modify my Terraform.
+- Don't commit anything.
+- Soft cost cap: $3 of Anthropic API spend before checking back with me.
+- If anything fails or surprises you, stop and ask — don't paper over.
+
+When done, brief me with:
+- Counts of `implemented` / `partial` / `not_implemented` /
+  `evidence_layer_inapplicable` KSIs.
+- Paths to the gap report, FRMR attestation JSON, and POA&M markdown.
+- Anything notable: secrets caught by the redaction layer, KSIs the agent
+  flagged as needing manual review, modules where evidence was thin.
+```
+
 ---
 
 ## Why this exists
