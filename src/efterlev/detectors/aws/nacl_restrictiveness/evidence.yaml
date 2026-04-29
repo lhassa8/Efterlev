@@ -1,0 +1,70 @@
+detector_id: aws.nacl_restrictiveness
+
+# Evidence shape this detector emits. One Evidence per `aws_network_acl`
+# resource (whether the posture is restrictive or not — positive evidence
+# is the point of this detector).
+content_fields:
+  resource_type:
+    type: string
+    values: ["aws_network_acl"]
+
+  resource_name:
+    type: string
+    notes: The Terraform resource name.
+
+  ingress_rule_count:
+    type: int
+    notes: Total ingress rules — sum of inline `ingress` blocks plus
+      standalone `aws_network_acl_rule` resources with `egress=false`.
+
+  egress_rule_count:
+    type: int
+    notes: Total egress rules — same counting, with `egress=true`.
+
+  has_explicit_deny:
+    type: bool
+    notes: True iff any rule (ingress or egress, inline or standalone)
+      has `rule_action="deny"`. Evidences SC-7(5) more strongly than
+      AWS's implicit-deny fall-through.
+
+  mgmt_ports_open_to_world:
+    type: int
+    notes: Count of ingress rules that allow 0.0.0.0/0 (or ::/0) on a
+      port range covering at least one management port (SSH 22, RDP 3389,
+      MSSQL 1433, MySQL 3306, PostgreSQL 5432, MongoDB 27017, Redis 6379,
+      CouchDB 5984, Elasticsearch 9200, Memcached 11211).
+
+  ingress_open_to_world:
+    type: bool
+    notes: True iff any ingress allow rule covers all-protocols-to-0/0
+      (or full-port-range for a specific protocol).
+
+  egress_unrestricted:
+    type: bool
+    notes: True iff any egress allow rule covers all-protocols-to-0/0.
+      Overlaps semantically with `aws.nacl_open_egress` findings; that
+      detector emits a separate Evidence specifically for the issue,
+      this detector includes it as a structured field.
+
+  posture_state:
+    type: enum
+    values: ["restrictive", "partially_restrictive", "permissive", "empty"]
+    notes: |
+      `restrictive` — has rules in both directions; no mgmt ports open
+        to world; explicit deny present. Evidences SC-7 + SC-7(5).
+
+      `partially_restrictive` — has rules but at least one concerning
+        pattern: mgmt ports open OR egress unrestricted OR no explicit
+        deny rule. Evidences SC-7 only; gap field names the concern(s).
+
+      `permissive` — has rules but ingress AND egress both allow
+        all-protocols-to-world. Functionally a no-op boundary.
+
+      `empty` — NACL declared with no associated rules in the IaC.
+        AWS applies the default (allow all in/out) making this NACL
+        functionally non-restrictive.
+
+  gap:
+    type: string | absent
+    notes: Present on non-`restrictive` postures with one or more
+      semicolon-separated concerns naming what's missing.

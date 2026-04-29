@@ -1,0 +1,51 @@
+detector_id: aws.nacl_restrictiveness
+
+# KSI-CNA-RNT ("Restricting Network Traffic") asks providers to ensure
+# all machine-based resources are configured to limit inbound and outbound
+# network traffic. NACLs are one of the canonical mechanisms (alongside
+# security groups and route-table boundary policy). This detector emits
+# one Evidence per NACL summarizing its posture so positive evidence
+# (NACL exists with N rules and Y explicit denies) flows to the Gap
+# Agent, not just absence-of-finding.
+#
+# Companion to aws.nacl_open_egress, which emits Evidence only for the
+# specific pathology of egress-allowing-all-to-world. The two detectors
+# coexist by design: nacl_open_egress fires only when something is wrong;
+# nacl_restrictiveness fires for every NACL regardless of posture.
+
+ksis:
+  - id: KSI-CNA-RNT
+    coverage: partial
+    notes: >
+      Per-NACL posture summary. Restrictive NACLs evidence SC-7 + SC-7(5);
+      empty/permissive NACLs surface as gaps. Does not evaluate NACL→subnet
+      association (separate `aws_network_acl_association` resource), so a
+      restrictive NACL declaration does not by itself prove the boundary
+      is enforced where the customer cares about it. Pair with security-
+      group findings + boundary-association evidence (procedural Manifest
+      or future detector) to fully evidence KSI-CNA-RNT.
+  - id: KSI-CNA-MAT
+    coverage: partial
+    notes: >
+      Cross-mapping via the broader SC-7 family. NACLs that explicitly
+      deny mgmt-port traffic minimize the attack surface at the subnet
+      boundary. Same caveats as KSI-CNA-RNT.
+
+controls:
+  - id: SC-7
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Boundary Protection. Every NACL with at least one rule evidences
+      SC-7 at the declaration layer. Coverage is partial because the
+      detector does not verify subnet association or runtime traffic
+      flow.
+  - id: SC-7(5)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Deny by Default. Fires when at least one explicit deny rule is
+      present. AWS's implicit-deny-on-NACLs is also "deny by default"
+      semantically, but SC-7(5)'s evidence story is stronger when an
+      explicit deny rule is authored (3PAOs read this as intent rather
+      than fall-through).

@@ -41,6 +41,7 @@ from efterlev.detectors.aws import (
     kms_key_rotation,  # noqa: F401
     mfa_required_on_iam_policies,  # noqa: F401
     nacl_open_egress,  # noqa: F401
+    nacl_restrictiveness,  # noqa: F401
     rds_encryption_at_rest,  # noqa: F401
     rds_public_accessibility,  # noqa: F401
     s3_bucket_public_acl,  # noqa: F401
