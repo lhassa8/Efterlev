@@ -85,7 +85,7 @@ bedrock = [
 # breaking-change doesn't silently break the site build.
 docs = [
     "mkdocs>=1.6.1,<2",
-    "mkdocs-material>=9.5,<10",
+    "mkdocs-material>=9.7.6,<10",
     "pymdown-extensions>=10.7,<11",
 ]
 
