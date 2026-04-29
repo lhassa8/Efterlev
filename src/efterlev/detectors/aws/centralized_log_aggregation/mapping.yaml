@@ -1,0 +1,65 @@
+detector_id: aws.centralized_log_aggregation
+
+# KSI-MLA-OSM ("Operating SIEM Capability") asks providers to operate a
+# SIEM (or similar system) for centralized, tamper-resistant logging.
+# SIEM operation is fundamentally a runtime concern; what IaC can
+# evidence is the *commitment* — that log-producing resources exist
+# AND that centralization primitives are declared to receive them.
+# This detector emits a workspace-scoped summary of both sides.
+#
+# Surfaced by the 2026-04-28 dogfood run: a target with CloudWatch log
+# groups present but no aggregation primitive declared. The agent
+# narrative was "no SIEM aggregation primitives are visible" — this
+# detector closes the gap with explicit evidence (positive or negative).
+
+ksis:
+  - id: KSI-MLA-OSM
+    coverage: partial
+    notes: >
+      Cross-mapping via AU-2 + AU-3 + AU-4 + SI-4. Detector evidences
+      IaC-layer commitment to centralization (declaration of producers
+      + aggregators). Does not evidence runtime SIEM operation, alert
+      response, retention enforcement, or tamper-resistance. The KSI's
+      full 18-control list spans concerns the IaC layer cannot reach;
+      pair with procedural Evidence Manifests + the
+      `aws.cloudtrail_log_file_validation` detector (tamper-resistance
+      slice) for fuller evidence.
+
+controls:
+  - id: AU-2
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Event Logging. Declaration of log-producing resources evidences
+      AU-2 at the structural layer. Coverage is partial: the detector
+      doesn't verify the produced log content matches the audit
+      requirements (AU-3 territory in detail).
+  - id: AU-3
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Content of Audit Records. Declaration of structured log resources
+      (CloudTrail, flow logs) evidences AU-3 at the declaration layer.
+      Detail-level field-content review is not in scope.
+  - id: AU-4
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Audit Storage Capacity. Aggregator primitives (S3 buckets behind
+      Firehose, OpenSearch domains) provide the storage layer that
+      AU-4 asks about. Detector reports presence; capacity sizing is
+      reviewer-scope.
+  - id: SI-4(2)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Automated Tools and Mechanisms for Real-Time Analysis. Fires only
+      when the workspace has both log producers AND aggregators —
+      "aggregated" state. Real-time analysis is what aggregator
+      primitives enable.
+  - id: SI-4(4)
+    evidence_type: infrastructure
+    coverage: partial
+    notes: >
+      Inbound and Outbound Communications Traffic. Fires alongside
+      SI-4(2) when the aggregated state is achieved.
