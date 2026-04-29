@@ -729,7 +729,7 @@ def agent_gap(
                 typer.echo(
                     "error: 0 evidence records in the store. The scan either hasn't run "
                     "yet or ran and matched no resources — your target may have no "
-                    "Terraform/.github-workflows files in scope, or the 43 detectors "
+                    "Terraform/.github-workflows files in scope, or the 44 detectors "
                     "may not apply to its resources. Run `efterlev scan --target <path>` "
                     "to verify.",
                     err=True,
