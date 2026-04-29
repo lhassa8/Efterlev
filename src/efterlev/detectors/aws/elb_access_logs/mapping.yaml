@@ -1,7 +1,22 @@
 detector_id: aws.elb_access_logs
 
+# KSI-MLA-LET moderate statement: "Maintain a list of information
+# resources and event types that will be logged, monitored, and audited,
+# then do so." The detector evidences logging at one event surface
+# (load-balancer access logs) — partial cross-mapping. Other event
+# surfaces (CloudTrail, VPC flow logs, application logs) are covered
+# by sibling detectors or by procedural Manifests.
 ksis:
-  - KSI-MLA-LET
+  - id: KSI-MLA-LET
+    coverage: partial
+    notes: >
+      Cross-mapping via AU-2 + AU-12 at the load-balancer event surface.
+      Detector evidences L7/L4 LB access-log capture; the KSI outcome
+      spans every event surface in the customer's authorization scope.
+      Pair with `aws.cloudtrail_audit_logging` (control-plane events)
+      and `aws.vpc_flow_logs_enabled` (network flows) for fuller
+      coverage; application-log capture lives outside IaC and needs an
+      Evidence Manifest.
 
 controls:
   - id: AU-2

@@ -1,8 +1,22 @@
 detector_id: aws.vpc_flow_logs_enabled
 
-# FRMR 0.9.43-beta lists au-2 and au-12 in KSI-MLA-LET's controls array.
+# KSI-MLA-LET moderate statement: "Maintain a list of information
+# resources and event types that will be logged, monitored, and audited,
+# then do so." The detector evidences network-layer event logging via
+# au-2 and au-12 (in KSI-MLA-LET's controls array per FRMR 0.9.43-beta).
+# Network flows are one event surface; the KSI outcome spans every
+# event surface the customer commits to logging. Cross-mapping is
+# valid but partial.
 ksis:
-  - KSI-MLA-LET
+  - id: KSI-MLA-LET
+    coverage: partial
+    notes: >
+      Cross-mapping via AU-2 + AU-12 at the network event surface.
+      Detector evidences VPC flow-log capture; the KSI outcome spans
+      every event surface in the customer's authorization scope. Pair
+      with `aws.cloudtrail_audit_logging` (control-plane events) and
+      `aws.elb_access_logs` (LB request/connection events) for fuller
+      coverage; application-log capture lives outside IaC.
 
 controls:
   - id: AU-2
