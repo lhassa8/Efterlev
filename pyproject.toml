@@ -48,7 +48,7 @@ dependencies = [
     # Evidence Manifest loader parses customer-authored YAML under
     # `.efterlev/manifests/`. Transitively available via other deps; pinning
     # directly because it's load-bearing for a core primitive.
-    "pyyaml>=6.0,<7",
+    "pyyaml>=6.0.3,<7",
     # Authorization-boundary scoping (Priority 4) uses gitignore-style glob
     # patterns to match repo-relative paths against `include`/`exclude` rules.
     # pathspec implements gitwildmatch correctly (`**` recursive, `*` non-
