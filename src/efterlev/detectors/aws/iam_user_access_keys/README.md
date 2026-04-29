@@ -12,13 +12,18 @@ federated-identity-first pattern FedRAMP expects.
   programmatic credential is declared for an IAM user.
 - **AC-2 (Account Management)** — an account has an access key
   attached.
-- **KSI-IAM-MFA (Enforcing Phishing-Resistant MFA)** — access keys
-  are a credential path that bypasses MFA by design; their presence
-  is material evidence against a "MFA is enforced everywhere" claim.
-  See the detector docstring for the KSI-claiming discipline: control
-  membership in the KSI's FRMR `controls` array is necessary, and the
-  detector also evidences what the KSI's statement commits to (MFA
-  enforcement across every access path).
+- **KSI-IAM-SNU (Securing Non-User Authentication)** — primary
+  mapping. Long-lived programmatic access keys are the canonical
+  insecure non-user authentication pattern. The KSI's moderate
+  outcome ("Enforce appropriately secure authentication methods for
+  non-user accounts and services") is direct here.
+- **KSI-IAM-MFA (Enforcing Phishing-Resistant MFA)** — cross-mapping.
+  Access keys bypass MFA by design (whoever holds the secret
+  authenticates without an IdP challenge), so they're material
+  evidence against an "MFA is enforced everywhere" claim. The
+  semantic fit is weaker than the SNU primary; the cross-mapping is
+  preserved per the 2026-04-29 audit (PR #90) because the underlying
+  MFA-bypass concern is real.
 
 ## What it does NOT prove
 
@@ -64,7 +69,7 @@ Output (one Evidence record):
 ```json
 {
   "detector_id": "aws.iam_user_access_keys",
-  "ksis_evidenced": ["KSI-IAM-MFA"],
+  "ksis_evidenced": ["KSI-IAM-SNU", "KSI-IAM-MFA"],
   "controls_evidenced": ["IA-2", "AC-2"],
   "content": {
     "resource_type": "aws_iam_access_key",
