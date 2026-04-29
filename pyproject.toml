@@ -55,7 +55,10 @@ dependencies = [
     # crossing-`/`, etc.) — the same semantics customers expect from `.gitignore`.
     # Transitively available via mkdocs et al.; pinning directly because the
     # boundary feature is load-bearing for the customer-facing posture statement.
-    "pathspec>=0.12,<1",
+    # Upper bound widened from <1 to <2 (2026-04-29) to unblock mypy>=1.20
+    # which depends on pathspec>=1.0.0; the gitwildmatch interface we use
+    # is stable across the 0.x → 1.x boundary.
+    "pathspec>=0.12,<2",
 ]
 
 [project.optional-dependencies]
