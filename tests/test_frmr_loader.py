@@ -85,3 +85,82 @@ def test_schema_mismatch_raises_with_pointer(tmp_path: Path) -> None:
     bad.write_text(json.dumps({"oops": "wrong shape"}))
     with pytest.raises(CatalogLoadError, match="schema validation"):
         load_frmr(bad, schema_path=SCHEMA_PATH)
+
+
+def test_loader_picks_up_per_level_statement_from_varies_by_level() -> None:
+    # In FRMR 0.9.43-beta, 5 KSIs (CNA-EIS, MLA-ALA, SVC-PRR, SVC-RUD,
+    # SVC-VCM) keep their statement under varies_by_level.{level}.statement
+    # rather than at the top level. Without this fallback, the Gap Agent
+    # sees no statement and classifies them as evidence_layer_inapplicable
+    # for the wrong reason. Lock in the fix at moderate level.
+    doc = load_frmr(FRMR_PATH, level="moderate")
+    for ksi_id in (
+        "KSI-CNA-EIS",
+        "KSI-MLA-ALA",
+        "KSI-SVC-PRR",
+        "KSI-SVC-RUD",
+        "KSI-SVC-VCM",
+    ):
+        ind = doc.indicators[ksi_id]
+        assert ind.statement is not None and len(ind.statement) > 0, (
+            f"{ksi_id} statement is empty after loader read; varies_by_level lookup is broken"
+        )
+
+
+def test_loader_falls_back_to_top_level_statement_when_no_level_path(
+    tmp_path: Path,
+) -> None:
+    # Catalogs that haven't migrated to varies_by_level should still load.
+    legacy = tmp_path / "legacy_frmr.json"
+    legacy.write_text(
+        json.dumps(
+            {
+                "info": {"version": "test", "last_updated": "2026-01-01"},
+                "KSI": {
+                    "TST": {
+                        "name": "Test theme",
+                        "indicators": {
+                            "KSI-TST-001": {
+                                "name": "Top-level statement",
+                                "statement": "this is at the top level",
+                                "controls": [],
+                            },
+                        },
+                    },
+                },
+            }
+        )
+    )
+    doc = load_frmr(legacy, level="moderate")
+    assert doc.indicators["KSI-TST-001"].statement == "this is at the top level"
+
+
+def test_loader_prefers_level_statement_over_top_level_when_both_present(
+    tmp_path: Path,
+) -> None:
+    # If a catalog ever carries both a top-level and a per-level statement,
+    # the per-level one wins (consistent with FRMR's "varies_by_level"
+    # being the authoritative location for impact-specific text).
+    mixed = tmp_path / "mixed_frmr.json"
+    mixed.write_text(
+        json.dumps(
+            {
+                "info": {"version": "test", "last_updated": "2026-01-01"},
+                "KSI": {
+                    "TST": {
+                        "name": "Test theme",
+                        "indicators": {
+                            "KSI-TST-001": {
+                                "name": "Both statements",
+                                "statement": "the legacy top-level one",
+                                "varies_by_level": {"moderate": {"statement": "the moderate one"}},
+                                "controls": [],
+                            },
+                        },
+                    },
+                },
+            }
+        )
+    )
+    doc = load_frmr(mixed, level="moderate")
+    assert doc.indicators["KSI-TST-001"].statement == "the moderate one"

@@ -97,6 +97,19 @@ def _stub(phase: str, command: str) -> None:
     )
 
 
+def _display_path(p: Path, target: Path) -> str:
+    # On macOS, `/tmp` is a symlink to `/private/tmp`. We resolve target
+    # paths internally so provenance records carry canonical paths, but
+    # users typing `--target /tmp/X` then hunting for `/private/tmp/...`
+    # in their finder is a real paper-cut. Re-stitch the path under the
+    # un-resolved target form for display only. Falls back to the
+    # canonical path if `p` isn't actually under `target.resolve()`.
+    try:
+        return str(target / p.relative_to(target.resolve()))
+    except ValueError:
+        return str(p)
+
+
 @app.callback(invoke_without_command=True)
 def _root(
     ctx: typer.Context,
@@ -591,7 +604,7 @@ def poam(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(result.markdown, encoding="utf-8")
 
-    typer.echo(f"POA&M: {output_path}")
+    typer.echo(f"POA&M: {_display_path(output_path, target)}")
     typer.echo(f"  open items:       {result.item_count}")
     if skipped_out_of_boundary > 0:
         typer.echo(
@@ -761,8 +774,8 @@ def agent_gap(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
@@ -939,8 +952,8 @@ def agent_document(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     # FRMR-compatible attestation JSON alongside the HTML — one CLI run, two
     # artifacts. The human-readable HTML is for review; the machine-readable
@@ -1165,8 +1178,8 @@ def agent_remediate(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
@@ -1849,8 +1862,8 @@ def report_diff(
     json_path.write_text(json.dumps(diff.model_dump(), indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {html_path}")
-    typer.echo(f"JSON sidecar: {json_path}")
+    typer.echo(f"HTML report: {_display_path(html_path, target)}")
+    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
 
     if diff.regressed:
         typer.echo("")
