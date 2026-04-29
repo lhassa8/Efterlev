@@ -2,9 +2,11 @@
 
 Detects `aws_s3_bucket_lifecycle_configuration` resources and reports
 whether each configuration includes rules that expire or transition
-objects. KSI-SVC-RUD ("Removing Unwanted Data") asks the customer to
-remove unwanted data on a defined cadence — S3 lifecycle policies are
-the canonical IaC-evidenceable signal at the storage layer.
+objects. Cross-maps to KSI-SVC-RUD ("Removing Unwanted Data") as a
+**partial cross-mapping** via SI-12(3); the detector surfaces the
+customer's destruction tooling, not the on-request response posture
+that the moderate-level KSI statement asks for. See the "KSI mapping"
+section below for the precise scope.
 
 ## What it proves
 
@@ -15,9 +17,26 @@ the canonical IaC-evidenceable signal at the storage layer.
   contains an `expiration` block (delete-after-N pattern). Pure
   storage-class transitions (e.g. `STANDARD_IA` → `GLACIER`) do NOT
   evidence SI-12(3); they reduce cost but do not destroy data.
+- **Customer-side data-destruction tooling exists.** A reviewer can
+  see that the customer has declared rules that delete objects on a
+  schedule. This evidences *capability*.
 
 ## What it does NOT prove
 
+- **The KSI-SVC-RUD moderate-level outcome.** The FRMR moderate
+  statement reads: *"Remove unwanted federal customer data promptly
+  when requested by an agency in alignment with customer agreements,
+  including from backups if appropriate; this typically applies when a
+  customer spills information or when a customer seeks to remove
+  information from a service due to a change in usage."* That outcome
+  is **on-request, agency-driven removal** — the customer's
+  responsiveness to a specific event. Lifecycle policies do
+  **scheduled, time-based** expiration. The two are different
+  operational modes; a customer can have lifecycle policies and still
+  fail to respond to an agency removal request, and vice versa. To
+  evidence the moderate-level outcome a 3PAO will want a procedural
+  Evidence Manifest covering the customer's agency-request response
+  runbook + a log of past handled requests.
 - **That the retention period matches policy.** "Delete after 7 days"
   vs "Delete after 7 years" are wildly different commitments — the
   detector reports presence, not adequacy. Per-organization risk
@@ -34,10 +53,18 @@ the canonical IaC-evidenceable signal at the storage layer.
 
 ## KSI mapping
 
-**KSI-SVC-RUD ("Removing Unwanted Data").** FRMR 0.9.43-beta lists
-SI-12(3) and SI-18(4) in this KSI's `controls` array. This detector
-evidences SI-12 (parent) and SI-12(3) (destruction) when expiration
-rules are present.
+**KSI-SVC-RUD ("Removing Unwanted Data") — partial cross-mapping via
+SI-12(3).** FRMR 0.9.43-beta lists SI-12(3) and SI-18(4) in
+KSI-SVC-RUD's `controls` array. This detector evidences SI-12 (parent)
+and SI-12(3) (destruction) when expiration rules are present. The
+detector's output is **supporting capability evidence**, not primary
+evidence of the KSI's moderate-level on-request response outcome.
+
+The Gap Agent should classify SVC-RUD as `partial` (or, with no
+procedural Evidence Manifest also present, `not_implemented`) when
+this detector is the only signal. Customers seeking `implemented`
+must pair this detector with an Evidence Manifest covering the
+agency-request response posture.
 
 ## Lifecycle states
 

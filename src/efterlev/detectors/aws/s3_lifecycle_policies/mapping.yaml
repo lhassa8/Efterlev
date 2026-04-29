@@ -1,11 +1,33 @@
 detector_id: aws.s3_lifecycle_policies
 
-# KSI-SVC-RUD ("Removing Unwanted Data") asks the customer to remove unwanted
-# data on a defined cadence. S3 bucket lifecycle policies declare exactly
-# which objects expire and when — the canonical IaC-evidenceable signal for
-# data-retention discipline at the storage layer.
+# KSI-SVC-RUD ("Removing Unwanted Data"). At moderate level the FRMR
+# statement reads: "Remove unwanted federal customer data promptly when
+# requested by an agency in alignment with customer agreements, including
+# from backups if appropriate; this typically applies when a customer
+# spills information or when a customer seeks to remove information from
+# a service due to a change in usage." That outcome is *on-request*, agency-
+# driven removal — the customer's operational responsiveness to a removal
+# request. S3 bucket lifecycle policies declare *scheduled*, time-based
+# expiration. These are different operational modes and the detector
+# evidences the latter only.
+#
+# The KSI mapping is preserved as a partial cross-mapping via the catalog's
+# control linkage: FRMR lists SI-12(3) (Destruction) under KSI-SVC-RUD's
+# `controls` array, and the detector evidences SI-12(3) by surfacing the
+# customer's data-destruction tooling. A 3PAO using the KSI's moderate-level
+# statement to drive their assessment will need procedural Evidence
+# (response-runbook attestation + log of past agency-request handling)
+# alongside this detector's lifecycle-rule evidence to fully evidence
+# SVC-RUD. The detector itself surfaces the tooling, not the response posture.
 ksis:
-  - KSI-SVC-RUD
+  - id: KSI-SVC-RUD
+    coverage: partial
+    notes: >
+      Cross-mapping via SI-12(3). Detector evidences scheduled lifecycle-based
+      destruction tooling; KSI moderate statement is about on-request
+      agency-driven removal, which requires a procedural Evidence Manifest
+      to fully evidence. Use this detector's output as supporting
+      capability evidence, not as primary KSI evidence.
 
 controls:
   - id: SI-12
