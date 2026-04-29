@@ -48,6 +48,12 @@ from efterlev.models import Evidence, TerraformResource
 
 @detector(
     id="aws.iam_user_access_keys",
+    # Ordering convention: ksis=[primary, ...cross-mappings]. Index 0 is
+    # the primary mapping; subsequent entries are cross-mappings. Downstream
+    # consumers that key on the primary KSI should read ksis_evidenced[0].
+    # SNU is primary because long-lived access keys are the canonical
+    # insecure non-user auth pattern; MFA is cross-mapped via the bypass
+    # argument. See detector docstring for full rationale.
     ksis=["KSI-IAM-SNU", "KSI-IAM-MFA"],
     controls=["IA-2", "AC-2"],
     source="terraform",
