@@ -7,7 +7,7 @@
 #
 # See SPEC-06 for the full design rationale.
 
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 RUN pip install --no-cache-dir uv
 WORKDIR /src
@@ -16,7 +16,7 @@ COPY src/ ./src/
 COPY catalogs/ ./catalogs/
 RUN uv build --wheel
 
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 # OCI labels — the org.opencontainers.image.* set is the standard for
 # registries and GitHub "Packages" UI.
