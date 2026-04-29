@@ -333,7 +333,12 @@ def _run_stage(
     """Run one CLI invocation, capture stdio, persist, return the result."""
     _log(f"running {stage}: {' '.join(command)}")
     started = time.monotonic()
-    proc = subprocess.run(
+    # `command` is a list[str] constructed from in-script literals at the
+    # call sites above (init_cmd + the static argv lists). No shell is
+    # invoked (subprocess.run with a list argv does not use shell=True),
+    # and no external/user/network input flows in. The semgrep audit rule
+    # is conservative; verified safe by construction here.
+    proc = subprocess.run(  # nosemgrep: dangerous-subprocess-use-audit
         command,
         cwd=workspace,
         capture_output=True,
