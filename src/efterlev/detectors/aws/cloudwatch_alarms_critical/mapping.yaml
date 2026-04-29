@@ -1,8 +1,29 @@
 detector_id: aws.cloudwatch_alarms_critical
 
+# KSI-MLA-OSM moderate statement: "Operate a SIEM (or similar system)
+# for centralized, tamper-resistant logging." CloudWatch alarms are
+# the *alerting* slice — one component of SIEM operation, not the
+# whole. KSI-MLA-LET is event-logging; alarms are derived from the
+# events that already flow into CloudWatch. Both are partial cross-
+# mappings via SI-4 and AU-6(1).
 ksis:
-  - KSI-MLA-OSM
-  - KSI-MLA-LET
+  - id: KSI-MLA-OSM
+    coverage: partial
+    notes: >
+      Cross-mapping via SI-4 family. Alarms are the alerting slice of
+      SIEM operation. Does not evidence log centralization, log
+      retention, or correlation analysis — which are the heart of the
+      SIEM outcome. Pair with `aws.centralized_log_aggregation` for
+      the centralization slice.
+  - id: KSI-MLA-LET
+    coverage: partial
+    notes: >
+      Cross-mapping via AU-6(1). Alarms are derived from the events
+      CloudWatch already collects. Useful evidence that monitoring is
+      configured, but the KSI's primary outcome (which event types are
+      logged) lives in the producer-side detectors
+      (`aws.cloudtrail_audit_logging`, `aws.vpc_flow_logs_enabled`,
+      `aws.elb_access_logs`).
 
 controls:
   - id: SI-4

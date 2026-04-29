@@ -1,8 +1,22 @@
 detector_id: aws.cloudtrail_log_file_validation
 
-# FRMR 0.9.43-beta lists au-9 in KSI-MLA-OSM's controls array. Clean mapping.
+# KSI-MLA-OSM ("Operating SIEM Capability") moderate statement asks
+# providers to "operate a SIEM (or similar system) for centralized,
+# tamper-resistant logging." This detector evidences the tamper-
+# resistance slice via au-9 (CloudTrail's native integrity-digest
+# mechanism). Cross-mapping is valid via FRMR's au-9 entry in MLA-OSM's
+# controls array, but it's a slice — centralization, SIEM operation,
+# and alerting are uncovered.
 ksis:
-  - KSI-MLA-OSM
+  - id: KSI-MLA-OSM
+    coverage: partial
+    notes: >
+      Cross-mapping via AU-9. Detector evidences the tamper-resistance
+      slice (CloudTrail's native integrity-digest mechanism) of the
+      broader KSI outcome. Does not evidence centralization, SIEM
+      operation, alerting, or runtime integrity-token verification.
+      Pair with `aws.centralized_log_aggregation` for the centralization
+      slice.
 
 controls:
   - id: AU-9

@@ -534,3 +534,30 @@ def test_boundary_set_missing_workspace_errors(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "config not found" in result.output
+
+
+def test_display_path_keeps_user_target_form_for_symlinked_dirs(tmp_path: Path) -> None:
+    # On macOS /tmp is a symlink to /private/tmp; the same paper-cut shows
+    # up anywhere a user passes a path under a symlinked directory. Verify
+    # the helper reconstructs the path under the un-resolved target form.
+    from efterlev.cli.main import _display_path
+
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    (real_dir / ".efterlev" / "reports").mkdir(parents=True)
+    report = real_dir / ".efterlev" / "reports" / "gap-1.html"
+    report.write_text("<html/>", encoding="utf-8")
+
+    symlink_target = tmp_path / "link"
+    symlink_target.symlink_to(real_dir)
+
+    # User passed `tmp/link/...`; canonical form lives under `tmp/real/...`.
+    # Display should re-stitch the path under the user-supplied form.
+    displayed = _display_path(report, symlink_target)
+    assert str(symlink_target) in displayed
+    assert str(real_dir) not in displayed
+
+    # Sanity: a path not under target.resolve() falls back to its own str().
+    outside = tmp_path / "elsewhere.txt"
+    outside.write_text("", encoding="utf-8")
+    assert _display_path(outside, symlink_target) == str(outside)

@@ -1,13 +1,36 @@
 detector_id: aws.iam_user_access_keys
 
-# KSI-IAM-MFA is claimed despite access keys not being MFA themselves —
-# see docstring in detector.py. An access key is a credential that
-# bypasses MFA by design, and the KSI's statement commits to enforcing
-# MFA for user authentication. Access keys are materially relevant to
-# that commitment. Contrast iam_password_policy (ksis=[]) which only
-# evidences password strength, not MFA.
+# Primary: KSI-IAM-SNU (Securing Non-User Authentication). Long-lived
+# programmatic access keys are fundamentally non-user authentication
+# credentials — typically used by service accounts, CI deploy roles,
+# and automation. The KSI's moderate outcome ("Enforce appropriately
+# secure authentication methods for non-user accounts and services")
+# is the closest semantic fit; an access key is the canonical insecure
+# non-user auth pattern.
+#
+# Cross-mapping: KSI-IAM-MFA. An access key bypasses MFA by design
+# (whoever holds the secret authenticates without an IdP challenge),
+# so it's material to whether the boundary actually enforces MFA
+# across every access path. This was the primary mapping pre-
+# 2026-04-29; the audit (PR #90) found the SNU semantic fit stronger.
 ksis:
-  - KSI-IAM-MFA
+  - id: KSI-IAM-SNU
+    coverage: direct
+    notes: >
+      Long-lived programmatic access keys are the canonical insecure
+      non-user authentication pattern. Each declared aws_iam_access_key
+      is direct evidence of a posture gap against KSI-IAM-SNU's
+      moderate statement. Pair with `aws.iam_service_account_keys_age`
+      (key-age findings) for the broader non-user auth posture.
+  - id: KSI-IAM-MFA
+    coverage: partial
+    notes: >
+      Cross-mapping via the "MFA-bypass-via-access-key" reasoning. An
+      access key bypasses MFA enforcement by design, so its presence
+      is material to whether the customer enforces MFA for every
+      authentication path. The semantic fit is weaker than the SNU
+      primary — IAM-MFA's outcome is about user-MFA enforcement, not
+      programmatic-credential hygiene.
 
 controls:
   - id: IA-2

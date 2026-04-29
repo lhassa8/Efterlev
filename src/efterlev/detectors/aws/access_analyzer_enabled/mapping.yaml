@@ -1,7 +1,28 @@
 detector_id: aws.access_analyzer_enabled
 
+# KSI-CNA-EIS moderate statement: "Use automated services to
+# persistently assess the security posture of all machine-based
+# information resources and automatically enforce their intended
+# operational state." The detector evidences the *assessment* slice
+# via Access Analyzer — it surfaces over-permissive access. It does
+# NOT "automatically enforce" intended state — it produces findings
+# that humans or automation respond to. The enforcement slice is
+# adjacent (AWS Config + remediation actions, not yet a separate
+# detector).
 ksis:
-  - KSI-CNA-EIS
+  - id: KSI-CNA-EIS
+    coverage: partial
+    notes: >
+      Cross-mapping via CA-7 (Continuous Monitoring) + AC-6 (Least
+      Privilege). Detector evidences the *assessment* slice (Access
+      Analyzer reviews resource policies persistently and surfaces
+      cross-account access). The KSI moderate outcome additionally
+      asks for *automatic enforcement* of intended state — a separate
+      slice that lives at the AWS Config + remediation-action layer
+      (procedural follow-up on findings). Pair with
+      `aws.config_enabled` for the configuration-evaluation slice and
+      with procedural Evidence Manifests for the response-runbook
+      side.
 
 controls:
   - id: CA-7
