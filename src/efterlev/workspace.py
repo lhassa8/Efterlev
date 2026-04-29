@@ -24,6 +24,11 @@ from efterlev.provenance import ProvenanceStore
 
 SUPPORTED_BASELINES = {"fedramp-20x-moderate"}
 
+# Maps each supported baseline to the FRMR `varies_by_level` key whose
+# `statement` text the loader should prefer when the indicator's statement
+# is nested per-level (5 of 60 KSIs in catalog 0.9.43-beta).
+_BASELINE_LEVEL = {"fedramp-20x-moderate": "moderate"}
+
 
 @dataclass(frozen=True)
 class InitResult:
@@ -80,6 +85,7 @@ def init_workspace(
     frmr_doc = load_frmr(
         catalogs_dir / "frmr" / "FRMR.documentation.json",
         schema_path=catalogs_dir / "frmr" / "FedRAMP.schema.json",
+        level=_BASELINE_LEVEL[baseline],
     )
     oscal_cat = load_oscal_800_53(catalogs_dir / "nist" / "NIST_SP-800-53_rev5_catalog.json")
 
