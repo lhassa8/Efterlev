@@ -311,7 +311,7 @@ behavior across the catalog. The audit ensures detector-mapping intent
 matches the KSI semantics the agent will now read.
 
 Doing this before v0.1.0 publishes is the right time: the launch-blog
-"30 of 60 KSIs covered" claim depends on the mappings being honest.
+"31 of 60 KSIs covered" claim depends on the mappings being honest.
 After this audit + the recommended follow-up reclassifications, the
 roll-up may shift slightly (SVC-RUD already moved to partial in PR
 #83; iam_user_access_keys re-homing changes which KSI is "covered" by

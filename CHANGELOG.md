@@ -8,13 +8,14 @@ release.
 ## [Unreleased] — v0.1.0 close-out
 
 The work in this section closes Priorities 1, 2, and 3 of
-`docs/v1-readiness-plan.md`. 35 PRs landed 2026-04-27 → 2026-04-28
-(#36 → #70).
+`docs/v1-readiness-plan.md`. 47 PRs landed 2026-04-27 → 2026-04-29
+(#36 → #93).
 
-### Priority 1 — Detector breadth (✅ complete)
+### Priority 1 — Detector breadth (✅ complete; lifted post-floor)
 
-Coverage moved from 14 → 30 KSIs / 5 → 8 themes / 38 → 43 detectors.
-The plan's ≥30 KSI / ≥8 theme floor was reached at PR #51.
+Coverage moved from 14 → 31 KSIs / 5 → 8 themes / 38 → 45 detectors.
+The plan's ≥30 KSI / ≥8 theme floor was reached at PR #51; post-walkback
+work (PRs #88, #89, #92) lifted coverage to 31 / 8 / 45.
 
 - **Added detectors:**
   - `aws.terraform_inventory` — KSI-PIY-GIV (PR #39)
@@ -65,6 +66,72 @@ All Priority-2 features are self-contained (no external CDN, no fonts beyond
 system-default, no analytics) and degrade gracefully without JavaScript
 (filter/sort show all results in input order).
 
+### Post-launch-prep walkback + audit (✅ complete)
+
+Triggered by AWS's 2026-04-27 FedRAMP 20x deep-dive blog and a
+maintainer review pass. 12 PRs landed 2026-04-28 → 2026-04-29
+(#80 → #92), plus the dependency unblock #93.
+
+**Detector additions:**
+- `aws.nacl_restrictiveness` — KSI-CNA-RNT (PR #88). Per-NACL
+  posture summary (restrictive / partially_restrictive / permissive
+  / empty); emits Evidence even on clean NACLs so positive evidence
+  flows to the Gap Agent.
+- `aws.centralized_log_aggregation` — KSI-MLA-OSM (PR #89). Workspace-
+  scoped summary of log producers + aggregators; closes the
+  "no SIEM aggregation primitives visible" agent narrative gap.
+
+**Detector reclassifications:**
+- `aws.iam_user_access_keys` (PR #92): primary mapping
+  KSI-IAM-MFA → **KSI-IAM-SNU** (Securing Non-User Authentication);
+  KSI-IAM-MFA preserved as cross-mapping. Adds KSI-IAM-SNU to the
+  covered set (30 → 31 KSIs).
+
+**Mapping audits + partial-coverage discipline:**
+- PR #83: SVC-RUD and SVC-VCM downgraded to partial cross-mappings
+  with explicit notes (scheduled-vs-on-request, viewer-edge-vs-S2S).
+- PR #91: 6 detectors gained explicit `coverage: partial` notes
+  (cloudtrail_log_file_validation, cloudwatch_alarms_critical,
+  guardduty_enabled, elb_access_logs, vpc_flow_logs_enabled,
+  access_analyzer_enabled).
+- PR #90: systematic audit of all 34 remaining KSI-mapped detectors
+  (`docs/detector-mapping-audit.md`). 23 direct fits, 9 partial
+  cross-mappings, 2 reclassification candidates.
+
+**Real bug fixes:**
+- PR #82: FRMR loader now reads `varies_by_level.{level}.statement`
+  with fallback to top-level. 5 KSIs (KSI-CNA-EIS, KSI-MLA-ALA,
+  KSI-SVC-PRR, KSI-SVC-RUD, KSI-SVC-VCM) were silently statement-
+  less; the Gap Agent had been classifying them blind.
+- PR #81: report path display uses the user-supplied form (e.g.
+  `/tmp/...`) instead of canonical (`/private/tmp/...`); macOS
+  symlink paper-cut surfaced by a real local run.
+
+**CSX-SUM / CSX-ORD gap closures:**
+- PR #84: `validation_cadence` field added to documentation artifact
+  (closes the CSX-SUM cadence-field-gap acknowledged in csx-mapping.md).
+- PR #85: `efterlev poam --sort csx-ord` mode (closes the CSX-ORD
+  prescribed-sequence-sort gap).
+
+**Init-time UX:**
+- PR #86: catalog freshness warning at `efterlev init` (180-day
+  staleness + post-CR26-window heuristics).
+
+**Framing walkback:**
+- PR #80: walked back overclaims in csx-mapping.md / aws-coexistence.md
+  / release-notes-v0.1.0-draft.md / README.md / aws-ksi-blog-analysis.md.
+  "shaped to satisfy CSX-SUM" instead of "IS the artifact 3PAOs
+  consume" (pending Priority 5 empirical validation).
+
+**Documentation + upstream:**
+- PR #87: drafts of two FRMR upstream feedback issues (file post-tag).
+- PR #93: pathspec upper bound widened `<1` → `<2` to unblock
+  Dependabot resolver.
+
+**Dependabot bulk-merge:**
+- 7 minor/major version bumps merged (#3, #4, #5, #6, #7, #9, #10).
+  Python 3.14 (#2) and mypy 1.20 (#8) deferred to v0.1.x.
+
 ### Priority 3 — UX during install and usage (✅ complete)
 
 All 6 acceptance items closed. 6 PRs (#64 → #69 + #70 doc).
@@ -87,11 +154,11 @@ All 6 acceptance items closed. 6 PRs (#64 → #69 + #70 doc).
 
 ### Catalog stats (post-session)
 
-- 970+ tests passing
-- 167 source files
+- 1018 tests passing
+- 172 source files
 - 24 CLI commands
-- 43 detectors (36 KSI-mapped + 7 supplementary 800-53-only)
-- 30 KSIs covered across 8 themes
+- 45 detectors (38 KSI-mapped + 7 supplementary 800-53-only)
+- 31 KSIs covered across 8 themes
 - mypy strict / ruff check / ruff format clean
 
 ### Documentation

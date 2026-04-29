@@ -57,7 +57,7 @@ Every priority below ladders up to one or more of those four.
 
 ### 1. Detector breadth to ≥30 KSI coverage at the repo-evidenceable layer ✅ FLOOR REACHED 2026-04-27
 
-**Today (2026-04-27, post-PR #51):** **30 of 60 KSIs** evidenced; **8 of 11 themes** covered (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). 7 of 43 detectors carry `ksis=[]` (the 7 supplementary 800-53-only detectors after Priority 6's honesty-pass rehoming). The remaining 3 themes (AFR, CED, INR) are entirely procedural/governance and require Evidence Manifests rather than detector evidence.
+**Today (2026-04-29, post-PRs #88, #89, #92):** **31 of 60 KSIs** evidenced; **8 of 11 themes** covered (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). 7 of 45 detectors carry `ksis=[]` (the 7 supplementary 800-53-only detectors after Priority 6's honesty-pass rehoming). The remaining 3 themes (AFR, CED, INR) are entirely procedural/governance and require Evidence Manifests rather than detector evidence.
 
 **Original starting state (2026-04-27):** 14 of 60 KSIs evidenced; 5 of 11 themes covered. 8 of 30 detectors carried `ksis=[]`.
 

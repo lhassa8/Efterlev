@@ -26,7 +26,7 @@ and how a customer should think about using them together.
 | Which one first? | **Efterlev first** — it's free, the deterministic scan runs in seconds against a small Terraform tree, and the LLM-backed Gap + Documentation stages typically take a few minutes more. You see where you stand before you provision anything. |
 | Which produces the per-KSI attestation summary a 3PAO ingests? | **Efterlev** — its `documentation-{ts}.json` is designed to satisfy the FRMR catalog's CSX-SUM information requirements (goals, consolidated information resources, machine vs non-machine processes, status, clarifications). AWS-native services don't produce a CSX-SUM-shaped artifact today. Empirical 3PAO acceptance is gated on Priority 5 of `docs/v1-readiness-plan.md`. |
 | Which produces the runtime evidence backing those attestations? | **AWS-native** — Config rules, Security Hub findings, CloudTrail logs are the runtime telemetry. |
-| What if I'm not on AWS? | Of Efterlev's 36 KSI-mapped detectors, 32 read AWS-resource-shaped Terraform (`aws_*` resources); 4 read `.github/workflows/`. An Azure-only or GCP-only customer running `efterlev scan` against their Terraform gets near-zero KSI evidence today; the GitHub-workflows detectors still fire. Multi-cloud detector coverage (CDK, Pulumi, k8s, Azure ARM, GCP DM) is on the v1.5+ roadmap. |
+| What if I'm not on AWS? | Of Efterlev's 38 KSI-mapped detectors, 34 read AWS-resource-shaped Terraform (`aws_*` resources); 4 read `.github/workflows/`. An Azure-only or GCP-only customer running `efterlev scan` against their Terraform gets near-zero KSI evidence today; the GitHub-workflows detectors still fire. Multi-cloud detector coverage (CDK, Pulumi, k8s, Azure ARM, GCP DM) is on the v1.5+ roadmap. |
 
 ---
 
@@ -135,7 +135,7 @@ AWS-native services are explicitly mapped to roughly 14 thematic KSIs
 - **AFR** (Authorization by FedRAMP): KSI-AFR-VDR via Inspector +
   Security Hub; KSI-AFR-SCN via CloudTrail + EventBridge.
 
-Efterlev today covers **30 of 60 thematic KSIs** at the IaC layer.
+Efterlev today covers **31 of 60 thematic KSIs** at the IaC layer.
 The overlap with AWS-native's named KSIs is ~10-12 KSIs (mostly in
 CNA, IAM, MLA, SVC) — the same KSI gets evidenced from both angles:
 Efterlev catches the IaC misconfig; AWS-native confirms the runtime
@@ -157,7 +157,7 @@ least **70% of the KSIs** in their authorization package. The
 threshold applies to the customer's *whole* package — not to any
 single tool. Honest accounting on these two tools alone:
 
-- Efterlev covers **30 of 60** thematic KSIs at the IaC layer.
+- Efterlev covers **31 of 60** thematic KSIs at the IaC layer.
 - AWS-native services cover **~14** thematic KSIs explicitly, with
   partial coverage across more.
 - The intersection is ~10–12 KSIs (CNA, IAM, MLA, SVC).

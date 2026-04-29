@@ -402,7 +402,7 @@ This also means: if you want to build a compliance workflow Efterlev doesn't shi
 
 ## Project status
 
-**Current state (2026-04-28): v1-readiness plan Priorities 1, 2, 3 complete (35 PRs landed 2026-04-27 → 2026-04-28 — see `CHANGELOG.md`). KSI breadth at the floor (30 of 60 KSIs / 8 of 11 themes / 43 detectors). HTML report overhaul shipped (coverage matrix, search/sort/filter, drill-down, JSON sidecars, print stylesheet, diff view). UX overhaul shipped (`efterlev report run`, `efterlev doctor`, friendly errors, first-run wizard, progress indicators, `--watch` mode). Repository pre-launch private; the v0.1.0 public Apache-2.0 flip happens once the remaining maintainer-action items (security-review §8 sign-off, 24-hour fresh-eyes pause, optional GovCloud walkthrough) complete and the maintainer pushes the tag. Priority 5 (real customer dogfood + 3PAO touchpoint) is calendar-time work outside the code surface.**
+**Current state (2026-04-29): v1-readiness plan Priorities 1, 2, 3 complete (47 PRs landed 2026-04-27 → 2026-04-29 — see `CHANGELOG.md`). KSI breadth above the floor (31 of 60 KSIs / 8 of 11 themes / 45 detectors). HTML report overhaul shipped (coverage matrix, search/sort/filter, drill-down, JSON sidecars, print stylesheet, diff view). UX overhaul shipped (`efterlev report run`, `efterlev doctor`, friendly errors, first-run wizard, progress indicators, `--watch` mode). Repository pre-launch private; the v0.1.0 public Apache-2.0 flip happens once the remaining maintainer-action items (security-review §8 sign-off, 24-hour fresh-eyes pause, optional GovCloud walkthrough) complete and the maintainer pushes the tag. Priority 5 (real customer dogfood + 3PAO touchpoint) is calendar-time work outside the code surface.**
 
 ### What v0 contains
 
@@ -418,12 +418,13 @@ all 30 from the v0 set plus `aws.terraform_inventory`, `aws.s3_lifecycle_policie
 `src/efterlev/detectors/<source>/<capability>/` with detector.py, mapping.yaml,
 evidence.yaml, fixtures/, and README.md.
 
-**Detector breakdown — 43 total = 36 KSI-mapped + 7 supplementary 800-53-only.**
-- **36 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **30 of 60 KSIs** at
+**Detector breakdown — 45 total = 38 KSI-mapped + 7 supplementary 800-53-only.**
+- **38 KSI-mapped detectors** evidence FRMR-Moderate KSIs directly. Together they cover **31 of 60 KSIs** at
   the infrastructure layer, spanning **8 of 11 themes** (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). The remaining
   three themes (AFR, CED, INR) are entirely procedural/governance and require Evidence Manifests rather than
-  detector evidence. The Priority-1 floor (≥30 KSIs / ≥8 themes) is met as of PR #51.
-- Detector sources: **39 from `terraform`** (read `.tf` files or `terraform show -json` output) +
+  detector evidence. The Priority-1 floor (≥30 KSIs / ≥8 themes) was met at PR #51; post-walkback work
+  (PRs #88, #89, #92) lifted coverage to 31 / 8.
+- Detector sources: **41 from `terraform`** (read `.tf` files or `terraform show -json` output) +
   **4 from `github-workflows`** (read `.github/workflows/*.yml` for CI/CD, supply-chain-monitoring,
   and supply-chain-mitigation KSIs that have no IaC analog).
 - **7 supplementary 800-53-only detectors** carry `ksis=[]` because their underlying control (SC-28 for
@@ -453,7 +454,7 @@ evidence.yaml, fixtures/, and README.md.
 > **Coverage relative to AWS-native services (FedRAMP 20x Phase 2 70% threshold).** FedRAMP 20x Phase 2
 > requires automated validation for at least **70% of the KSIs** (44 of 63 = 70% of the AWS framing,
 > or 42 of 60 = 70% of the thematic-only count). The threshold applies to the **customer's whole
-> authorization package**, not to any single tool. **Efterlev covers 30 thematic KSIs at the IaC layer.**
+> authorization package**, not to any single tool. **Efterlev covers 31 thematic KSIs at the IaC layer.**
 > AWS's deep-dive blog explicitly maps AWS-native services (Config, Security Hub, CloudTrail,
 > Inspector, KMS, IAM Identity Center, Access Analyzer, EventBridge) to roughly **14 named KSIs**
 > (mostly in CNA, IAM, MLA, SVC themes) plus partial coverage across many more. The overlap with

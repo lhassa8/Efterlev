@@ -64,7 +64,7 @@ Efterlev is that tool.
 
 Three layers, each with a clear job.
 
-- **Detectors** — small deterministic Python rules that read Terraform (or `.github/workflows/`) and emit evidence. 43 ship at v0.1.0 covering 30 of 60 KSIs across 8 themes; the long-term plan is hundreds, contributed by the community.
+- **Detectors** — small deterministic Python rules that read Terraform (or `.github/workflows/`) and emit evidence. 45 ship at v0.1.0 covering 31 of 60 KSIs across 8 themes; the long-term plan is hundreds, contributed by the community.
 - **Primitives** — typed functions that wrap the things agents need to do: load a catalog, validate output, render a report. Stable interface layer.
 - **Agents** — reasoning loops that compose primitives. Three at v0.1.0: Gap (classify each KSI), Documentation (draft FRMR attestations), Remediation (propose code-level fixes).
 
@@ -74,8 +74,8 @@ Three layers, each with a clear job.
 
 ## Status
 
-- **v0.1.0 released:** PyPI + container + GitHub Action + AWS GovCloud Bedrock backend + 43 detectors + full provenance graph.
-- **Open source:** Apache 2.0. Pure OSS — no commercial tier, no paid layer, no managed SaaS, ever. [Why](https://github.com/efterlev/efterlev/blob/main/DECISIONS.md).
+- **v0.1.0 released:** PyPI + container + GitHub Action + AWS GovCloud Bedrock backend + 45 detectors + full provenance graph.
+- **Open source:** Apache 2.0. Pure OSS — no commercial tier, no paid layer, no managed SaaS at this time. [Why](https://github.com/efterlev/efterlev/blob/main/DECISIONS.md).
 - **Governance:** BDFL today, technical steering committee at 10 sustained contributors. [Details](https://github.com/efterlev/efterlev/blob/main/GOVERNANCE.md).
 
 ## External context — what AWS recommends

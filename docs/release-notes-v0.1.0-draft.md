@@ -15,8 +15,8 @@ Efterlev v0.1.0 is the first public release: a local-first compliance scanner
 for SaaS companies pursuing FedRAMP 20x Moderate. It reads your Terraform
 (and `.github/workflows/`) and produces KSI-classified evidence + a
 3PAO-shaped attestation summary — locally, without sending your code to a
-SaaS or going through a procurement cycle. Coverage at v0.1.0: **30 of 60
-thematic KSIs across 8 of 11 themes**, **43 deterministic detectors**, three
+SaaS or going through a procurement cycle. Coverage at v0.1.0: **31 of 60
+thematic KSIs across 8 of 11 themes**, **45 deterministic detectors**, three
 Anthropic-backed agents (Gap, Documentation, Remediation). Apache-2.0; no
 commercial tier, no managed SaaS at this time.
 
@@ -88,7 +88,7 @@ README that names what the detector proves and what it does NOT prove.
 - **4 GitHub-workflows detectors** read `.github/workflows/*.yml` for
   CI-gating, supply-chain, and deployment-pattern KSIs that have no
   IaC analog.
-- **30 of 60 KSIs covered across 8 of 11 themes** (CNA, CMT, IAM, MLA,
+- **31 of 60 KSIs covered across 8 of 11 themes** (CNA, CMT, IAM, MLA,
   PIY, RPL, SCR, SVC). The remaining 3 themes (AFR, CED, INR) are
   entirely procedural/governance and need Evidence Manifests (see
   below) rather than detector evidence.
@@ -166,8 +166,8 @@ file is portable, emailable, and archivable.
 
 ## Stats
 
-- 43 detectors (36 KSI-mapped + 7 supplementary 800-53-only)
-- 30 of 60 KSIs covered across 8 of 11 themes
+- 45 detectors (38 KSI-mapped + 7 supplementary 800-53-only)
+- 31 of 60 KSIs covered across 8 of 11 themes
 - 24 CLI commands
 - ~960 unit tests passing; mypy strict / ruff check / ruff format
   clean across ~165 source files
@@ -187,8 +187,8 @@ None. This is the first public release.
   plan.json && efterlev scan --plan plan.json` to surface evidence
   inside upstream modules. See `LIMITATIONS.md` and the Documentation
   Agent's runtime-warning prompts.
-- **AWS-only at the IaC layer today.** Of the 36 KSI-mapped detectors,
-  32 read AWS-resource-shaped Terraform (`aws_*` resources); 4 read
+- **AWS-only at the IaC layer today.** Of the 38 KSI-mapped detectors,
+  34 read AWS-resource-shaped Terraform (`aws_*` resources); 4 read
   `.github/workflows/`. An Azure-only or GCP-only customer running
   `efterlev scan` against their Terraform gets near-zero KSI evidence.
   CloudFormation, CDK, Pulumi, k8s, Azure ARM, and GCP DM detector

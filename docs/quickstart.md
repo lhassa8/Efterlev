@@ -199,6 +199,6 @@ It checks Python version, `.efterlev/` initialization state, FRMR cache freshnes
 
 **Init fails with `baseline ... is not supported`** — v0.1.0 supports `fedramp-20x-moderate` only. Other baselines land as customer demand surfaces.
 
-**Scan finds zero evidence** — your detectors may not match your stack (we ship 43 detectors at v0.1.0 covering AWS Terraform + GitHub Actions workflows; non-AWS stacks see less coverage today). [Check the detector reference](reference/detectors.md) for what's covered.
+**Scan finds zero evidence** — your detectors may not match your stack (we ship 45 detectors at v0.1.0 covering AWS Terraform + GitHub Actions workflows; non-AWS stacks see less coverage today). [Check the detector reference](reference/detectors.md) for what's covered.
 
 Anything else: [open an issue](https://github.com/efterlev/efterlev/issues/new/choose) — broken first-runs are bugs we want to hear about.

@@ -119,7 +119,7 @@ Two numbers worth pinning:
 
 ### Efterlev today (post-Priority-1/2/3, as of 2026-04-28)
 
-- **30 of 60 thematic KSIs covered** at the IaC layer (50% of the
+- **31 of 60 thematic KSIs covered** at the IaC layer (~52% of the
   thematic KSI surface). The 3 CSX KSIs are procedural cross-cutting
   requirements satisfied by pipeline-shape outputs (see `csx-mapping.md`),
   not by detector coverage, so they don't enter the per-detector
@@ -127,7 +127,7 @@ Two numbers worth pinning:
 - **8 of 11 themes covered** (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). The
   remaining 3 (AFR, CED, INR) are entirely procedural and need Evidence
   Manifests rather than detector code.
-- **43 detectors** = 36 KSI-mapped + 7 supplementary 800-53-only.
+- **45 detectors** = 38 KSI-mapped + 7 supplementary 800-53-only.
 - **Local, pre-deploy scanning model.** Reads `.tf` files (and `.github/workflows/`)
   before `terraform apply` — Efterlev finds the gap before the resource exists.
 - **Content-addressed Evidence + JSON sidecars** on every report. Per the
