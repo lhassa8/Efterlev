@@ -1,8 +1,6 @@
 """File-change watcher for `efterlev report run --watch`.
 
-Priority 3.6 (2026-04-28). The acceptance criterion in
-docs/v1-readiness-plan.md asks for a `--watch` mode that re-runs the
-pipeline on file changes under `--target`, debounced to 2 seconds.
+Re-runs the pipeline on file changes under `--target`, debounced to 2 seconds.
 
 Design choices:
 

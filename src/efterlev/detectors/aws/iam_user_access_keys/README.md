@@ -42,13 +42,12 @@ federated-identity-first pattern FedRAMP expects.
   Console MFA is a separate setting; this detector only looks at the
   programmatic-credential side.
 
-## Dogfood origin
+## Origin
 
-This detector was added in response to the 2026-04-22 dogfood pass
-against govnotes-demo, where ground-truth gap #8 (`ci_deploy` IAM
-user with a long-lived access key for a legacy Jenkins pipeline
-pre-dating the GitHub Actions OIDC migration) was completely
-invisible without it. See `docs/dogfood-2026-04-22.md`.
+This detector was added in response to a real-codebase dogfood pass
+where a ground-truth gap (an IAM user with a long-lived access key for a
+legacy CI pipeline pre-dating an OIDC migration) was completely invisible
+to the rest of the catalog without it.
 
 ## Example
 

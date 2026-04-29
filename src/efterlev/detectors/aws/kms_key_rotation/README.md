@@ -35,9 +35,8 @@ includes SC-12 in this KSI's `controls` array, and the KSI statement
 explicitly names "rotation of digital keys, certificates, and other
 secrets" — KMS key rotation is the canonical example. The 2026-04-21
 design call originally left this `ksis=[]` under the assumption that
-no clean mapping existed; the 2026-04-27 honesty pass (Priority 6 of
-`docs/v1-readiness-plan.md`) re-evaluated and confirmed
-KSI-SVC-ASM is the right home. KSI-SVC-VRI was considered but its
+no clean mapping existed; the 2026-04-27 honesty pass re-evaluated and
+confirmed KSI-SVC-ASM is the right home. KSI-SVC-VRI was considered but its
 controls center on SC-13 (cryptographic integrity), not SC-12 (key
 management lifecycle).
 

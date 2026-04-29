@@ -63,7 +63,7 @@ USER_FACING_DOCS = [
     "catalogs/README.md",
 ]
 
-# Dated retrospectives are point-in-time and excluded.
+# Dated retrospectives, if any are reintroduced, are point-in-time and excluded.
 EXCLUDE = re.compile(r"^docs/dogfood-\d{4}-\d{2}-\d{2}\.md$")
 
 # A CLI reference that lives in a context where the prose explicitly

@@ -24,11 +24,10 @@ from efterlev.errors import DetectorError
 from efterlev.models import SourceRef, TerraformResource
 
 _RESOURCE_HEADER_RE = re.compile(r'^\s*resource\s+"([^"]+)"\s+"([^"]+)"')
-# Module-call counting (Priority 0, 2026-04-27): not used for evidence
-# extraction — `v0 scope: resource blocks only` per the module docstring.
-# Counted alongside resources so the scan layer can warn when a codebase
-# is module-heavy and would benefit from plan-JSON expansion. See
-# `docs/v1-readiness-plan.md` Priority 0.
+# Module-call counting: not used for evidence extraction (HCL mode is
+# resource-blocks-only by design). Counted alongside resources so the scan
+# layer can warn when a codebase is module-heavy and would benefit from
+# `efterlev scan --plan` expansion.
 _MODULE_HEADER_RE = re.compile(r'^\s*module\s+"([^"]+)"')
 
 
@@ -63,7 +62,6 @@ class TerraformParseResult:
     # (the dominant ICP-A pattern) require plan-JSON expansion to surface
     # the resources inside those modules. The scan layer uses this count to
     # warn the user when plan-JSON would meaningfully change the result.
-    # See `docs/v1-readiness-plan.md` Priority 0.
     module_call_count: int = 0
 
     @property

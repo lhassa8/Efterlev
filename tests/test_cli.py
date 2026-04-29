@@ -340,9 +340,7 @@ def test_scan_warns_about_module_density_when_module_heavy(
 ) -> None:
     """When a codebase is module-composed (the dominant ICP-A pattern),
     `efterlev scan` (HCL mode) must surface a structured warning recommending
-    plan-JSON expansion. Documented and worked example in
-    `docs/dogfood-findings-2026-04-27.md` and `docs/v1-readiness-plan.md`
-    Priority 0."""
+    plan-JSON expansion."""
     Path(str(tmp_path) + "/main.tf").write_text(
         'module "vpc" {\n  source = "terraform-aws-modules/vpc/aws"\n}\n'
         'module "eks" {\n  source = "terraform-aws-modules/eks/aws"\n}\n'

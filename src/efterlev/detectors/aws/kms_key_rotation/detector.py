@@ -17,9 +17,8 @@ certificates, and other secrets." SC-12 is in KSI-SVC-ASM's `controls`
 array in FRMR 0.9.43-beta, and the KSI's statement explicitly names
 "rotation of digital keys" — KMS key rotation is the canonical example.
 The original 2026-04-21 design call left this `ksis=[]` because the
-mapping wasn't immediately clear; the 2026-04-27 honesty pass (Priority
-6 of `docs/v1-readiness-plan.md`) re-evaluated and confirmed
-KSI-SVC-ASM is the right home.
+mapping wasn't immediately clear; the 2026-04-27 honesty pass re-evaluated
+and confirmed KSI-SVC-ASM is the right home.
 """
 
 from __future__ import annotations
