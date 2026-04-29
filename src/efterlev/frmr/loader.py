@@ -40,6 +40,16 @@ class FrmrDocument(BaseModel):
     # in one process (e.g., low + moderate side-by-side), separate
     # FrmrDocuments must be loaded — the cache cannot be shared.
     indicators: dict[str, Indicator]
+    # KSI-CSX-ORD prescribed initial-authorization sequence, resolved at
+    # load time from `FRR.KSI.data.20x.CSX.KSI-CSX-ORD.following_information`
+    # by matching each entry's parenthetical name (e.g. "Minimum Assessment
+    # Scope (MAS)") against the AFR theme's indicator names. Empty list for
+    # catalogs that lack a CSX-ORD entry; consumers requesting CSX-ORD
+    # output gracefully fall back when the list is empty. Pre-2026-04-29
+    # cached FrmrDocument JSON files load with this defaulted to [] —
+    # `efterlev poam --sort csx-ord` prints a nudge to re-init when the
+    # workspace's cache predates this field.
+    csx_ord_sequence: list[str] = []
 
 
 def load_frmr(
@@ -117,9 +127,51 @@ def load_frmr(
                 fka=ind_raw.get("fka"),
             )
 
+    csx_ord_sequence = _resolve_csx_ord_sequence(raw, indicators)
+
     return FrmrDocument(
         version=version,
         last_updated=last_updated,
         themes=themes,
         indicators=indicators,
+        csx_ord_sequence=csx_ord_sequence,
     )
+
+
+def _resolve_csx_ord_sequence(raw: dict[str, Any], indicators: dict[str, Indicator]) -> list[str]:
+    # FRMR catalog stores the CSX-ORD prescribed sequence as a list of
+    # human-readable phrases like "Minimum Assessment Scope (MAS)" under
+    # `FRR.KSI.data.20x.CSX.KSI-CSX-ORD.following_information`. The
+    # parenthetical 3-letter codes don't always match the KSI ID's 3-letter
+    # suffix (e.g. catalog says "Secure Configuration Guide (RSC)" but the
+    # KSI ID is `KSI-AFR-SCG`), so we resolve by matching each phrase's
+    # name component against the indicators' `name` field.
+    csx_ord = (
+        raw.get("FRR", {})
+        .get("KSI", {})
+        .get("data", {})
+        .get("20x", {})
+        .get("CSX", {})
+        .get("KSI-CSX-ORD", {})
+    )
+    sequence_phrases = csx_ord.get("following_information", [])
+    if not sequence_phrases:
+        return []
+
+    # Build a {name -> ksi_id} lookup. Names are unique across the catalog
+    # in 0.9.43-beta; if a future revision introduces a name collision, the
+    # last-loaded wins (no special handling — drift surfaces in the
+    # ordering and is the kind of thing a re-init would catch).
+    name_to_id = {ind.name: ind_id for ind_id, ind in indicators.items()}
+
+    resolved: list[str] = []
+    for phrase in sequence_phrases:
+        # Strip the parenthetical abbreviation: "Foo Bar (XYZ)" -> "Foo Bar".
+        name = phrase.rsplit(" (", 1)[0].strip() if "(" in phrase else phrase.strip()
+        ksi_id = name_to_id.get(name)
+        if ksi_id is not None:
+            resolved.append(ksi_id)
+        # Phrases that don't resolve are silently skipped — the catalog
+        # may use names that differ from the indicator's `name` field by
+        # case or punctuation. Better to skip than to invent attribution.
+    return resolved

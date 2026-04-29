@@ -494,6 +494,17 @@ def poam(
             "Defaults to `.efterlev/reports/poam-<timestamp>.md`."
         ),
     ),
+    sort: str = typer.Option(
+        "severity",
+        "--sort",
+        help=(
+            "How to order POA&M items. `severity` (default): not_implemented "
+            "(HIGH) first, then partial (MEDIUM); alphabetical within tier. "
+            "`csx-ord`: order by KSI-CSX-ORD's prescribed initial-authorization "
+            "sequence (MAS, ADS, UCM, …); items outside the prescribed sequence "
+            "appear after, alphabetically."
+        ),
+    ),
 ) -> None:
     """Emit a POA&M markdown for every open (partial / not_implemented) KSI.
 
@@ -590,12 +601,27 @@ def poam(
             )
             for c in kept_classifications
         ]
+        if sort not in ("severity", "csx-ord"):
+            typer.echo(
+                f"error: --sort must be 'severity' or 'csx-ord' (got '{sort}').",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        if sort == "csx-ord" and not frmr_doc.csx_ord_sequence:
+            typer.echo(
+                "warning: workspace's FRMR cache predates CSX-ORD support; "
+                "the prescribed-sequence sort will fall back to alphabetical. "
+                "Run `efterlev init --force` to refresh the cache.",
+                err=True,
+            )
         result = generate_poam_markdown(
             GeneratePoamMarkdownInput(
                 classifications=poam_inputs,
                 indicators=frmr_doc.indicators,
                 baseline_id="fedramp-20x-moderate",
                 frmr_version=frmr_doc.version,
+                sort_mode=sort,  # type: ignore[arg-type]
+                csx_ord_sequence=list(frmr_doc.csx_ord_sequence),
             )
         )
 

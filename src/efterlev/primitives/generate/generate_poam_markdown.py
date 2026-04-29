@@ -48,6 +48,7 @@ design record.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -65,7 +66,17 @@ _SEVERITY_FOR_STATUS = {
     "partial": "MEDIUM",
 }
 
+# Severity rank for the default sort mode. Lower number = earlier in the
+# POA&M. Items at the same rank fall back to alphabetical KSI ID for
+# stability.
+_SEVERITY_RANK = {
+    "not_implemented": 0,
+    "partial": 1,
+}
+
 _DRAFT_PLACEHOLDER = "DRAFT — SET BEFORE SUBMISSION"
+
+PoamSortMode = Literal["severity", "csx-ord"]
 
 
 class PoamClassificationInput(BaseModel):
@@ -98,6 +109,16 @@ class GeneratePoamMarkdownInput(BaseModel):
     # Generated-at for the header. Frozen at construction to keep the
     # primitive deterministic — same inputs → same markdown.
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Sort mode for the POA&M items. "severity" (default): not_implemented
+    # (HIGH) first, then partial (MEDIUM); within tier, alphabetical by
+    # KSI ID. "csx-ord": items appear in the order their KSI ID matches
+    # `csx_ord_sequence`; non-prescribed items follow alphabetically.
+    # See KSI-CSX-ORD in the FRMR catalog for the prescribed sequence.
+    sort_mode: PoamSortMode = "severity"
+    # Prescribed KSI ID sequence from KSI-CSX-ORD's `following_information`.
+    # Required when sort_mode="csx-ord"; ignored otherwise. Loaded by the
+    # CLI from FrmrDocument.csx_ord_sequence.
+    csx_ord_sequence: list[str] = Field(default_factory=list)
 
 
 class GeneratePoamMarkdownOutput(BaseModel):
@@ -132,6 +153,7 @@ def generate_poam_markdown(
     row. Same posture as `generate_frmr_attestation`.
     """
     open_items = [c for c in input.classifications if c.status in _STATUS_IN_SCOPE]
+    open_items = _sort_items(open_items, input.sort_mode, input.csx_ord_sequence)
 
     skipped: list[str] = []
     rendered_items: list[str] = []
@@ -158,6 +180,42 @@ def generate_poam_markdown(
         markdown=markdown,
         item_count=len(rendered_items),
         skipped_unknown_ksi=skipped,
+    )
+
+
+def _sort_items(
+    items: list[PoamClassificationInput],
+    sort_mode: PoamSortMode,
+    csx_ord_sequence: list[str],
+) -> list[PoamClassificationInput]:
+    """Order POA&M items by the requested mode.
+
+    - "severity" (default): not_implemented (HIGH) first, then partial
+      (MEDIUM); ties broken alphabetically by KSI ID. Prior to v0.1.x this
+      mode preserved input order, which made the output non-deterministic
+      across runs that had the same classification set in different order.
+      Now items are sorted explicitly.
+    - "csx-ord": items appear in the order prescribed by KSI-CSX-ORD's
+      `following_information` (resolved to KSI IDs by the loader). Items
+      whose KSI is not in the prescribed sequence appear after, ordered
+      alphabetically by KSI ID. The prescribed sequence carries 10 KSIs
+      (all in theme AFR); themes outside AFR will always sort to the
+      tail under this mode.
+    """
+    if sort_mode == "csx-ord":
+        # Build rank map: prescribed sequence first (rank 0..N-1), all
+        # else after. Stable sort means items with the same rank keep
+        # their relative order, which we then break alphabetically.
+        rank = {ksi_id: i for i, ksi_id in enumerate(csx_ord_sequence)}
+        tail_rank = len(csx_ord_sequence)
+        return sorted(
+            items,
+            key=lambda c: (rank.get(c.ksi_id, tail_rank), c.ksi_id),
+        )
+    # severity mode (default)
+    return sorted(
+        items,
+        key=lambda c: (_SEVERITY_RANK.get(c.status, 99), c.ksi_id),
     )
 
 
