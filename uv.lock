@@ -500,7 +500,6 @@ wheels = [
 
 [[package]]
 name = "efterlev"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -554,7 +553,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12,<1" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0,<7" },
 ]
-provides-extras = ["dev", "bedrock", "docs"]
+provides-extras = ["bedrock", "dev", "docs"]
 
 [[package]]
 name = "email-validator"

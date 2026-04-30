@@ -39,7 +39,6 @@ the prompt-injection defense the whole generative layer depends on.
 from __future__ import annotations
 
 import json
-import logging
 import re
 import secrets
 from abc import ABC
@@ -55,9 +54,6 @@ from efterlev.llm.scrubber import (
     scrub_llm_prompt,
 )
 from efterlev.models import Evidence
-from efterlev.provenance.context import get_active_store
-
-log = logging.getLogger(__name__)
 
 
 def new_fence_nonce() -> str:
@@ -309,24 +305,16 @@ class Agent(ABC):
                 f"{self.name}: LLM output failed {self.output_model.__name__}: {e}"
             ) from e
 
-        store = get_active_store()
-        if store is not None:
-            store.write_record(
-                payload={
-                    "user_message": user_message,
-                    "response_text": response.text,
-                    "parsed": parsed,
-                },
-                record_type="claim",
-                agent=self.name,
-                model=response.model,
-                prompt_hash=response.prompt_hash,
-                metadata={"kind": "llm_invocation"},
-            )
-        else:
-            log.warning(
-                "agent %s ran with no active provenance store; skipping invocation record",
-                self.name,
-            )
+        # Per-claim records (one per KSI classification, one per narrative,
+        # one per remediation) are written by the subclass `run()` methods —
+        # those carry `derived_from`, `model`, `prompt_hash`, and a typed
+        # payload, and they're what `efterlev provenance show` walks. We used
+        # to additionally write a transcript record here with the raw
+        # user_message + response.text under `record_type="claim"`, but it
+        # had no `derived_from` (legitimately — a transcript isn't derived
+        # from anything) and looked like a malformed Claim to anyone listing
+        # claim records. The per-claim records below carry every load-bearing
+        # field; the transcript was debug-only and confused the provenance
+        # graph more than it helped.
 
         return output, response, system_prompt

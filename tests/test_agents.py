@@ -219,7 +219,7 @@ def test_gap_agent_returns_parsed_report_and_writes_claims(tmp_path: Path) -> No
     clf = report.ksi_classifications[0]
     assert clf.ksi_id == "KSI-SVC-VRI"
     assert clf.status == "partial"
-    # One claim record per classification + one llm_invocation record.
+    # One claim record per classification.
     assert len(report.claim_record_ids) == 1
     assert report.claim_record_ids[0] in record_ids
 
