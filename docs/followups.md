@@ -8,21 +8,21 @@ Each entry names the deferral, the reason, the owner, and a target window. As it
 
 ## v0.1.x — patch-follow-ups (within first 30 days)
 
-### `efterlev --version` prints stale version (drift between `__init__.py` and `pyproject.toml`)
+### Gap Agent / Remediate Agent disagree on KSI scope when Gap cites cross-thematic evidence
 
-**Item:** the published v0.1.0 wheel prints `efterlev 0.0.1` from `efterlev --version`. The CLI reads `efterlev.__version__` from `src/efterlev/__init__.py`, which is hardcoded to `"0.0.1"`. `pyproject.toml`'s `version = "0.1.0"` controls the PyPI package metadata (correct) but doesn't propagate to the in-source constant. `pipx list | grep efterlev` reports `0.1.0` correctly because pipx reads package metadata, not the constant.
+**Item:** the Gap Agent has freedom to cite any prompt-visible `Evidence` in a KSI's rationale, even Evidence whose `ksis_evidenced` doesn't include that KSI (e.g. citing FIPS-TLS evidence under KSI-AFR-UCM). When the user later runs `efterlev agent remediate --ksi <that-ksi>`, the CLI's gating logic strictly filters by `ev.ksis_evidenced`, finds zero Terraform-source Evidence, and refuses with `"no Terraform surface to remediate"`. The two agents disagree on what counts as "evidence for this KSI."
 
-**Resolution path:** make hatch derive the version from one source of truth. Two clean options:
-1. `[tool.hatch.version] path = "src/efterlev/__init__.py"` — pyproject.toml reads `__version__` from the source file. Bumping the version means editing `__init__.py` only.
-2. Move the version literal to `pyproject.toml` and have `__init__.py` read it via `importlib.metadata.version("efterlev")` at import time.
+**Resolution path:** design call between two reasonable defaults:
+1. **Trust Gap's citations** — replace remediate's `ksis_evidenced` filter with a lookup of the Claim's `derived_from` Evidence IDs (what Gap actually cited). Risk: amplifies any over-attachment by Gap into a remediation diff that addresses the wrong KSI.
+2. **Enforce detector-level mapping** — keep remediate's strict filter and tighten Gap's prompt to forbid citing Evidence whose `ksis_evidenced` doesn't include the KSI. Risk: reduces Gap's ability to reason about thematically-adjacent evidence.
 
-(1) is simpler and matches the hatch-canonical pattern. Add a regression test that asserts `efterlev.__version__ == importlib.metadata.version("efterlev")` so future drift is caught at CI time.
+(2) is more defensive and matches the "honesty over polish" principle. Likely the right call but wants prompt iteration against a real-customer corpus.
 
 **Owner:** Maintainer.
 
-**Target:** v0.1.1.
+**Target:** v0.2.0 (wants real-customer corpus for prompt tuning).
 
-**Cross-references:** found while writing the README's AI-assistant quickstart prompt — the prompt initially relied on `efterlev --version` for install verification.
+**Cross-references:** v0.1.0 deep-dive shakedown report; not a regression — present in v0.1.0.
 
 ---
 
@@ -357,4 +357,14 @@ We considered KSI-SVC-VRI ("Validating Resource Integrity"), KSI-SVC-PRR ("Preve
 
 *Move items here when resolved, with the resolution PR / commit and the date.*
 
-(empty)
+### `efterlev --version` printed stale `0.0.1` from the v0.1.0 wheel — fixed in v0.1.1 (2026-04-29)
+
+Switched `pyproject.toml` to hatch dynamic versioning (`[tool.hatch.version] path = "src/efterlev/__init__.py"`), bumped `__version__` to `"0.1.1"` as the single source of truth, and added `tests/test_smoke.py::test_in_source_version_matches_package_metadata` to lock in the invariant.
+
+### Gap Agent `max_tokens=16384` truncated full-baseline runs — fixed in v0.1.1 (2026-04-29)
+
+Bumped to `32768` (Opus 4.7's output ceiling). Surfaced by a deep-dive shakedown against `terraform-aws-modules/terraform-aws-iam`; the agent's own truncation error message ("increase the max_tokens argument") named the fix.
+
+### Confusing LLM-invocation transcript record polluted the provenance graph — fixed in v0.1.1 (2026-04-29)
+
+`agents.base._invoke_llm` used to write a per-run transcript record with `record_type="claim"` and empty `derived_from` — looked like a malformed Claim and confused provenance walks. Removed; per-claim records (per KSI / per narrative / per remediation) already carry every load-bearing field.

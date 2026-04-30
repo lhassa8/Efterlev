@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "efterlev"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Repo-native, agent-first compliance scanner for FedRAMP and DoD Impact Levels"
 readme = "README.md"
 license = "Apache-2.0"
@@ -97,6 +97,14 @@ Homepage = "https://efterlev.com"
 Documentation = "https://efterlev.com"
 Repository = "https://github.com/efterlev/efterlev"
 Issues = "https://github.com/efterlev/efterlev/issues"
+
+# Single source of truth for the version: the `__version__` constant in
+# `src/efterlev/__init__.py`. Hatch reads it at build time so pyproject's
+# `[project].version` and `efterlev --version` (which prints `__version__`)
+# stay in lock-step. v0.1.0 shipped with the two out of sync (PyPI metadata
+# 0.1.0, in-source constant 0.0.1) — see docs/followups.md.
+[tool.hatch.version]
+path = "src/efterlev/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/efterlev"]

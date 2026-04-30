@@ -1,9 +1,54 @@
 # Changelog
 
 All notable changes to Efterlev will be tracked here. Format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely; we
-group by `docs/v1-readiness-plan.md` priorities for the v1-shaped
-release.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely.
+
+## [0.1.1] — 2026-04-29
+
+Patch release closing three v0.1.0 bugs surfaced in a deep-dive shakedown
+test against `terraform-aws-modules/terraform-aws-iam` and a synthetic
+ground-truth target.
+
+### Fixed
+
+- **Gap Agent `max_tokens` truncation.** The cap was 16384, which truncated
+  mid-JSON on real-world full-baseline runs (60 KSIs each with substantive
+  rationales). Bumped to 32768 — Claude Opus 4.7's output ceiling. The
+  agent's own error message ("increase the max_tokens argument") is now
+  acted on; full-baseline runs complete without truncation.
+- **Confusing LLM-invocation transcript record.** `agents.base._invoke_llm`
+  used to write a per-run transcript record with `record_type="claim"`,
+  payload `{user_message, response_text, parsed}`, and empty `derived_from`.
+  It looked like a malformed Claim to anyone listing claim records or
+  walking provenance — and triggered tester confusion about whether the
+  retry path was corrupting state. Removed; per-claim records (per KSI for
+  Gap, per narrative for Documentation, per remediation for Remediation)
+  already carry `model`, `prompt_hash`, and properly-populated
+  `derived_from`. No information loss.
+- **`efterlev --version` reported stale `0.0.1` from the published 0.1.0
+  wheel.** `pyproject.toml` had a version literal `"0.1.0"` while
+  `src/efterlev/__init__.py` had `__version__ = "0.0.1"` — two sources of
+  truth, drifted. Switched to hatch dynamic versioning
+  (`[tool.hatch.version] path = "src/efterlev/__init__.py"`) so pyproject
+  reads from the source file. Added a CI-time regression test
+  (`test_in_source_version_matches_package_metadata`) so future drift is
+  caught before release.
+
+### Notes
+
+- Bug #5 from the shakedown report (gap/remediate disagreement on
+  KSI-AFR-UCM scope: gap classified `partial` citing FIPS-TLS evidence, but
+  remediate refused with "no Terraform surface to remediate") deferred to
+  `docs/followups.md`. Root cause is design-level: the Gap Agent has
+  freedom to cite any prompt-visible Evidence in its rationale, while
+  remediate's CLI gate strictly filters by `Evidence.ksis_evidenced`. The
+  fix needs a design call between trusting the Gap Agent's citations vs.
+  enforcing detector-level KSI mapping at remediate time. Not a regression;
+  present in v0.1.0.
+- Prompt-tuning concerns from the shakedown (systematic leniency, rationale
+  reuse across thematically-adjacent KSIs) are v0.2.0 work — they want a
+  real-customer evidence corpus to tune against rather than synthetic
+  dogfood.
 
 ## [0.1.0] — 2026-04-29
 

@@ -170,11 +170,15 @@ class GapAgent(Agent):
             scan_summary=input.scan_summary,
         )
 
-        # 16384 to fit classifications for the full FedRAMP 20x baseline (60
-        # KSIs as of FRMR 0.9.43-beta). The default 4096 truncates mid-JSON
-        # around the 40th classification when every KSI gets a real rationale.
+        # 32768 (Claude Opus 4.7's output ceiling) to fit classifications for
+        # the full FedRAMP 20x baseline. The earlier 16384 cap truncated on
+        # real-world targets where every KSI gets a substantive rationale; the
+        # error message that surfaced explicitly named "increase max_tokens",
+        # so we did. Hard-headroom remains modest — Opus's 32k output cap is
+        # the hard ceiling, not a soft default — but truncation is a more
+        # serious failure mode than a slightly oversized completion.
         report, response, system_prompt = self._invoke_llm(
-            user_message=user_message, max_tokens=16384
+            user_message=user_message, max_tokens=32768
         )
         assert isinstance(report, GapReport)  # type narrowing
 

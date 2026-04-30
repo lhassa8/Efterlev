@@ -12,6 +12,30 @@ def test_package_imports() -> None:
     assert efterlev is not None
 
 
+def test_in_source_version_matches_package_metadata() -> None:
+    """`efterlev.__version__` must equal `importlib.metadata.version('efterlev')`.
+
+    Lock-in for the v0.1.0 drift bug: the published 0.1.0 wheel printed
+    `efterlev 0.0.1` from `efterlev --version` because pyproject.toml had a
+    version literal but `__init__.py` was stale. Resolved in v0.1.1 by
+    switching to `[tool.hatch.version] path = "src/efterlev/__init__.py"` so
+    pyproject reads from the source. This test catches future drift if the
+    build configuration regresses.
+    """
+    import importlib.metadata
+
+    import efterlev
+
+    assert efterlev.__version__ == importlib.metadata.version("efterlev"), (
+        f"version drift: efterlev.__version__={efterlev.__version__!r} but "
+        f"importlib.metadata.version('efterlev')="
+        f"{importlib.metadata.version('efterlev')!r}. Check that "
+        f"pyproject.toml's [tool.hatch.version].path points at "
+        f"src/efterlev/__init__.py, and that the wheel was rebuilt after "
+        f"the last `__version__` bump."
+    )
+
+
 def test_every_detector_folder_registers() -> None:
     """Every `detectors/aws/<capability>/` folder registers exactly one detector
     at runtime.
