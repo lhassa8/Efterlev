@@ -25,7 +25,7 @@ License: Apache 2.0. No commercial tier, no managed SaaS, no paid layer. Pure OS
 - 31 of 60 thematic KSIs covered, across 8 of 11 themes (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC)
 - 3 agents: Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7)
 - Two LLM backends: direct Anthropic (default) + AWS Bedrock (`[bedrock]` extra, GovCloud)
-- 1019 tests passing; mypy strict + ruff check + ruff format clean across 172 source files
+- 1020 tests passing; mypy strict + ruff check + ruff format clean across 172 source files
 
 **Authoritative sources for "what's in":**
 - `CHANGELOG.md` — release-by-release record. Don't restate it here.
