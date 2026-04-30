@@ -337,8 +337,12 @@ def _run_stage(
     # call sites above (init_cmd + the static argv lists). No shell is
     # invoked (subprocess.run with a list argv does not use shell=True),
     # and no external/user/network input flows in. The semgrep audit rule
-    # is conservative; verified safe by construction here.
-    proc = subprocess.run(  # nosemgrep: dangerous-subprocess-use-audit
+    # `python.lang.security.audit.dangerous-subprocess-use-audit` is
+    # conservative; verified safe by construction here. Bare `# nosemgrep`
+    # suppresses all rules on this line — registry-resolved rule_ids don't
+    # match against short-form annotations, so naming the specific rule
+    # in the suppression doesn't work in practice.
+    proc = subprocess.run(  # nosemgrep
         command,
         cwd=workspace,
         capture_output=True,
