@@ -65,12 +65,15 @@ def test_pipeline_runs_init_scan_gap_document_poam_in_order(  # type: ignore[no-
     assert stages == ["init", "scan", "agent gap", "agent document", "poam"]
 
 
-def test_pipeline_skips_init_when_efterlev_dir_exists(  # type: ignore[no-untyped-def]
+def test_pipeline_skips_init_when_frmr_cache_exists(  # type: ignore[no-untyped-def]
     tmp_path: Path, monkeypatch
 ) -> None:
-    """An already-initialized workspace skips the init step automatically
-    so re-running the pipeline doesn't fail with "directory exists"."""
-    (tmp_path / ".efterlev").mkdir()
+    """An already-initialized workspace (FRMR cache present) skips the
+    init step automatically so re-running the pipeline doesn't fail with
+    "directory exists"."""
+    cache = tmp_path / ".efterlev" / "cache" / "frmr_document.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text('{"info": {"version": "stub"}}', encoding="utf-8")
     calls: list[tuple[str, list[str]]] = []
     list(_stub_command_outcomes(monkeypatch, calls))
 
@@ -79,6 +82,37 @@ def test_pipeline_skips_init_when_efterlev_dir_exists(  # type: ignore[no-untype
     stages = [name for name, _ in calls]
     assert "init" not in stages
     assert stages == ["scan", "agent gap", "agent document", "poam"]
+
+
+def test_pipeline_uses_force_init_on_half_initialized_workspace(  # type: ignore[no-untyped-def]
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When `.efterlev/manifests/` is committed but the FRMR cache is
+    gitignored (the canonical pattern for repos with Evidence Manifests),
+    a fresh clone has the workspace dir present but the cache missing.
+
+    Without this fix, init would be skipped (dir exists → assumed
+    initialized) and `scan` would crash with "FRMR cache missing." With
+    the fix, init runs but with `--force` so it regenerates the cache
+    while preserving the manifests under `.efterlev/manifests/`.
+
+    Regression test for govnotes-demo CI failure 2026-04-30.
+    """
+    # Half-initialized workspace: manifests committed, cache missing.
+    manifests = tmp_path / ".efterlev" / "manifests"
+    manifests.mkdir(parents=True)
+    (manifests / "afr-fsi.yml").write_text("ksi: KSI-AFR-FSI\n", encoding="utf-8")
+    calls: list[tuple[str, list[str]]] = []
+    list(_stub_command_outcomes(monkeypatch, calls))
+
+    result = runner.invoke(app, ["report", "run", "--target", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    stages = [name for name, _ in calls]
+    # Init must run (cache is missing), AND it must use --force (the dir
+    # already exists from the committed manifests).
+    assert stages[0] == "init"
+    init_args = calls[0][1]
+    assert "--force" in init_args, f"expected --force in init args, got {init_args}"
 
 
 def test_skip_init_flag_skips_init_even_on_fresh_workspace(  # type: ignore[no-untyped-def]

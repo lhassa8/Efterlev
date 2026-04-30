@@ -1732,14 +1732,29 @@ def report_run(
     def run_once() -> None:
         target_str = str(target_resolved)
 
-        # If `.efterlev/` already exists, skip init by default to avoid the
-        # "directory exists" error that init raises without --force.
-        efterlev_dir_exists = (target_resolved / ".efterlev").is_dir()
-        skip_init_effective = skip_init or efterlev_dir_exists
+        # Treat `.efterlev/` as initialized only when the FRMR cache is
+        # actually present — that's what `scan` and the agents need. The
+        # canonical pattern of `.efterlev/manifests/` committed to git +
+        # `.efterlev/cache/` gitignored means a fresh clone has the
+        # workspace dir present (the manifests) but the cache missing,
+        # and any check that only looked at the dir would skip init and
+        # then fail at scan time. (govnotes-demo CI hit this on
+        # 2026-04-30.)
+        frmr_cache = target_resolved / ".efterlev" / "cache" / "frmr_document.json"
+        efterlev_initialized = frmr_cache.is_file()
+        skip_init_effective = skip_init or efterlev_initialized
 
         stages: list[tuple[str, list[str]]] = []
         if not skip_init_effective:
-            stages.append(("init", ["init", "--target", target_str]))
+            init_args = ["init", "--target", target_str]
+            # If the workspace dir already exists (e.g. only `.efterlev/
+            # manifests/` is committed) but the cache doesn't, init would
+            # otherwise fail with "directory already exists". Pass
+            # --force so init regenerates the cache + provenance store
+            # while leaving customer-authored content (manifests/) intact.
+            if (target_resolved / ".efterlev").is_dir():
+                init_args.append("--force")
+            stages.append(("init", init_args))
         stages.append(("scan", ["scan", "--target", target_str]))
         stages.append(("agent gap", ["agent", "gap", "--target", target_str]))
         if not skip_document:
