@@ -61,19 +61,23 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Verify pyproject.toml version matches tag
+      - name: Verify in-source version matches tag
         id: verify
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/v}"
-          PYPROJECT_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+          # As of v0.1.1, pyproject.toml uses hatch dynamic versioning
+          # (`[tool.hatch.version] path = "src/efterlev/__init__.py"`), so
+          # `[project].version` no longer exists as a static field. Read
+          # the version from the same source-of-truth hatch reads.
+          SOURCE_VERSION=$(python3 -c 'import re,sys; m=re.search(r"^__version__\s*=\s*[\"\x27]([^\"\x27]+)[\"\x27]", open("src/efterlev/__init__.py").read(), re.MULTILINE); sys.exit("could not parse __version__") if not m else print(m.group(1))')
           # Normalize semver-shaped tag to PEP 440: v0.1.0-rc.1 → 0.1.0rc1
           NORMALIZED=$(echo "$TAG" | sed -E 's/-rc\.([0-9]+)/rc\1/')
-          echo "Tag:              v$TAG"
-          echo "Tag normalized:   $NORMALIZED"
-          echo "pyproject.toml:   $PYPROJECT_VERSION"
-          if [ "$PYPROJECT_VERSION" != "$NORMALIZED" ]; then
-            echo "::error::Version mismatch — fix pyproject.toml or re-tag."
+          echo "Tag:                          v$TAG"
+          echo "Tag normalized:               $NORMALIZED"
+          echo "src/efterlev/__init__.py:     $SOURCE_VERSION"
+          if [ "$SOURCE_VERSION" != "$NORMALIZED" ]; then
+            echo "::error::Version mismatch — fix src/efterlev/__init__.py or re-tag."
             exit 1
           fi
           echo "version=$NORMALIZED" >> "$GITHUB_OUTPUT"
