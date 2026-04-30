@@ -3,6 +3,44 @@
 All notable changes to Efterlev will be tracked here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely.
 
+## [0.1.2] — 2026-04-30
+
+Patch release closing two real-CI bugs surfaced by the govnotes-demo
+deep-dive shakedown — the canonical Evidence Manifest pattern (commit
+manifests, gitignore cache) didn't survive a fresh clone, and v0.1.1's
+bumped `max_tokens=32768` tripped Anthropic's streaming-required
+threshold and prevented the gap agent from running at all.
+
+### Fixed
+
+- **`report run` skipped init when `.efterlev/manifests/` was the only
+  thing in the workspace dir.** The detection looked at the dir, not
+  the FRMR cache file scan needs. Fresh clones with manifests
+  committed but the cache gitignored hit "FRMR cache missing"
+  immediately. `report run` now detects the cache (the actual
+  artifact) and passes `--force` to its sub-init step when the dir
+  exists but the cache is missing — regenerates cache + provenance
+  store while preserving customer-authored manifests. Regression
+  test added.
+- **Gap Agent `max_tokens=32768` raised "streaming required" on real
+  workloads.** Anthropic's `messages.create()` (non-streaming) path
+  rejects requests whose `max_tokens` could plausibly take >10
+  minutes. Reduced to **20480** — enough headroom over the v0.1.0
+  truncation site (~16384) for the full 60-KSI baseline with
+  substantive rationales, but well below the streaming threshold.
+  If real workloads need more, the right move is the streaming
+  refactor (`client.messages.stream()`), not chasing the cap.
+- **README + CLAUDE.md test count drift** (1019 → 1020 after PR #104
+  added a regression test for the half-init pattern).
+
+### Notes
+
+- Streaming refactor of the Anthropic client is queued as a
+  v0.2.0-targeted item — the right structural fix when output budget
+  needs to grow further. The fake-client surface in
+  `tests/test_anthropic_retry_fallback.py` would need rewiring for a
+  streaming context manager.
+
 ## [0.1.1] — 2026-04-29
 
 Patch release closing three v0.1.0 bugs surfaced in a deep-dive shakedown

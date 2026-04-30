@@ -170,15 +170,24 @@ class GapAgent(Agent):
             scan_summary=input.scan_summary,
         )
 
-        # 32768 (Claude Opus 4.7's output ceiling) to fit classifications for
-        # the full FedRAMP 20x baseline. The earlier 16384 cap truncated on
-        # real-world targets where every KSI gets a substantive rationale; the
-        # error message that surfaced explicitly named "increase max_tokens",
-        # so we did. Hard-headroom remains modest — Opus's 32k output cap is
-        # the hard ceiling, not a soft default — but truncation is a more
-        # serious failure mode than a slightly oversized completion.
+        # 20480 sits between two failure modes the v0.1.x patch arc has hit:
+        #
+        #   - 16384 (v0.1.0): truncated mid-JSON around the 40th of 60 KSIs
+        #     when every classification carries a substantive rationale. Real
+        #     reproduction reported in the v0.1.0 deep-dive shakedown.
+        #
+        #   - 32768 (v0.1.1): trips Anthropic's "streaming required for
+        #     operations that may take longer than 10 minutes" pre-flight
+        #     check. The non-streaming `messages.create()` path raises
+        #     before the model is even invoked. Real reproduction in the
+        #     govnotes-demo CI run on 2026-04-30.
+        #
+        # 20480 gives 25% headroom over the 16384 truncation site while
+        # staying clear of the streaming threshold for Opus 4.7. If real
+        # workloads exceed it, the right move is the streaming refactor
+        # (use `client.messages.stream()`), not chasing the cap further.
         report, response, system_prompt = self._invoke_llm(
-            user_message=user_message, max_tokens=32768
+            user_message=user_message, max_tokens=20480
         )
         assert isinstance(report, GapReport)  # type narrowing
 
