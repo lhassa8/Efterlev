@@ -59,7 +59,9 @@ Constraints:
   generates code-level diffs and I want to be in the loop.
 - Don't modify my Terraform.
 - Don't commit anything.
-- Soft cost cap: $3 of Anthropic API spend before checking back with me.
+- Soft cost cap: $3 if I picked direct Anthropic, $5 if I picked AWS Bedrock
+  (its first-run retries can burn more budget on timeout / model-config issues).
+  Check back with me before exceeding.
 - If anything fails or surprises you, stop and ask — don't paper over.
 
 When done, brief me with:
