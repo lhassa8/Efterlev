@@ -97,6 +97,57 @@ def _stub(phase: str, command: str) -> None:
     )
 
 
+def _probe_bedrock_default_model(region: str | None) -> str | None:
+    """Discover the latest Anthropic Opus inference profile in the user's account.
+
+    Calls `bedrock.list_inference_profiles(typeEquals="SYSTEM_DEFINED")`,
+    filters for Anthropic + Opus, and returns the inference-profile ID
+    of the highest-versioned match. Returns None on any failure (boto3
+    missing, permission denied, no Anthropic profiles, no Opus tier).
+    Caller falls back to the hardcoded DEFAULT_BEDROCK_MODEL on None.
+
+    Why probe at init time: Efterlev's hardcoded default
+    (`us.anthropic.claude-opus-4-7-v1:0`) is unavailable in many AWS
+    accounts/regions. Probing picks whatever the user actually has
+    access to right now; first-run failure mode avoided. (Surfaced in
+    a real first-run Bedrock report on 2026-04-30.)
+
+    Why Opus: matches the per-agent default for Gap and Remediation
+    (best classification quality). Sonnet/Haiku users override via
+    `--llm-model`.
+    """
+    if not region:
+        return None
+    try:
+        import boto3
+    except ImportError:
+        return None
+    try:
+        client = boto3.Session().client("bedrock", region_name=region)
+        resp = client.list_inference_profiles(typeEquals="SYSTEM_DEFINED", maxResults=200)
+    except Exception:
+        # AccessDenied, ConnectionError, anything — caller falls back.
+        return None
+    profiles = resp.get("inferenceProfileSummaries", [])
+    # Filter to Anthropic Opus profiles.
+    opus_candidates: list[tuple[str, str]] = []  # (profile_id, profile_name)
+    for p in profiles:
+        models = p.get("models", [])
+        if not any("anthropic" in (m.get("modelArn") or "").lower() for m in models):
+            continue
+        name = (p.get("inferenceProfileName") or "").lower()
+        pid = p.get("inferenceProfileId") or ""
+        if "opus" in name or "opus" in pid.lower():
+            opus_candidates.append((pid, name))
+    if not opus_candidates:
+        return None
+    # Sort descending so the latest version (e.g. opus-4-7 > opus-4 > opus-3) wins.
+    # Lexical sort is a reasonable proxy for version on Bedrock's id format
+    # (us.anthropic.claude-opus-4-7-v1:0 sorts after us.anthropic.claude-opus-4-v1:0).
+    opus_candidates.sort(key=lambda pair: pair[0], reverse=True)
+    return opus_candidates[0][0]
+
+
 def _display_path(p: Path, target: Path) -> str:
     # On macOS, `/tmp` is a symlink to `/private/tmp`. We resolve target
     # paths internally so provenance records carry canonical paths, but
@@ -212,8 +263,35 @@ def init(
     # because the per-agent default_model values use Anthropic short-form
     # IDs that Bedrock does not accept. The LLMConfig validator rejects
     # `backend=bedrock, model=None` to enforce this.
+    #
+    # When --llm-model isn't passed and the backend is bedrock, probe
+    # the user's account for available Anthropic inference profiles and
+    # pick the latest Opus. Falls back to the hardcoded
+    # DEFAULT_BEDROCK_MODEL only if the probe fails (no boto, no perms,
+    # no profiles enabled). This avoids the v0.1.0-v0.1.2 first-run
+    # failure mode where the hardcoded default doesn't exist in the
+    # user's account.
     if llm_backend == "bedrock":
-        configured_model: str | None = llm_model or DEFAULT_BEDROCK_MODEL
+        if llm_model:
+            configured_model: str | None = llm_model
+        else:
+            configured_model = _probe_bedrock_default_model(llm_region) or DEFAULT_BEDROCK_MODEL
+            if configured_model == DEFAULT_BEDROCK_MODEL:
+                typer.echo(
+                    f"warn: could not auto-discover an Anthropic inference profile in "
+                    f"{llm_region}; using the hardcoded default {DEFAULT_BEDROCK_MODEL!r}. "
+                    f"If that fails at agent runtime, run "
+                    f"`aws bedrock list-inference-profiles --type-equals SYSTEM_DEFINED "
+                    f"--region {llm_region}` to find an available profile and re-init "
+                    f"with `--llm-model=<arn>`.",
+                    err=True,
+                )
+            else:
+                typer.echo(
+                    f"info: discovered Bedrock inference profile {configured_model!r} "
+                    f"in {llm_region}; using it as the default model. Override with "
+                    f"--llm-model=<arn> if you want a different one.",
+                )
     else:
         configured_model = llm_model
     llm_config = LLMConfig(

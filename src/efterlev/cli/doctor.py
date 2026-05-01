@@ -66,13 +66,22 @@ def check_python_version() -> Check:
     )
 
 
-def check_anthropic_api_key() -> Check:
+def check_anthropic_api_key(*, configured_backend: str | None = None) -> Check:
     """Check ANTHROPIC_API_KEY presence and shape.
 
-    The shape check is conservative: real keys start with `sk-ant-`
-    and are 100+ chars. We don't make a network call to validate the
-    key — that's a separate concern from "is it configured."
+    Skipped when the workspace's configured backend is `bedrock` —
+    the key is irrelevant on that path and the warn was noise. The
+    shape check is conservative: real keys start with `sk-ant-` and
+    are 100+ chars. We don't make a network call to validate the key
+    here — that's the bedrock-side InvokeModel ping or the Anthropic-
+    side first agent call.
     """
+    if configured_backend == "bedrock":
+        return Check(
+            name="anthropic_api_key",
+            status="pass",
+            detail="skipped — workspace is configured for the Bedrock backend",
+        )
     key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not key:
         return Check(
@@ -161,45 +170,201 @@ def check_frmr_cache(target: Path) -> Check:
     )
 
 
-def check_bedrock_credentials() -> Check:
+def check_bedrock_credentials(
+    *,
+    configured_backend: str | None = None,
+    configured_region: str | None = None,
+    configured_model: str | None = None,
+) -> Check:
     """Optional check: is the Bedrock LLM backend usable?
 
-    AWS_REGION + AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (or an
-    AWS_PROFILE) is the canonical signal. We don't validate the keys
-    actually work — that's a network call. Pass = "Bedrock is plausibly
-    configured"; warn = "Bedrock not configured" (which is fine if the
-    user is on the Anthropic backend).
-    """
-    has_env_creds = bool(
-        os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY")
-    )
-    has_profile = bool(os.environ.get("AWS_PROFILE"))
-    has_region = bool(os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"))
+    Uses boto3's full credential resolution chain (env vars → shared
+    credentials file → AWS_PROFILE → IMDS → SSO → container metadata),
+    which is what the runtime actually consults. Earlier versions of
+    this check only inspected env vars and false-warned on configs
+    where `~/.aws/credentials` or an SSO session was already valid
+    (real first-run report 2026-04-30).
 
-    if not (has_env_creds or has_profile):
+    When `configured_backend == "bedrock"`, additionally validates the
+    configured model end-to-end with a 1-token `InvokeModel` ping —
+    catches stale defaults, missing inference profiles, expired creds,
+    and access-denied scenarios in the diagnostic phase before users
+    spend money on a doomed agent run. The ping is intentionally
+    minimal (`max_tokens=1`, throwaway prompt) so the cost is fractions
+    of a cent.
+    """
+    region = (
+        configured_region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    )
+
+    try:
+        import boto3
+        from botocore.exceptions import (  # type: ignore[import-untyped]
+            BotoCoreError,
+            ClientError,
+            NoCredentialsError,
+        )
+    except ImportError:
         return Check(
             name="bedrock_credentials",
             status="warn",
-            detail="No AWS credentials in environment (Bedrock backend unavailable)",
+            detail="boto3 not installed (Bedrock backend unavailable)",
             hint=(
-                "If you don't use Bedrock, ignore this check. To enable "
-                "Bedrock: set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY "
-                "(or AWS_PROFILE) plus AWS_REGION, then set "
-                "[llm].backend = 'bedrock' in .efterlev/config.toml."
+                "If you don't use Bedrock, ignore this check. To install "
+                "the Bedrock backend: `pipx install 'efterlev[bedrock]'` "
+                "(or use the container image)."
             ),
         )
-    if not has_region:
+
+    # boto3's full credential chain — env, shared file, AWS_PROFILE,
+    # IMDS, SSO, container creds. Matches what the runtime client uses.
+    try:
+        session = boto3.Session()
+        creds = session.get_credentials()
+    except Exception as e:  # pragma: no cover - boto3 setup edge cases
         return Check(
             name="bedrock_credentials",
             status="warn",
-            detail="AWS credentials present but AWS_REGION not set",
-            hint="Set AWS_REGION (or AWS_DEFAULT_REGION) so Bedrock knows where to call.",
+            detail=f"boto3 session init failed: {e}",
+            hint="Check `aws configure` or your AWS_PROFILE / SSO setup.",
         )
+
+    if creds is None:
+        return Check(
+            name="bedrock_credentials",
+            status="warn",
+            detail="No AWS credentials resolvable from any source (Bedrock backend unavailable)",
+            hint=(
+                "If you don't use Bedrock, ignore this check. To enable "
+                "Bedrock: run `aws configure` (writes to ~/.aws/credentials), "
+                "or set AWS_PROFILE, or export AWS_ACCESS_KEY_ID + "
+                "AWS_SECRET_ACCESS_KEY. Then set [llm].backend = 'bedrock' "
+                "in .efterlev/config.toml."
+            ),
+        )
+
+    if not region:
+        return Check(
+            name="bedrock_credentials",
+            status="warn",
+            detail="AWS credentials resolved but no region configured",
+            hint=(
+                "Set AWS_REGION (or AWS_DEFAULT_REGION), or `aws configure "
+                "set region us-east-1`, so Bedrock knows where to call. "
+                "GovCloud customers: use `us-gov-west-1`."
+            ),
+        )
+
+    # Skip the InvokeModel ping unless the workspace is actually configured
+    # for Bedrock. On Anthropic-backend workspaces we just want to confirm
+    # that Bedrock COULD be used without spending API budget.
+    if configured_backend != "bedrock" or not configured_model:
+        return Check(
+            name="bedrock_credentials",
+            status="pass",
+            detail=(
+                f"AWS credentials resolved + region {region} configured (Bedrock backend usable)"
+            ),
+        )
+
+    # End-to-end ping: 1 token, throwaway prompt. Catches stale model
+    # defaults, missing inference-profile access, and credential lifetimes
+    # before the first agent run.
+    try:
+        from botocore.config import Config
+
+        client = session.client(
+            "bedrock-runtime",
+            region_name=region,
+            config=Config(read_timeout=30, connect_timeout=10, retries={"max_attempts": 1}),
+        )
+        client.converse(
+            modelId=configured_model,
+            messages=[{"role": "user", "content": [{"text": "ping"}]}],
+            inferenceConfig={"maxTokens": 1},
+        )
+    except NoCredentialsError:
+        return Check(
+            name="bedrock_credentials",
+            status="fail",
+            detail="boto3 reported credentials, but Bedrock rejected them",
+            hint="Refresh credentials (e.g. `aws sso login`) and re-run.",
+        )
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "?")
+        msg = e.response.get("Error", {}).get("Message", str(e))
+        if code in ("AccessDeniedException", "UnauthorizedException"):
+            return Check(
+                name="bedrock_credentials",
+                status="fail",
+                detail=f"Bedrock denied access to {configured_model}: {msg}",
+                hint=(
+                    "Request access to the model in the Bedrock console "
+                    "(console.aws.amazon.com/bedrock → Model access), or "
+                    "pick a different `model` in .efterlev/config.toml."
+                ),
+            )
+        if code in ("ResourceNotFoundException", "ValidationException"):
+            return Check(
+                name="bedrock_credentials",
+                status="fail",
+                detail=f"Configured model {configured_model!r} is not callable: {msg}",
+                hint=(
+                    "Run `aws bedrock list-inference-profiles --type-equals "
+                    "SYSTEM_DEFINED --region <region>` and pick a current "
+                    "Anthropic profile ARN. Update [llm].model in "
+                    ".efterlev/config.toml."
+                ),
+            )
+        # Throttling / 5xx — credentials and model are fine, just a transient
+        return Check(
+            name="bedrock_credentials",
+            status="warn",
+            detail=f"Bedrock ping returned {code}: {msg}",
+            hint="Retry in a moment; credentials and model look OK.",
+        )
+    except BotoCoreError as e:
+        return Check(
+            name="bedrock_credentials",
+            status="warn",
+            detail=f"Bedrock ping connection error: {e}",
+            hint="Network reachability to Bedrock failed; check VPC endpoints / proxy config.",
+        )
+
     return Check(
         name="bedrock_credentials",
         status="pass",
-        detail="AWS credentials + AWS_REGION present (Bedrock backend usable)",
+        detail=(
+            f"InvokeModel ping succeeded against {configured_model} in {region} "
+            "(creds + model verified end-to-end)"
+        ),
     )
+
+
+def _read_configured_backend(target: Path) -> tuple[str | None, str | None, str | None]:
+    """Best-effort read of `[llm]` settings from `.efterlev/config.toml`.
+
+    Returns (backend, region, model) — any missing field is None. Failures
+    parsing the file return all-None silently; the doctor checks fall back
+    to env-var inspection in that case.
+    """
+    config_path = target / ".efterlev" / "config.toml"
+    if not config_path.is_file():
+        return (None, None, None)
+    try:
+        import tomllib
+
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return (None, None, None)
+    llm = data.get("llm", {}) if isinstance(data, dict) else {}
+    if not isinstance(llm, dict):
+        return (None, None, None)
+    backend = llm.get("backend") if isinstance(llm.get("backend"), str) else None
+    region = llm.get("region") if isinstance(llm.get("region"), str) else None
+    model = llm.get("model") if isinstance(llm.get("model"), str) else None
+    return (backend, region, model)
 
 
 def run_doctor_checks(target: Path) -> list[Check]:
@@ -207,13 +372,23 @@ def run_doctor_checks(target: Path) -> list[Check]:
 
     Order: Python (foundational), .efterlev workspace state, FRMR cache
     (init artifact), API keys (agent invocation), Bedrock (optional).
+
+    The api-key and bedrock checks are config-aware: if `.efterlev/
+    config.toml` declares `backend = "bedrock"`, the anthropic-key
+    check skips, and the bedrock check additionally pings InvokeModel
+    against the configured model (1-token round-trip).
     """
+    backend, region, model = _read_configured_backend(target)
     return [
         check_python_version(),
         check_efterlev_dir(target),
         check_frmr_cache(target),
-        check_anthropic_api_key(),
-        check_bedrock_credentials(),
+        check_anthropic_api_key(configured_backend=backend),
+        check_bedrock_credentials(
+            configured_backend=backend,
+            configured_region=region,
+            configured_model=model,
+        ),
     ]
 
 

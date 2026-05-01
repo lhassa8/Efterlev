@@ -232,7 +232,7 @@ For deeper architectural detail, see [docs/architecture.md](./docs/architecture.
 - **Detector sources:** 41 Terraform + 4 GitHub workflows
 - **Three agents:** Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7)
 - **Two LLM backends:** Anthropic API (default) + AWS Bedrock (`[bedrock]` extra, GovCloud-deployable)
-- **1020 tests passing;** mypy strict + ruff check + ruff format clean across 172 source files
+- **1026 tests passing;** mypy strict + ruff check + ruff format clean across 172 source files
 
 **Coverage relative to FedRAMP 20x Phase 2's 70% automated-validation threshold:** the threshold applies to the customer's whole authorization package, not to any single tool. Efterlev covers 31 KSIs at the IaC layer pre-deploy; AWS-native services (Config, Security Hub, CloudTrail, Inspector, GuardDuty) cover roughly 14 KSIs at the runtime layer. Honest union: ~33 of 63 KSIs (~52%) — distinct layers, not double-counted. Reaching 70% takes both. See [docs/aws-coexistence.md](./docs/aws-coexistence.md) for the strategic mapping and [docs/csx-mapping.md](./docs/csx-mapping.md) for how the outputs map to CSX-SUM / MAS / ORD.
 
