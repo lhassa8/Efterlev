@@ -42,8 +42,13 @@ Also ask me for the absolute path to my Terraform code.
    and `export ANTHROPIC_API_KEY=sk-ant-...` if not already set.
 2. Verify: `echo "${ANTHROPIC_API_KEY:0:10}"` should print something
    starting with `sk-ant-`. If empty, stop until I export it.
-3. Install: `pipx install efterlev` (or `brew install pipx` first if pipx
-   is missing).
+3. Install or upgrade Efterlev:
+   - If `efterlev` isn't on my PATH: `pipx install efterlev` (or
+     `brew install pipx` first if pipx is missing).
+   - If it is: `pipx upgrade efterlev`.
+   - Confirm `efterlev --version` prints `efterlev 0.1.3` or higher.
+     If it still shows an older version, do a clean reinstall:
+     `pipx uninstall efterlev && pipx install efterlev`.
 
 Then jump to Step 3.
 
@@ -76,8 +81,14 @@ Then jump to Step 3.
    for quick smoke tests).
 5. Capture the `inferenceProfileArn` (prefer the `us.` / regional ARN over
    any global variant if both are present) and remember it as `MODEL_ARN`.
-6. Install: `pipx install 'efterlev[bedrock]'` (keep the quotes — the
-   bracket extra needs them).
+6. Install or upgrade Efterlev with the Bedrock extra:
+   - If not yet installed: `pipx install 'efterlev[bedrock]'` (keep the
+     quotes — the bracket extra needs them; or `brew install pipx`
+     first if pipx is missing).
+   - If installed: `pipx upgrade 'efterlev[bedrock]'`.
+   - Confirm `efterlev --version` prints `efterlev 0.1.3` or higher.
+     If it still shows an older version, do a clean reinstall:
+     `pipx uninstall efterlev && pipx install 'efterlev[bedrock]'`.
 
 ## Step 3 — init
 
@@ -88,10 +99,14 @@ Then jump to Step 3.
   - Bedrock backend:
       `efterlev init --target . --llm-backend=bedrock --llm-region=<region> --llm-model=<MODEL_ARN>`
 
-If `efterlev init` errors with ".efterlev already exists", that workspace
-likely has committed manifests under `.efterlev/manifests/` (which is the
-canonical pattern). Re-run with `--force` — it preserves manifests while
-regenerating cache + provenance store.
+If `efterlev init` errors with ".efterlev already exists", or if I'm
+re-running after an earlier Efterlev version touched this workspace,
+re-run with `--force` — it preserves `.efterlev/manifests/` (the
+canonical Evidence-Manifest pattern) while regenerating the FRMR cache,
+provenance store, and `config.toml`. Re-init is the right move on
+upgrade because `config.toml` may have stale model IDs from the old
+version (especially on the Bedrock path, where the latest available
+inference profiles change across releases).
 
 ## Step 4 — doctor + scan
 
