@@ -18,11 +18,11 @@ License: Apache 2.0. No commercial tier, no managed SaaS, no paid layer. Pure OS
 
 ## Current state
 
-**v0.1.2 is current** (shipped 2026-04-30). Public on GitHub at `efterlev/efterlev`, on PyPI as `efterlev`, on `ghcr.io/efterlev/efterlev` (multi-arch, cosign-signed).
+**v0.1.3 is current** (shipped 2026-05-01). Public on GitHub at `efterlev/efterlev`, on PyPI as `efterlev`, on `ghcr.io/efterlev/efterlev` (multi-arch, cosign-signed).
 
-The v0.1.x patch arc closed three real-CI bugs surfaced by the deep-dive shakedown against the canonical dogfood target (govnotes-demo): max_tokens truncation in the Gap Agent (v0.1.1 raised the cap); the bumped cap then tripped Anthropic's streaming-required threshold (v0.1.2 reduced to 20480); `__version__` drift between `__init__.py` and `pyproject.toml` (v0.1.1 switched to hatch dynamic versioning); `report run` init-detection looking at the workspace dir instead of the FRMR cache (v0.1.2). See `CHANGELOG.md` for the per-release record.
+The v0.1.x patch arc closed real-CI bugs surfaced by two deep-dive shakedowns against the canonical dogfood target (govnotes-demo): max_tokens truncation in the Gap Agent (v0.1.1 raised the cap); the bumped cap then tripped Anthropic's streaming-required threshold (v0.1.2 reduced to 20480); `__version__` drift between `__init__.py` and `pyproject.toml` (v0.1.1 switched to hatch dynamic versioning); `report run` init-detection looking at the workspace dir instead of the FRMR cache (v0.1.2); and a six-fix Bedrock-onboarding cliff in v0.1.3 (boto read_timeout=600 + retries=1, JSON-fence stripping in agents/base.py, `init` probing `bedrock.list_inference_profiles` for the latest available Anthropic Opus profile, `doctor` using boto3's full credential chain + 1-token InvokeModel ping for end-to-end model validation, ANTHROPIC_API_KEY check skipped when backend is bedrock). See `CHANGELOG.md` for the per-release record.
 
-**Coverage at v0.1.2:**
+**Coverage at v0.1.3:**
 - 45 detectors total (38 KSI-mapped + 7 supplementary 800-53-only)
 - 31 of 60 thematic KSIs covered, across 8 of 11 themes (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC)
 - 3 agents: Gap (Opus 4.7), Documentation (Sonnet 4.6), Remediation (Opus 4.7)
@@ -56,6 +56,12 @@ These have all surfaced in real CI, so they're not theoretical:
 - **`python-hcl2` doesn't resolve `${...}` interpolations.** Detectors matching string literals (e.g., `policy_arn == "arn:aws:iam::aws:policy/AdministratorAccess"`) miss when the source uses `arn:${local.partition}:iam::aws:...`. For test targets, hardcode `arn:aws:`. For real-world detection robustness, use plan-JSON mode (`efterlev scan --plan plan.json`) which gives Terraform-resolved values.
 
 - **GitHub-source detectors fire only when the scan target sees `.github/workflows/`.** `efterlev scan --target infra/terraform/` skips them. For mixed-content repos, scan from repo root (`--target .`) — `.tf` files are still found via rglob.
+
+- **Bedrock client needs `read_timeout=600` + boto retries disabled.** boto3 defaults to `read_timeout=60` + 3 retries. Gap Agent prompts (60 KSIs × evidence) routinely exceed 60s; the 3 retries triple wasted cost before our retry loop fires. v0.1.3's `bedrock_client._client()` sets `Config(read_timeout=600, connect_timeout=10, retries={"max_attempts": 1})`. Don't remove that config — it's load-bearing for any first-run on Opus 4.7.
+
+- **LLMs occasionally wrap structured output in ` ```json ` fences** despite explicit system-prompt instructions to return raw JSON (Opus 4.6 on Bedrock especially). v0.1.3's `agents.base._strip_code_fences` strips them defensively before `json.loads`. Raw JSON passes through unchanged. Test coverage in `tests/test_agents.py::test_strip_code_fences_*`.
+
+- **Bedrock model defaults go stale across model releases.** `init --llm-backend=bedrock` probes `bedrock.list_inference_profiles(typeEquals="SYSTEM_DEFINED")` and picks the latest available Anthropic Opus when `--llm-model` is unset. The hardcoded `DEFAULT_BEDROCK_MODEL` is the fallback when probing fails. If you change defaults, keep the probe — every account has a different set of enabled profiles.
 
 ---
 

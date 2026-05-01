@@ -225,7 +225,7 @@ For deeper architectural detail, see [docs/architecture.md](./docs/architecture.
 
 ---
 
-## Coverage at v0.1.0
+## Coverage at v0.1.3
 
 - **45 detectors** — 38 KSI-mapped + 7 supplementary 800-53-only (where FRMR 0.9.43-beta doesn't yet map the underlying control)
 - **31 of 60 thematic KSIs** covered, across **8 of 11 themes** (CNA, CMT, IAM, MLA, PIY, RPL, SCR, SVC). The remaining three themes (AFR, CED, INR) are entirely procedural — covered by customer-authored Evidence Manifests rather than detector evidence.
@@ -289,7 +289,7 @@ We want contributors. The detector library is designed to make the common contri
 
 ## Status, governance, license
 
-**Status:** v0.1.0 shipped 2026-04-29. See [CHANGELOG.md](./CHANGELOG.md) for the release. Verify a published artifact with `bash scripts/verify-release.sh v0.1.0` (PEP 740 PyPI attestations + cosign keyless OIDC + SLSA provenance on `ghcr.io/efterlev/efterlev`).
+**Status:** v0.1.3 is current. See [CHANGELOG.md](./CHANGELOG.md) for per-release notes (v0.1.0 first public on 2026-04-29; four patch releases since, all addressing real-world first-run issues caught by deep-dive shakedowns). Verify a published artifact with `bash scripts/verify-release.sh v0.1.3` (PEP 740 PyPI attestations + cosign keyless OIDC + SLSA provenance on `ghcr.io/efterlev/efterlev`).
 
 **Governance:** Benevolent-dictator model today (`@lhassa8`), transitioning to a technical steering committee at 10 sustained-activity contributors. Full model in [GOVERNANCE.md](./GOVERNANCE.md). Architectural decisions: [DECISIONS.md](./DECISIONS.md). The project may eventually be donated to a neutral foundation (OpenSSF / Linux Foundation / CNCF) if contributor diversity warrants — that decision is not made and not time-boxed.
 

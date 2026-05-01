@@ -195,6 +195,49 @@ We considered KSI-SVC-VRI ("Validating Resource Integrity"), KSI-SVC-PRR ("Preve
 
 ## v0.2.0+ — minor-release follow-ups
 
+### Dedupe unmapped findings (and possibly all evidence) across re-scans
+
+**Item:** `Evidence` content includes `timestamp`, so the SHA-256 `evidence_id` is fresh on every scan. The provenance store is append-only, so re-scanning a target accumulates one Evidence per detector per scan pass. The user-facing impact is most visible in the Gap Report's "Unmapped findings" section: the v0.1.2 deep-dive shakedown produced 39 unmapped findings, of which 26 were the LLM honestly labeling rows as "duplicate from another scan pass" / "triplicate from another scan pass." 13 unique findings × 3 scan passes.
+
+**Resolution path:** two reasonable options:
+
+1. **Renderer-only dedupe** — the gap-report writer groups by `(detector_id, source_ref, content)` (excluding `timestamp` from the equality key) and shows only the latest. Cheap; preserves the append-only store. Minor risk: if the user wants drift visibility across scan passes in the *report*, this hides it (they can still walk the store directly).
+
+2. **Canonical-content fix** — exclude `timestamp` from `Evidence`'s canonical hashing. Same content scanned twice → same `evidence_id` → store-level dedup automatic via the content-addressed write path. Bigger semantic change: timestamp becomes metadata rather than content. Tests for `Evidence.evidence_id` stability across timestamps would need to be added; existing tests would need review.
+
+(2) is cleaner long-term. Either way, the agent shouldn't be left to apologize for "duplicate from another scan pass" in user-facing rationales.
+
+**Owner:** Maintainer.
+
+**Target:** v0.2.0. (Not a regression — present since v0.1.0; surfaced as material UX in the v0.1.2 shakedown.)
+
+**Cross-references:** v0.1.2 deep-dive shakedown report; v0.1.3 Bedrock test report.
+
+---
+
+### Prompt-tuning for systematic over-conservatism + cross-thematic citations
+
+**Item:** Two patterns observed across both the v0.1.2 (Anthropic) and v0.1.3 (Bedrock) deep-dive shakedowns against `lhassa8/govnotes-demo`. They're agent-output quality issues, not deterministic bugs:
+
+1. **KSI-RPL-TRC and KSI-SVC-RUD systematically classified `evidence_layer_inapplicable`** despite the codebase having a documented gap that the corresponding detectors *do* surface from IaC (no `aws_backup_restore_testing_plan`, no `aws_s3_bucket_lifecycle_configuration`). The agent treats absence-of-evidence as inapplicability rather than as a `not_implemented` gap. Consistent across both backends, so it's prompt-related, not a Bedrock-vs-Anthropic disposition difference.
+
+2. **Cross-thematic over-attachment.** When a KSI's specific surface is empty, the agent reaches for adjacent evidence: KSI-CNA-MAT and KSI-CNA-RNT both cite the same unparseable-S3-policy evidence (relevant to attack surface and traffic restrictions only loosely); the v0.1.2 shakedown reported KSI-AFR-UCM citing FIPS-TLS evidence (cryptographic-modules vs. transport-confidentiality framing). The Gap Agent's prompt allows liberal evidence citation, which collides with downstream consumers (e.g., remediate's CLI gate strictly filters by `Evidence.ksis_evidenced` — see the existing v0.1.x followup entry).
+
+**Resolution path:** both want a real-customer evidence corpus to tune against — synthetic dogfood produces synthetic priors. Specifically:
+
+- For (1): tighten the Gap Agent's prompt to distinguish "KSI is procedural/unreachable from IaC" from "KSI has an IaC-evidenceable detector, but it produced no Evidence (which is itself a gap)." The current prompt collapses both into `evidence_layer_inapplicable`.
+- For (2): tighten the citation discipline — Gap Agent should prefer Evidence whose `ksis_evidenced` includes the KSI being classified, falling back to thematically-adjacent only with explicit "cross-thematic" framing in the rationale.
+
+Empirical validation requires running modified prompts against a real customer's Terraform — not synthetic gaps — so the priors are real.
+
+**Owner:** Maintainer.
+
+**Target:** v0.2.0, blocked on real-customer corpus.
+
+**Cross-references:** v0.1.2 shakedown report; v0.1.3 deep-dive artifact audit; "Gap Agent / Remediate Agent disagree on KSI scope" entry above.
+
+---
+
 ### Docker Hub republishing via DSOS
 
 **Item:** `release-container.yml` was configured to publish to both `ghcr.io` and `docker.io` originally. Docker Hub publish was dropped at v0.1.0 because Docker Hub eliminated the free organization tier in 2024 (paid Team is $15/seat/month — overhead a solo-maintainer OSS project doesn't need at launch).
