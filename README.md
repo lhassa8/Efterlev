@@ -85,7 +85,12 @@ Then jump to Step 3.
    - If not yet installed: `pipx install 'efterlev[bedrock]'` (keep the
      quotes — the bracket extra needs them; or `brew install pipx`
      first if pipx is missing).
-   - If installed: `pipx upgrade 'efterlev[bedrock]'`.
+   - If installed: `pipx upgrade efterlev` (drop the `[bedrock]` bracket
+     on `upgrade` — pipx tracks the venv by base name; brackets are an
+     install-time thing only). If the prior install was the
+     non-Bedrock variant (no `boto3` in the venv), also run
+     `pipx inject efterlev boto3` to add the Bedrock extra without a
+     full reinstall. To check: `pipx runpip efterlev show boto3`.
    - Confirm `efterlev --version` prints `efterlev 0.1.3` or higher.
      If it still shows an older version, do a clean reinstall:
      `pipx uninstall efterlev && pipx install 'efterlev[bedrock]'`.
