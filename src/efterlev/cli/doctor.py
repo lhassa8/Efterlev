@@ -341,6 +341,76 @@ def check_bedrock_credentials(
     )
 
 
+def check_boundary_declared(target: Path) -> Check:
+    """Warn when `.efterlev/config.toml` has both `[boundary].include` and
+    `[boundary].exclude` empty.
+
+    Boundary scope is the FedRAMP authorization-boundary declaration: which
+    paths in this workspace are in-scope vs out-of-scope. With both lists
+    empty, every Evidence record is marked `boundary_undeclared` and flows
+    through every classification unfiltered. That's a real semantic gap for
+    a 3PAO-shaped artifact — a defensible posture statement names which
+    resources are inside the boundary. The gap-report header already shows
+    `workspace_boundary_state: boundary_undeclared`, but earlier doctor
+    versions reported 5 pass / 0 warn / 0 fail and never surfaced it.
+
+    The check runs on every workspace; users explicitly running outside a
+    formal authorization boundary (e.g. internal compliance dogfood) can
+    safely ignore the warn — it's informational, not blocking.
+    """
+    config_path = target / ".efterlev" / "config.toml"
+    if not config_path.is_file():
+        # No config to read — `check_efterlev_dir` already warns about this.
+        return Check(
+            name="boundary_declared",
+            status="pass",
+            detail="skipped — no `.efterlev/config.toml` to read",
+        )
+    try:
+        import tomllib
+
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception as e:
+        return Check(
+            name="boundary_declared",
+            status="warn",
+            detail=f"could not parse `.efterlev/config.toml`: {e}",
+            hint="Re-run `efterlev init --force` to regenerate the config.",
+        )
+    boundary = data.get("boundary") if isinstance(data, dict) else None
+    include: list[object] = []
+    exclude: list[object] = []
+    if isinstance(boundary, dict):
+        raw_include = boundary.get("include")
+        raw_exclude = boundary.get("exclude")
+        if isinstance(raw_include, list):
+            include = raw_include
+        if isinstance(raw_exclude, list):
+            exclude = raw_exclude
+    if include or exclude:
+        return Check(
+            name="boundary_declared",
+            status="pass",
+            detail=(
+                f"boundary scope declared "
+                f"(include={len(include)} pattern(s), exclude={len(exclude)} pattern(s))"
+            ),
+        )
+    return Check(
+        name="boundary_declared",
+        status="warn",
+        detail="boundary scope is undeclared — every finding flows through unfiltered",
+        hint=(
+            "Declare scope with `efterlev boundary set --include 'boundary/**'` "
+            "(or another gitignore-style pattern matching your in-scope paths). "
+            "Until then, the gap report's `workspace_boundary_state` is "
+            "`boundary_undeclared` — fine for internal review, not appropriate "
+            "for a 3PAO-shaped artifact."
+        ),
+    )
+
+
 def _read_configured_backend(target: Path) -> tuple[str | None, str | None, str | None]:
     """Best-effort read of `[llm]` settings from `.efterlev/config.toml`.
 
@@ -389,6 +459,7 @@ def run_doctor_checks(target: Path) -> list[Check]:
             configured_region=region,
             configured_model=model,
         ),
+        check_boundary_declared(target),
     ]
 
 

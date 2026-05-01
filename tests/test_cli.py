@@ -318,14 +318,17 @@ def test_scan_after_init_produces_evidence(tmp_path: pytest.TempPathFactory) -> 
     init_result = runner.invoke(app, ["init", "--target", str(tmp_path)])
     assert init_result.exit_code == 0, init_result.output
 
-    scan_result = runner.invoke(app, ["scan", "--target", str(tmp_path)])
+    # `--verbose` so the per-detector record-ID dump appears in stdout —
+    # without it, v0.1.4's quieter default just prints a 1-line summary
+    # ("N record(s) written to .efterlev/store.db; pass --verbose...").
+    scan_result = runner.invoke(app, ["scan", "--target", str(tmp_path), "--verbose"])
     assert scan_result.exit_code == 0, scan_result.output
     assert "Scanned" in scan_result.output
     assert "resources parsed:" in scan_result.output
     assert "aws.encryption_s3_at_rest" in scan_result.output
     # Manifest loading is now part of `scan`; the record-IDs section is
     # labeled "Detector record IDs" to distinguish from manifest-sourced
-    # Evidence (Phase 1, Evidence Manifest landing).
+    # Evidence (Phase 1, Evidence Manifest landing). Verbose-only as of v0.1.4.
     assert "Detector record IDs" in scan_result.output
     assert "manifest files:" in scan_result.output
     # No `module calls:` line when there are no module declarations — the

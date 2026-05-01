@@ -3,6 +3,68 @@
 All notable changes to Efterlev will be tracked here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely.
 
+## [0.1.4] — 2026-05-01
+
+First-run UX patch release. Closes the friction items surfaced by a real
+v0.1.3 Bedrock first-run report against govnotes-demo. Each fix maps to
+a specific report number; bundled so the next first-run is dramatically
+quieter and cheaper.
+
+### Fixed
+
+- **`agent document` runs deterministic narratives on
+  `evidence_layer_inapplicable` KSIs by default** (report #5). On a
+  typical 60-KSI baseline, 25-45 KSIs are procedural-only — earlier
+  versions generated full Sonnet narratives for each that were
+  essentially boilerplate ("scanner cannot evidence; reviewer must
+  corroborate procedurally"). Now those entries get a deterministic
+  narrative built from the Gap Agent's already-produced rationale + the
+  KSI's underlying 800-53 controls, with no LLM call. The FRMR
+  attestation completeness is preserved — all 60 KSIs still get an
+  entry. Pass `--include-inapplicable-narratives` to opt back into
+  LLM-drafted prose for these. **Saves ~70% of Sonnet spend on
+  documentation runs.**
+- **`doctor` warns when boundary scope is undeclared** (report #3).
+  Earlier doctor runs reported "5 pass, 0 warn, 0 fail" while the gap
+  report header showed `workspace_boundary_state: boundary_undeclared`.
+  Now reads `[boundary]` from `.efterlev/config.toml` and surfaces a
+  warn-level check with a remediation hint pointing at
+  `efterlev boundary set --include 'boundary/**'`. The check is
+  informational; running outside a formal authorization boundary stays
+  permitted.
+- **SHA256 record-ID dumps moved behind `--verbose`** (report #6) on
+  `efterlev scan` and `efterlev agent gap`. Default output now prints
+  a one-line summary ("N record(s) written to .efterlev/store.db; pass
+  --verbose..."). Forensics still available; first-time users no longer
+  get a flood of hashes.
+- **Absolute paths for printed report files** (report #7). `efterlev
+  scan`, `agent gap`, `agent document`, `agent remediate`, and
+  `report diff` all now print fully-resolved paths for HTML/JSON
+  outputs. Earlier mix of relative and absolute (within the same
+  block on `agent document`) is fixed.
+- **"Next steps" footers** on `agent gap` and `agent document` outputs
+  (report #8). Each surfaces the right follow-on commands with their
+  typical cost — `agent document`, `poam`, `agent remediate --ksi <id>`.
+- **`init` creates `.efterlev/manifests/` with a README** (report #10)
+  on first run. Earlier versions created the directory lazily (only
+  when a manifest was loaded), leaving the gap between docs ("commit
+  manifests under `.efterlev/manifests/`") and on-disk state unbridged.
+  README inside the new dir explains the format with a worked example.
+- **README AI-quickstart prompt clarifies "repo root" vs "Terraform
+  path"** — silent root cause of the prior shakedown's two anomalies
+  (3 manifests not loading, 4 GitHub-workflow detectors not firing,
+  ~20% of detector coverage disappeared). Repo-root scoping is now
+  explicit with a one-paragraph note on what subdir-scoping skips.
+
+### Notes
+
+- Cost-summary at end of agent runs (report #4) and `--llm-tier=opus|
+  sonnet|haiku` shorthand for Bedrock (report #9) are tracked as
+  v0.2.0 features in `docs/followups.md` — both want token-counting
+  + price-model design that's bigger than a patch release.
+- terraform-init-failure → cleaner scan-mode message (report #2)
+  tracked in followups.
+
 ## [0.1.3] — 2026-04-30
 
 Patch release closing the Bedrock-onboarding cliff surfaced in a real

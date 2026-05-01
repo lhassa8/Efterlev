@@ -359,6 +359,18 @@ def scan(
             "load manifests from `--target`)."
         ),
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=(
+            "Print full SHA256 record IDs for every emitted Evidence record. "
+            "By default the per-detector record-id list is suppressed — record "
+            "IDs are persisted in the provenance store (`.efterlev/store.db`) "
+            "and surfaced by `efterlev provenance show <id>` when needed. "
+            "First-time users find the SHA256 dump overwhelming."
+        ),
+    ),
 ) -> None:
     """Run all applicable detectors and load Evidence Manifests under the target.
 
@@ -552,15 +564,24 @@ def scan(
         raise typer.Exit(code=1)
     if scan_result.evidence_record_ids:
         typer.echo("")
-        typer.echo("Detector record IDs (pass to `efterlev provenance show`):")
-        for rid, ev in zip(scan_result.evidence_record_ids, scan_result.evidence, strict=False):
-            # Include the short detector id so records with identical
-            # resource_name across detectors (e.g. "cloudtrail" = trail,
-            # bucket, SSE, backup-retention) are distinguishable in the
-            # listing. Dogfood-2026-04-22 finding #6.
-            short_det = ev.detector_id.split(".", 1)[1] if "." in ev.detector_id else ev.detector_id
-            resource_name = ev.content.get("resource_name", "—")
-            typer.echo(f"  {rid}  {short_det:<38}  {resource_name}")
+        if verbose:
+            typer.echo("Detector record IDs (pass to `efterlev provenance show`):")
+            for rid, ev in zip(scan_result.evidence_record_ids, scan_result.evidence, strict=False):
+                # Include the short detector id so records with identical
+                # resource_name across detectors (e.g. "cloudtrail" = trail,
+                # bucket, SSE, backup-retention) are distinguishable in the
+                # listing.
+                short_det = (
+                    ev.detector_id.split(".", 1)[1] if "." in ev.detector_id else ev.detector_id
+                )
+                resource_name = ev.content.get("resource_name", "—")
+                typer.echo(f"  {rid}  {short_det:<38}  {resource_name}")
+        else:
+            typer.echo(
+                f"{len(scan_result.evidence_record_ids)} record(s) written to "
+                f"`.efterlev/store.db` — pass `--verbose` to print each ID, or "
+                f"feed any to `efterlev provenance show <id>`."
+            )
 
 
 @app.command()
@@ -715,7 +736,7 @@ def poam(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(result.markdown, encoding="utf-8")
 
-    typer.echo(f"POA&M: {_display_path(output_path, target)}")
+    typer.echo(f"POA&M: {output_path.resolve()}")
     typer.echo(f"  open items:       {result.item_count}")
     if skipped_out_of_boundary > 0:
         typer.echo(
@@ -761,6 +782,17 @@ def agent_gap(
         Path("."),
         "--target",
         help="Path to the repo whose `.efterlev/` store will be read. Defaults to cwd.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=(
+            "Print full SHA256 record IDs to the terminal. By default the "
+            "per-claim record IDs are written to the JSON sidecar only — "
+            "they're useful for `efterlev provenance show <id>` walks but "
+            "overwhelming for first-time users skimming a gap run."
+        ),
     ),
 ) -> None:
     """Classify each KSI as implemented / partial / not implemented / NA."""
@@ -849,9 +881,16 @@ def agent_gap(
             typer.echo(f"    {um.note}")
     if report.claim_record_ids:
         typer.echo("")
-        typer.echo("Claim record IDs (pass to `efterlev provenance show`):")
-        for cid in report.claim_record_ids:
-            typer.echo(f"  {cid}")
+        if verbose:
+            typer.echo("Claim record IDs (pass to `efterlev provenance show`):")
+            for cid in report.claim_record_ids:
+                typer.echo(f"  {cid}")
+        else:
+            typer.echo(
+                f"{len(report.claim_record_ids)} claim record(s) written to the JSON "
+                f"sidecar — pass `--verbose` to print each ID, or read them from "
+                f"`gap-<ts>.json` and feed any to `efterlev provenance show <id>`."
+            )
 
     from efterlev.reports import render_gap_report_html, render_gap_report_json
 
@@ -885,8 +924,21 @@ def agent_gap(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {_display_path(html_path, target)}")
-    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
+    typer.echo(f"HTML report:  {html_path}")
+    typer.echo(f"JSON sidecar: {json_path}")
+
+    typer.echo("")
+    typer.echo("Next steps:")
+    typer.echo(
+        "  efterlev agent document   draft per-KSI narratives + FRMR attestation (~$1-2 on Sonnet)"
+    )
+    typer.echo(
+        "  efterlev poam             POA&M markdown for every open KSI (deterministic, free)"
+    )
+    typer.echo(
+        "  efterlev agent remediate --ksi <KSI-ID>   propose a Terraform diff that "
+        "closes one gap (~$0.30 on Opus)"
+    )
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
@@ -902,6 +954,29 @@ def agent_document(
         None,
         "--ksi",
         help="KSI ID to draft an attestation for. Defaults to every classified KSI.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=(
+            "Print per-KSI summary blocks (citation count, narrative preview, "
+            "claim record id) to the terminal. By default the agent prints a "
+            "compact one-line-per-KSI summary; full per-KSI blocks live in the "
+            "HTML and JSON outputs."
+        ),
+    ),
+    include_inapplicable_narratives: bool = typer.Option(
+        False,
+        "--include-inapplicable-narratives",
+        help=(
+            "Generate full LLM narratives for `evidence_layer_inapplicable` KSIs. "
+            "By default these get a deterministic narrative (no LLM call) since "
+            "the agent has already classified them as 'scanner cannot evidence' "
+            "and per-KSI prose is essentially boilerplate. Pass this flag if you "
+            "want richer Sonnet-drafted procedural-reviewer prose for those KSIs "
+            "— the FRMR attestation entries are still generated either way."
+        ),
     ),
 ) -> None:
     """Draft an FRMR-compatible attestation for a KSI, grounded in its evidence."""
@@ -996,6 +1071,7 @@ def agent_document(
                         baseline_id="fedramp-20x-moderate",
                         frmr_version=frmr_doc.version,
                         only_ksi=ksi,
+                        include_inapplicable_narratives=include_inapplicable_narratives,
                         scan_summary=scan_summary,
                     ),
                     progress_callback=TerminalProgressCallback(stage="documentation"),
@@ -1024,18 +1100,26 @@ def agent_document(
         raise typer.Exit(code=1) from e
 
     typer.echo(f"Documentation Agent drafted {len(report.attestations)} attestation(s).")
-    for att in report.attestations:
-        draft = att.draft
-        typer.echo("")
-        typer.echo(f"  === {draft.ksi_id} ({draft.status or 'no status'}) ===")
-        typer.echo(f"  citations: {len(draft.citations)}")
-        if draft.narrative:
-            # Wrap-free first 160 chars as a preview; full draft lives in the store.
-            preview = draft.narrative.strip().replace("\n", " ")
-            ellipsis = "…" if len(preview) > 160 else ""
-            typer.echo(f"  DRAFT — requires human review: {preview[:160]}{ellipsis}")
-        if att.claim_record_id is not None:
-            typer.echo(f"  record id: {att.claim_record_id}")
+    if verbose:
+        for att in report.attestations:
+            draft = att.draft
+            typer.echo("")
+            typer.echo(f"  === {draft.ksi_id} ({draft.status or 'no status'}) ===")
+            typer.echo(f"  citations: {len(draft.citations)}")
+            if draft.narrative:
+                preview = draft.narrative.strip().replace("\n", " ")
+                ellipsis = "…" if len(preview) > 160 else ""
+                typer.echo(f"  DRAFT — requires human review: {preview[:160]}{ellipsis}")
+            if att.claim_record_id is not None:
+                typer.echo(f"  record id: {att.claim_record_id}")
+    else:
+        # Compact one-line summary per KSI by status — first-time users skim
+        # this; full per-KSI prose lives in the HTML/JSON output.
+        from collections import Counter
+
+        status_counts = Counter((att.draft.status or "no_status") for att in report.attestations)
+        for status, count in sorted(status_counts.items()):
+            typer.echo(f"  {status:<35} {count}")
     if report.skipped_ksi_ids:
         typer.echo("")
         skipped = ", ".join(report.skipped_ksi_ids)
@@ -1065,8 +1149,8 @@ def agent_document(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {_display_path(html_path, target)}")
-    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
+    typer.echo(f"HTML report:      {html_path}")
+    typer.echo(f"JSON sidecar:     {json_path}")
 
     # FRMR-compatible attestation JSON alongside the HTML — one CLI run, two
     # artifacts. The human-readable HTML is for review; the machine-readable
@@ -1079,6 +1163,16 @@ def agent_document(
         # Primitive already deduplicates; just format for display.
         skipped = ", ".join(attestation_result.skipped_unknown_ksi)
         typer.echo(f"  skipped unknown:  {skipped}")
+
+    typer.echo("")
+    typer.echo("Next steps:")
+    typer.echo(
+        "  efterlev poam             POA&M markdown for every open KSI (deterministic, free)"
+    )
+    typer.echo(
+        "  efterlev agent remediate --ksi <KSI-ID>   propose a Terraform diff that "
+        "closes one gap (~$0.30 on Opus)"
+    )
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
@@ -1291,8 +1385,8 @@ def agent_remediate(
     json_path.write_text(json.dumps(json_data, indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {_display_path(html_path, target)}")
-    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
+    typer.echo(f"HTML report:  {html_path}")
+    typer.echo(f"JSON sidecar: {json_path}")
 
     _write_scan_redaction_log(ledger, root, scan_id)
 
@@ -1990,8 +2084,8 @@ def report_diff(
     json_path.write_text(json.dumps(diff.model_dump(), indent=2, sort_keys=True), encoding="utf-8")
 
     typer.echo("")
-    typer.echo(f"HTML report: {_display_path(html_path, target)}")
-    typer.echo(f"JSON sidecar: {_display_path(json_path, target)}")
+    typer.echo(f"HTML report:  {html_path}")
+    typer.echo(f"JSON sidecar: {json_path}")
 
     if diff.regressed:
         typer.echo("")

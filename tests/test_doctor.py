@@ -199,7 +199,7 @@ def test_anthropic_api_key_skipped_when_backend_is_bedrock(
 
 
 def test_run_doctor_checks_returns_all_categories(tmp_path: Path) -> None:
-    """All 5 checks run in a defined order."""
+    """All 6 checks run in a defined order."""
     (tmp_path / ".efterlev").mkdir()
     checks = run_doctor_checks(tmp_path)
     names = [c.name for c in checks]
@@ -209,6 +209,7 @@ def test_run_doctor_checks_returns_all_categories(tmp_path: Path) -> None:
         "frmr_cache",
         "anthropic_api_key",
         "bedrock_credentials",
+        "boundary_declared",
     ]
 
 

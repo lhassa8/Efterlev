@@ -52,6 +52,17 @@ class DocumentationAgentInput(BaseModel):
     baseline_id: str
     frmr_version: str
     only_ksi: str | None = None
+    # When False (default), `evidence_layer_inapplicable` KSIs get a
+    # deterministic narrative built from the Gap Agent's already-produced
+    # rationale + standard "scanner cannot evidence; reviewer must
+    # corroborate procedurally" framing — no LLM call. Saves ~70% of
+    # Sonnet token spend on baselines where most KSIs are procedural
+    # (60-KSI runs against a typical IaC-only target sit at 26-42 KSIs
+    # inapplicable). The FRMR attestation completeness is preserved —
+    # all 60 KSIs still get an entry; the inapplicable ones just
+    # bypass the LLM. Set True to opt back into LLM-generated
+    # narratives for inapplicable KSIs (richer prose; fuller cost).
+    include_inapplicable_narratives: bool = False
     # Slim summary of the scan that produced `evidence`. When the scan was
     # HCL-mode against a module-composed codebase, the per-KSI prompt
     # surfaces this so each narrative can reflect the coverage limitation
@@ -169,6 +180,64 @@ class DocumentationAgent(Agent):
                 )
             )
 
+            # Evidence-layer-inapplicable KSIs get a deterministic narrative
+            # by default — no LLM call. The Gap Agent has already produced a
+            # rationale explaining why the scanner cannot evidence this KSI;
+            # the doc-agent narrative for these is essentially boilerplate
+            # ("see procedural reviewer") that's not worth Sonnet token cost.
+            # User can opt back into LLM narratives via
+            # `include_inapplicable_narratives=True` if richer prose is wanted.
+            # FRMR attestation completeness is preserved — all 60 KSIs still
+            # get an entry; the inapplicable ones just bypass the LLM.
+            if (
+                clf.status == "evidence_layer_inapplicable"
+                and not input.include_inapplicable_narratives
+            ):
+                final_draft = AttestationDraft(
+                    ksi_id=clf.ksi_id,
+                    baseline_id=input.baseline_id,
+                    frmr_version=input.frmr_version,
+                    mode="agent_drafted",
+                    citations=skeleton_result.draft.citations,
+                    controls_evidenced=list(skeleton_result.draft.controls_evidenced),
+                    status=clf.status,
+                    narrative=_deterministic_inapplicable_narrative(indicator, clf),
+                )
+                deterministic_record_id: str | None = None
+                if store is not None:
+                    claim = Claim.create(
+                        claim_type="narrative",
+                        content={
+                            "ksi_id": clf.ksi_id,
+                            "narrative": final_draft.narrative,
+                            "status": clf.status,
+                            "mode": "deterministic_inapplicable",
+                        },
+                        confidence="medium",
+                        derived_from=list(clf.evidence_ids),
+                        model="(deterministic — no LLM call)",
+                        prompt_hash="",
+                    )
+                    record = store.write_record(
+                        payload=claim.model_dump(mode="json"),
+                        record_type="claim",
+                        derived_from=list(clf.evidence_ids),
+                        agent=self.name,
+                        model="(deterministic)",
+                        prompt_hash="",
+                        metadata={
+                            "kind": "ksi_attestation",
+                            "ksi_id": clf.ksi_id,
+                            "narrative_mode": "deterministic_inapplicable",
+                        },
+                    )
+                    deterministic_record_id = record.record_id
+                attestations.append(
+                    KsiAttestation(draft=final_draft, claim_record_id=deterministic_record_id)
+                )
+                callback.on_unit_complete(clf.ksi_id, idx, total, success=True)  # type: ignore[attr-defined]
+                continue
+
             # Fresh nonce per KSI-draft LLM call — each invocation is its
             # own fence set. See DECISIONS 2026-04-22 Phase 2 post-review
             # fixup F.
@@ -236,6 +305,43 @@ class DocumentationAgent(Agent):
             callback.on_unit_complete(clf.ksi_id, idx, total, success=True)  # type: ignore[attr-defined]
 
         return DocumentationReport(attestations=attestations, skipped_ksi_ids=skipped)
+
+
+def _deterministic_inapplicable_narrative(indicator: Indicator, clf: KsiClassification) -> str:
+    """Build a procedural-corroboration narrative for an inapplicable KSI.
+
+    The Gap Agent's rationale already names *why* the scanner cannot evidence
+    this KSI; we wrap it in standard "reviewer must corroborate procedurally"
+    framing, name the underlying 800-53 controls the KSI references, and
+    repeat the DRAFT marker. No LLM call — the per-narrative cost on
+    inapplicable KSIs drops from ~$0.02 to $0. On a 60-KSI baseline where
+    25-45 KSIs are procedural, that's the headline savings.
+
+    The output is similar in shape to what an LLM would produce for these
+    KSIs (which is why default-skip is safe): cite the KSI's procedural
+    nature, name the controls a 3PAO will look for, point at the reviewer.
+    """
+    statement = indicator.statement or "(no statement in FRMR)"
+    controls = ", ".join(indicator.controls) if indicator.controls else "(none in FRMR)"
+    rationale = clf.rationale.strip()
+    return (
+        f"DRAFT — requires human review. The Gap Agent classified {clf.ksi_id} as "
+        f"`evidence_layer_inapplicable`. The scanner produced no evidence for this "
+        f"KSI, and no detector in the current set is positioned to evidence it from "
+        f"infrastructure-as-code alone.\n\n"
+        f"KSI statement (FRMR): {statement}\n\n"
+        f"Gap Agent rationale: {rationale}\n\n"
+        f"Underlying 800-53 controls referenced by this KSI: {controls}. A human "
+        f"reviewer or 3PAO must corroborate satisfaction of this KSI through "
+        f"procedural artifacts — policy documents, signed attestations, "
+        f"operational runbooks, training-completion records, or other "
+        f"non-IaC-evidenceable sources appropriate to the KSI's intent. "
+        f"Customer-authored Evidence Manifests at `.efterlev/manifests/` are "
+        f"the canonical mechanism for binding such procedural attestations to "
+        f"this KSI within Efterlev; once added, the next agent run will "
+        f"reclassify this KSI from `evidence_layer_inapplicable` to "
+        f"`partial`/`implemented` based on the manifest content."
+    )
 
 
 def _select_classifications(

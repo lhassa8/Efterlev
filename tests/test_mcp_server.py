@@ -249,7 +249,7 @@ def test_doctor_returns_check_results(tmp_path: Path) -> None:
     assert "checks" in result
     assert "summary" in result
     assert "has_failures" in result
-    # Five canonical checks.
+    # Six canonical checks (boundary_declared added in v0.1.4).
     names = [c["name"] for c in result["checks"]]
     assert names == [
         "python_version",
@@ -257,6 +257,7 @@ def test_doctor_returns_check_results(tmp_path: Path) -> None:
         "frmr_cache",
         "anthropic_api_key",
         "bedrock_credentials",
+        "boundary_declared",
     ]
 
 

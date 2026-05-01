@@ -527,3 +527,61 @@ def test_reconstruct_classifications_from_store_roundtrips_gap_output(tmp_path: 
     # evidence_ids round-trip as-is (fence id == evidence_id == record_id),
     # so the Documentation Agent's fence-citation validator works end-to-end.
     assert clf.evidence_ids == [ev.evidence_id]
+
+
+# --- v0.1.4: deterministic narrative for evidence_layer_inapplicable ---
+
+
+def test_documentation_agent_uses_deterministic_narrative_for_inapplicable(
+    tmp_path: Path,
+) -> None:
+    """`evidence_layer_inapplicable` KSIs get a deterministic narrative by
+    default — no LLM call. v0.1.4 default-skip pattern saves Sonnet token
+    cost on the 25-45 procedural KSIs that fall into this status on a
+    typical 60-KSI run.
+    """
+    stub = StubLLMClient(response_text='{"narrative":"never called","cited_evidence_ids":[]}')
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        agent = DocumentationAgent(client=stub)
+        report = agent.run(
+            DocumentationAgentInput(
+                indicators={"KSI-SVC-VRI": _ind()},
+                evidence=[],
+                classifications=[_clf(status="evidence_layer_inapplicable", evidence_ids=[])],
+                baseline_id="fedramp-20x-moderate",
+                frmr_version="0.9.43-beta",
+            )
+        )
+    # The KSI gets an attestation entry — FRMR completeness preserved —
+    # but the narrative was generated deterministically, not by the LLM.
+    assert len(report.attestations) == 1
+    att = report.attestations[0]
+    assert att.draft.ksi_id == "KSI-SVC-VRI"
+    assert att.draft.status == "evidence_layer_inapplicable"
+    assert "DRAFT — requires human review" in att.draft.narrative
+    assert "evidence_layer_inapplicable" in att.draft.narrative
+    # Crucially: zero LLM calls for this classification.
+    assert stub.call_count == 0
+
+
+def test_documentation_agent_calls_llm_for_inapplicable_when_opted_in(
+    tmp_path: Path,
+) -> None:
+    """`include_inapplicable_narratives=True` opts back into LLM-drafted
+    narratives for inapplicable KSIs. Verifies the override switch works."""
+    stub = StubLLMClient(response_text='{"narrative":"LLM-drafted","cited_evidence_ids":[]}')
+    with ProvenanceStore(tmp_path) as store, active_store(store):
+        agent = DocumentationAgent(client=stub)
+        report = agent.run(
+            DocumentationAgentInput(
+                indicators={"KSI-SVC-VRI": _ind()},
+                evidence=[],
+                classifications=[_clf(status="evidence_layer_inapplicable", evidence_ids=[])],
+                baseline_id="fedramp-20x-moderate",
+                frmr_version="0.9.43-beta",
+                include_inapplicable_narratives=True,
+            )
+        )
+    assert len(report.attestations) == 1
+    assert report.attestations[0].draft.narrative == "LLM-drafted"
+    assert stub.call_count == 1
