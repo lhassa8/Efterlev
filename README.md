@@ -25,51 +25,114 @@ Terraform, classifies it against 60 Key Security Indicators, and drafts
 FRMR-compatible attestations with cited source lines. It runs locally; the
 only outbound call is to the LLM endpoint I configure.
 
-Before running anything, ask me:
-1. The absolute path to my Terraform code.
-2. Whether I want the direct Anthropic API (default — needs ANTHROPIC_API_KEY)
-   or AWS Bedrock (for GovCloud — needs AWS credentials and the [bedrock] extra).
+## Step 1 — pick the LLM backend
 
-Then:
-1. Verify the API key (or AWS creds) is set. For Anthropic, check that
-   ANTHROPIC_API_KEY is exported and starts with "sk-ant-". If not, stop
-   and tell me how to export it. Don't proceed without it.
-2. Install Efterlev:
-   - For direct Anthropic API: `pipx install efterlev`
-   - For AWS Bedrock: `pipx install 'efterlev[bedrock]'` (keep the quotes)
-   - If pipx is missing, install it first (`brew install pipx` on macOS).
-3. `cd` into my Terraform path and run `efterlev init`.
-4. Run `efterlev doctor` and surface any warnings or fails.
-5. Pick a scan mode:
-   - If `terraform` CLI is available AND my code has `module "..." {}`
-     blocks, use plan-JSON mode: `terraform init && terraform plan -out
-     plan.bin && terraform show -json plan.bin > plan.json`, then
+Ask me which backend I want:
+
+  (a) Direct Anthropic API — fastest setup; needs an ANTHROPIC_API_KEY
+      from https://console.anthropic.com.
+  (b) AWS Bedrock — if I'm on GovCloud, already have AWS configured, or
+      don't want a separate Anthropic account.
+
+Also ask me for the absolute path to my Terraform code.
+
+## Step 2a — Anthropic API path
+
+1. Tell me to grab a key at https://console.anthropic.com/settings/keys
+   and `export ANTHROPIC_API_KEY=sk-ant-...` if not already set.
+2. Verify: `echo "${ANTHROPIC_API_KEY:0:10}"` should print something
+   starting with `sk-ant-`. If empty, stop until I export it.
+3. Install: `pipx install efterlev` (or `brew install pipx` first if pipx
+   is missing).
+
+Then jump to Step 3.
+
+## Step 2b — Bedrock path
+
+1. Ask me which AWS region to use (default `us-east-1` if I have no
+   preference). Also confirm `aws sts get-caller-identity --region <region>`
+   succeeds. If it fails, stop and tell me to fix `aws configure`.
+2. Discover available Anthropic inference profiles in that region:
+   `aws bedrock list-inference-profiles --region <region> --type-equals SYSTEM_DEFINED`
+   Filter the result down to entries whose `inferenceProfileName` or
+   underlying `models[].modelArn` references Anthropic. (System-defined
+   profiles are the cross-region inference profiles, prefixed `us.` /
+   `eu.` etc. — those are what works for the newer Claude 4.x models.
+   On-demand foundation-model IDs like `anthropic.claude-opus-4-7` are
+   rejected by Bedrock for these models.)
+3. From the filtered list, group by family — Opus / Sonnet / Haiku — and
+   pick the **latest** (highest version) of each. Present me with exactly
+   three options:
+     [O] Latest Opus:    <inferenceProfileName>   (ARN: <inferenceProfileArn>)
+     [S] Latest Sonnet:  <inferenceProfileName>   (ARN: <inferenceProfileArn>)
+     [H] Latest Haiku:   <inferenceProfileName>   (ARN: <inferenceProfileArn>)
+   If a tier has zero available profiles, omit that line and tell me
+   which tier is missing (e.g. "no Opus profile enabled in this account
+   — request access at console.aws.amazon.com/bedrock"). If ALL three
+   tiers are empty, stop — I need to enable Anthropic model access in
+   the Bedrock console before continuing.
+4. Ask me which tier to use. Default suggestion: Opus (best classification
+   quality), Sonnet (~5x cheaper, fine for first runs), Haiku (cheapest,
+   for quick smoke tests).
+5. Capture the `inferenceProfileArn` (prefer the `us.` / regional ARN over
+   any global variant if both are present) and remember it as `MODEL_ARN`.
+6. Install: `pipx install 'efterlev[bedrock]'` (keep the quotes — the
+   bracket extra needs them).
+
+## Step 3 — init
+
+`cd` to my Terraform path. Then:
+
+  - Anthropic backend:
+      `efterlev init --target .`
+  - Bedrock backend:
+      `efterlev init --target . --llm-backend=bedrock --llm-region=<region> --llm-model=<MODEL_ARN>`
+
+If `efterlev init` errors with ".efterlev already exists", that workspace
+likely has committed manifests under `.efterlev/manifests/` (which is the
+canonical pattern). Re-run with `--force` — it preserves manifests while
+regenerating cache + provenance store.
+
+## Step 4 — doctor + scan
+
+1. `efterlev doctor` — surface any warnings or fails.
+2. Pick a scan mode:
+   - If `terraform` is available AND my code has `module "..." {}` blocks,
+     try plan-JSON: `terraform init && terraform plan -out plan.bin &&
+     terraform show -json plan.bin > plan.json`, then
      `efterlev scan --plan plan.json`. If `terraform plan` fails on
-     "(known after apply)" errors, fall back to HCL mode and tell me which
+     "(known after apply)" errors or a missing/locked S3 backend
+     (try `terraform init -backend=false` then `terraform plan
+     -refresh=false`), fall back to HCL mode and note which
      module-resolved resources won't surface.
    - Otherwise: `efterlev scan`.
-6. Run `efterlev agent gap` (~60–90 seconds, ~$0.50–1 on Opus 4.7). Tell
-   me the path to the HTML report and offer to open it.
-7. Ask me if I want to also draft narratives (`efterlev agent document`,
-   ~$1–2 on Sonnet) and a POA&M markdown (`efterlev poam`, free,
-   deterministic).
 
-Constraints:
-- Don't run `efterlev agent remediate` without me asking — that one
-  generates code-level diffs and I want to be in the loop.
-- Don't modify my Terraform.
-- Don't commit anything.
-- Soft cost cap: $3 if I picked direct Anthropic, $5 if I picked AWS Bedrock
-  (its first-run retries can burn more budget on timeout / model-config issues).
-  Check back with me before exceeding.
+## Step 5 — agents
+
+Run `efterlev agent gap` (~60–90s; ~$0.50–1 on Opus). Tell me the path to
+the HTML report and offer to open it.
+
+Ask if I also want narratives (`efterlev agent document`, ~$1–2 on Sonnet)
+and POA&M markdown (`efterlev poam`, free, deterministic).
+
+## Constraints
+
+- Don't run `efterlev agent remediate` without me asking — it generates
+  code-level diffs and I want to be in the loop.
+- Don't modify my Terraform. Don't commit anything.
+- Soft cost cap: $3 on the Anthropic path, $5 on the Bedrock path
+  (Bedrock retries can burn more on first-run config issues). Stop and
+  check back before exceeding.
 - If anything fails or surprises you, stop and ask — don't paper over.
 
-When done, brief me with:
+## When done
+
+Brief me with:
 - Counts of `implemented` / `partial` / `not_implemented` /
   `evidence_layer_inapplicable` KSIs.
-- Paths to the gap report, FRMR attestation JSON, and POA&M markdown.
-- Anything notable: secrets caught by the redaction layer, KSIs the agent
-  flagged as needing manual review, modules where evidence was thin.
+- Paths to the gap report, FRMR JSON, and POA&M markdown.
+- Anything notable: secrets caught by the redaction layer, KSIs flagged
+  for review, modules where evidence was sparse.
 ```
 
 ---
