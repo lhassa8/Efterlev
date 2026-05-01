@@ -118,39 +118,81 @@ def test_frmr_cache_warns_when_stale(tmp_path: Path) -> None:
 # --- check_bedrock_credentials --------------------------------------------
 
 
-def test_bedrock_credentials_warn_when_no_aws_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _patch_boto_session_creds(monkeypatch: pytest.MonkeyPatch, creds_obj: object | None) -> None:
+    """Force `boto3.Session().get_credentials()` to return a stub.
+
+    The doctor uses boto3's full credential chain (env, shared file,
+    profile, IMDS, SSO) instead of just env vars. Tests can't rely on
+    env-var-only stubbing anymore — they need to control what the
+    chain reports.
+    """
+    import boto3
+
+    class _FakeSession:
+        def get_credentials(self) -> object | None:
+            return creds_obj
+
+    monkeypatch.setattr(boto3, "Session", lambda *a, **kw: _FakeSession())
+
+
+def test_bedrock_credentials_warn_when_no_creds_resolvable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No env vars and no shared-credential file → boto3 returns None."""
     for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE", "AWS_REGION"):
         monkeypatch.delenv(var, raising=False)
+    _patch_boto_session_creds(monkeypatch, None)
     c = check_bedrock_credentials()
     assert c.status == "warn"
-    assert "No AWS credentials" in c.detail
+    assert "No AWS credentials resolvable" in c.detail
 
 
 def test_bedrock_credentials_warn_when_no_region(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA...")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+    """Creds resolve from ANY source, but region is unset."""
     monkeypatch.delenv("AWS_REGION", raising=False)
     monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
+    _patch_boto_session_creds(monkeypatch, object())  # truthy stand-in for a Credentials object
     c = check_bedrock_credentials()
     assert c.status == "warn"
-    assert "AWS_REGION not set" in c.detail
+    assert "no region configured" in c.detail
 
 
-def test_bedrock_credentials_pass_with_creds_and_region(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA...")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+def test_bedrock_credentials_pass_when_creds_resolve_via_shared_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real-world fix: `~/.aws/credentials` + `aws configure set region` are
+    the canonical install pattern. Earlier env-var-only logic false-warned
+    on this path even though boto3's runtime client used those creds fine.
+    """
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("AWS_REGION", "us-gov-west-1")
+    _patch_boto_session_creds(monkeypatch, object())  # creds came from ~/.aws/credentials
     c = check_bedrock_credentials()
     assert c.status == "pass"
+    assert "Bedrock backend usable" in c.detail
 
 
-def test_bedrock_credentials_pass_with_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bedrock_credentials_pass_with_profile_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
     monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
     monkeypatch.setenv("AWS_PROFILE", "govcloud")
     monkeypatch.setenv("AWS_REGION", "us-gov-west-1")
+    _patch_boto_session_creds(monkeypatch, object())
     c = check_bedrock_credentials()
     assert c.status == "pass"
+
+
+def test_anthropic_api_key_skipped_when_backend_is_bedrock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workspaces configured for Bedrock shouldn't generate noise about a
+    missing Anthropic key — that path doesn't use one.
+    """
+    from efterlev.cli.doctor import check_anthropic_api_key
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    c = check_anthropic_api_key(configured_backend="bedrock")
+    assert c.status == "pass"
+    assert "skipped" in c.detail.lower()
 
 
 # --- run_doctor_checks aggregator -----------------------------------------

@@ -3,6 +3,54 @@
 All notable changes to Efterlev will be tracked here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely.
 
+## [0.1.3] — 2026-04-30
+
+Patch release closing the Bedrock-onboarding cliff surfaced in a real
+first-run test against AWS Bedrock (`us-east-1`). Each fix matches a
+reproducible failure mode the user hit; bundled to ship together so a
+single `pipx install efterlev[bedrock]` works end-to-end.
+
+### Fixed
+
+- **Bedrock client used the boto3 default 60s read_timeout.** Gap Agent
+  prompts (60 KSIs × ~75 evidence records) routinely take longer on
+  Opus 4.7. Three retries multiplied 60s into ~3× wasted cost before
+  surfacing failure. Now sets `read_timeout=600`, `connect_timeout=10`,
+  and `retries={"max_attempts": 1}` on the boto client (Efterlev has
+  its own retry loop; the boto layer's was redundant).
+- **Agents crashed when LLMs wrapped output in ` ```json ` fences.**
+  Opus 4.6 (and occasionally Sonnet 4.6 on Bedrock) wraps structured
+  output in markdown fences despite system-prompt instructions to
+  return raw JSON. Added defensive fence-stripping before
+  `json.loads` in `agents/base.py._invoke_llm`.
+- **`init --llm-backend=bedrock` defaulted to a model ID that doesn't
+  exist in most accounts.** v0.1.x had `us.anthropic.claude-opus-4-7-v1:0`
+  hardcoded. Now probes the user's account via
+  `bedrock.list_inference_profiles(typeEquals="SYSTEM_DEFINED")` and
+  picks the latest available Anthropic Opus profile when `--llm-model`
+  isn't passed. Falls back to the hardcoded default with a clear warning
+  when the probe fails (no perms, no boto, no profiles).
+- **`doctor` only checked AWS credentials in env vars,** false-warning
+  users whose creds came from `~/.aws/credentials`, `AWS_PROFILE`, IMDS,
+  or SSO. Now uses `boto3.Session().get_credentials()` (the full
+  credential chain) — matches what the runtime client actually consults.
+- **`doctor` now pings `InvokeModel` end-to-end** when the workspace is
+  configured for Bedrock. 1-token throwaway prompt validates that the
+  configured model is reachable, the credentials work, and access is
+  granted — catches stale defaults, missing inference-profile access,
+  and expired SSO sessions before the user spends API budget on a
+  doomed agent run.
+- **`doctor`'s ANTHROPIC_API_KEY check skips when backend is bedrock.**
+  Earlier versions warned about a missing key on workspaces where the
+  key is irrelevant.
+
+### Notes
+
+- Streaming refactor of the Anthropic clients (deferred from v0.1.2)
+  remains queued for v0.2.0. The Bedrock-side `read_timeout=600` makes
+  long completions practical without it; the structural fix is still
+  the right destination.
+
 ## [0.1.2] — 2026-04-30
 
 Patch release closing two real-CI bugs surfaced by the govnotes-demo

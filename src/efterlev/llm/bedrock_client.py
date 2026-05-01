@@ -78,6 +78,7 @@ class AnthropicBedrockClient:
         if self._client_obj is None:
             try:
                 import boto3
+                from botocore.config import Config
             except ImportError as e:  # pragma: no cover - guard
                 raise AgentError(
                     "boto3 is not installed. Install with "
@@ -89,9 +90,26 @@ class AnthropicBedrockClient:
                 if self.aws_profile
                 else boto3.Session()
             )
+            # Gap Agent prompts (60 KSIs * ~75 evidence records + FRMR
+            # context) routinely take longer than boto3's default 60s
+            # read_timeout on Opus 4.7. The default also retries on its
+            # own (max_attempts=3), which multiplies our retry budget
+            # against transient errors — we already retry up to 3x in
+            # `complete()`. Set both explicitly:
+            #   - read_timeout=600s: room for full-baseline classification.
+            #   - retries.max_attempts=1: disable boto's retry; ours is
+            #     authoritative and emits typed AgentError on exhaustion.
+            #   - connect_timeout=10s: catches network setup hangs early.
+            # Surfaced by a real first-run Bedrock failure on 2026-04-30.
+            client_config = Config(
+                read_timeout=600,
+                connect_timeout=10,
+                retries={"max_attempts": 1},
+            )
             self._client_obj = session.client(
                 "bedrock-runtime",
                 region_name=self.region,
+                config=client_config,
             )
         return self._client_obj
 

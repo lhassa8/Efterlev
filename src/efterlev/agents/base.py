@@ -56,6 +56,33 @@ from efterlev.llm.scrubber import (
 from efterlev.models import Evidence
 
 
+def _strip_code_fences(text: str) -> str:
+    """Strip leading/trailing markdown code fences from LLM output.
+
+    Some Claude releases (especially Opus 4.6 on Bedrock) wrap structured
+    JSON output in ```json ... ``` fences despite system-prompt
+    instructions to return raw JSON. Surfaced by a real first-run
+    Bedrock failure on 2026-04-30.
+
+    Defensive: only strips fences if the first non-blank line is a fence
+    opener (` ``` ` or ` ```json `). Untouched JSON passes through
+    unchanged. Tolerant of an extra trailing newline after the closing
+    fence — model output occasionally has it.
+    """
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return text
+    # Drop the first line (` ```json ` or ` ``` `) and the trailing fence.
+    first_newline = stripped.find("\n")
+    if first_newline == -1:
+        # Single line that started with ``` — nothing parseable.
+        return text
+    body = stripped[first_newline + 1 :].rstrip()
+    if body.endswith("```"):
+        body = body[: -len("```")].rstrip()
+    return body
+
+
 def new_fence_nonce() -> str:
     """Return a fresh random nonce for a single agent run's fence set.
 
@@ -291,7 +318,7 @@ class Agent(ABC):
         )
 
         try:
-            parsed = json.loads(response.text)
+            parsed = json.loads(_strip_code_fences(response.text))
         except json.JSONDecodeError as e:
             raise AgentError(
                 f"{self.name}: LLM response was not valid JSON: {e}. "

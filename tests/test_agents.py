@@ -21,6 +21,7 @@ from efterlev.agents import (
     new_fence_nonce,
     parse_evidence_fence_ids,
 )
+from efterlev.agents.base import _strip_code_fences
 from efterlev.errors import AgentError
 from efterlev.llm import StubLLMClient
 from efterlev.models import Evidence, Indicator, SourceRef
@@ -525,3 +526,37 @@ def test_gap_agent_fences_evidence_with_malicious_content(tmp_path: Path) -> Non
     last_fence_open = user.rfind("<evidence", 0, injection_pos)
     last_fence_close = user.rfind("</evidence>", 0, injection_pos)
     assert last_fence_open > last_fence_close, "injected instruction escaped the evidence fence"
+
+
+# --- _strip_code_fences ---------------------------------------------------
+
+
+def test_strip_code_fences_passes_raw_json_through_unchanged() -> None:
+    """Plain JSON not wrapped in fences must round-trip identically."""
+    raw = '{"ksi_classifications": [], "unmapped_findings": []}'
+    assert _strip_code_fences(raw) == raw
+
+
+def test_strip_code_fences_strips_json_tagged_fence() -> None:
+    """Opus 4.6 occasionally wraps output in ```json ... ``` on Bedrock."""
+    fenced = '```json\n{"ksi_classifications": []}\n```'
+    assert _strip_code_fences(fenced) == '{"ksi_classifications": []}'
+
+
+def test_strip_code_fences_strips_bare_fence() -> None:
+    """Bare ``` openers (no language tag) must also be stripped."""
+    fenced = '```\n{"ksi_classifications": []}\n```'
+    assert _strip_code_fences(fenced) == '{"ksi_classifications": []}'
+
+
+def test_strip_code_fences_tolerates_trailing_whitespace_before_close() -> None:
+    """Models occasionally add a blank line before the closing fence."""
+    fenced = '```json\n{"k": "v"}\n\n```\n'
+    assert _strip_code_fences(fenced) == '{"k": "v"}'
+
+
+def test_strip_code_fences_returns_text_unchanged_when_no_newline_after_open() -> None:
+    """Single-line text starting with ``` is malformed; pass through and let
+    json.loads emit the canonical error."""
+    text = "```not-actually-fenced"
+    assert _strip_code_fences(text) == text
